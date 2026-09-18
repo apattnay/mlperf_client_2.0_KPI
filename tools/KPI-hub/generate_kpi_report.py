@@ -845,10 +845,14 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
             "end": _fmt_time(s.get("end_iso", "")) if s.get("end_iso") else "-",
             "color": _color_for(name),
             "ttft_s": s.get("ttft_s", ""),
+            "prefill_ms_est": s.get("prefill_ms_est", ""),
             "avg_itl_ms": s.get("avg_itl_ms", ""),
+            "itl_stddev_ms": s.get("itl_stddev_ms", ""),
             "p50_itl_ms": s.get("p50_itl_ms", ""),
             "p99_itl_ms": s.get("p99_itl_ms", ""),
             "tool_calls": s.get("tool_calls", {}),
+            "is_cold": s.get("is_cold"),
+            "history_tokens": s.get("history_tokens", 0),
         }
         table_rows.append(row)
     # Add any stages not in the predefined order
@@ -866,10 +870,14 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
                 "end": _fmt_time(s.get("end_iso", "")) if s.get("end_iso") else "-",
                 "color": _color_for(name),
                 "ttft_s": s.get("ttft_s", ""),
+                "prefill_ms_est": s.get("prefill_ms_est", ""),
                 "avg_itl_ms": s.get("avg_itl_ms", ""),
+                "itl_stddev_ms": s.get("itl_stddev_ms", ""),
                 "p50_itl_ms": s.get("p50_itl_ms", ""),
                 "p99_itl_ms": s.get("p99_itl_ms", ""),
                 "tool_calls": s.get("tool_calls", {}),
+                "is_cold": s.get("is_cold"),
+                "history_tokens": s.get("history_tokens", 0),
             })
 
     # ---- RAG / Embedding section ----
@@ -1012,12 +1020,22 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
     _EXECUTION_TOOLS = {"execute_command", "execute", "run_command", "apply_patch"}
     for r in table_rows:
         ttft_cell = f"{r['ttft_s']}" if r.get('ttft_s') != '' else "-"
+        prefill_cell = f"{r['prefill_ms_est']:,.0f}" if r.get('prefill_ms_est') != '' else "-"
         itl_cell = f"{r['avg_itl_ms']}" if r.get('avg_itl_ms') != '' else "-"
+        if r.get('avg_itl_ms') != '' and r.get('itl_stddev_ms') != '':
+            itl_cell = f"{r['avg_itl_ms']} \u00b1{r['itl_stddev_ms']}"
         p50_cell = f"{r['p50_itl_ms']}" if r.get('p50_itl_ms') != '' else "-"
         p99_cell = f"{r['p99_itl_ms']}" if r.get('p99_itl_ms') != '' else "-"
         is_orchestrator = r['name'] == 'task_agent'
         row_style = ' style="color:var(--text2); font-style:italic"' if is_orchestrator else ''
         orch_suffix = ' <span style="font-size:0.7rem; opacity:0.6">(orchestrator)</span>' if is_orchestrator else ''
+        phase_badge = ""
+        if r.get('is_cold') is True:
+            phase_badge = ' <span class="phase-badge phase-badge-cold" title="Fresh context - no prior turn KV cache reused">cold</span>'
+        elif r.get('is_cold') is False:
+            phase_badge = (f' <span class="phase-badge phase-badge-warm" '
+                           f'title="Continues prior turn - {r["history_tokens"]} history tokens carried in KV cache">'
+                           f'warm +{r["history_tokens"]}</span>')
         # For orchestrator, dim the misleading ITL/tok_s (they include sub-agent wait time)
         if is_orchestrator:
             itl_cell = f'<span title="Includes sub-agent wait time">{itl_cell}</span>'
@@ -1036,7 +1054,7 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
                 tools_cell = badges
         rows_html += f"""
             <tr{row_style}>
-                <td><span class="gantt-dot" style="background:{r['color']}"></span> {html.escape(r['name'])}{orch_suffix}</td>
+                <td><span class="gantt-dot" style="background:{r['color']}"></span> {html.escape(r['name'])}{orch_suffix}{phase_badge}</td>
                 <td class="num">{r['start']}</td>
                 <td class="num">{r['end']}</td>
                 <td class="num">{r['input_tokens']:,}</td>
@@ -1045,6 +1063,7 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
                 <td class="num">{r['wall_time_s']:.1f}</td>
                 <td class="num">{tok_s_cell}</td>
                 <td class="num">{ttft_cell}</td>
+                <td class="num">{prefill_cell}</td>
                 <td class="num">{itl_cell}</td>
                 <td class="num" title="p50 / p99">{p50_cell} / {p99_cell}</td>{f'<td>{tools_cell}</td>' if has_tool_calls else ''}
             </tr>"""
@@ -1120,6 +1139,10 @@ code {{ background: rgba(110,118,129,0.2); padding: 2px 6px; border-radius: 4px;
 .tool-badge {{ display: inline-block; font-size: 0.68rem; padding: 1px 6px; margin: 1px 2px; border-radius: 3px;
                background: rgba(88,166,255,0.15); color: #79b8ff; white-space: nowrap; }}
 .tool-badge-exec {{ background: rgba(63,185,80,0.18); color: #56d364; }}
+.phase-badge {{ display: inline-block; font-size: 0.65rem; padding: 1px 6px; margin-left: 4px; border-radius: 3px;
+               white-space: nowrap; vertical-align: middle; }}
+.phase-badge-cold {{ background: rgba(121,192,255,0.15); color: #79c0ff; }}
+.phase-badge-warm {{ background: rgba(255,152,56,0.15); color: #ff9838; }}
 .timeline-axis {{ display: flex; justify-content: space-between; color: var(--text2); font-size: 0.78rem;
                   margin-bottom: 4px; padding: 0 200px 0 0; margin-left: 200px; }}
 .timeline-legend {{ color: var(--text2); font-size: 0.78rem; margin-top: 8px; }}
@@ -1193,6 +1216,7 @@ code {{ background: rgba(110,118,129,0.2); padding: 2px 6px; border-radius: 4px;
                 <th style="text-align:right">Time (s)</th>
                 <th style="text-align:right">Tok/s</th>
                 <th style="text-align:right">TTFT (s)</th>
+                <th style="text-align:right">Prefill (ms)</th>
                 <th style="text-align:right">Avg ITL (ms)</th>
                 <th style="text-align:right">p50/p99 ITL (ms)</th>
                 {'<th>Tools</th>' if has_tool_calls else ''}
@@ -1208,7 +1232,7 @@ code {{ background: rgba(110,118,129,0.2); padding: 2px 6px; border-radius: 4px;
                 <td class="num">{totals.get('total_tokens', 0):,}</td>
                 <td class="num">{wall_time:.1f}</td>
                 <td class="num">{total_out_tps}</td>
-                <td></td><td></td><td></td>{'<td></td>' if has_tool_calls else ''}
+                <td></td><td></td><td></td><td></td>{'<td></td>' if has_tool_calls else ''}
             </tr>
         </tbody>
     </table>

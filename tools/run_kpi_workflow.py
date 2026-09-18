@@ -97,6 +97,20 @@ def extract_tool_calls(results_json_path: Path, start_offset: int) -> list:
     return per_turn
 
 
+# "- inference task added. history: 149, user: 632, expected: 1212" - logged once per task at
+# pipeline-scheduling time (before any inference actually runs), in the same order stages are
+# later emitted. "history" is the previous turn's own generated-token count fed back in as
+# context (0 for a fresh/cold turn, >0 for a warm turn continuing an existing conversation).
+_TASK_INFERENCE_RE = re.compile(r"inference task added\. history: (\d+), user: (\d+), expected: (\d+)")
+_TASK_WARMUP_RE = re.compile(r"warmup task added\. tokens: (\d+)")
+# "TTFT 14699.206000ms, 2nd+ token latency 61.497128ms" - the decode-phase (steady-state,
+# one-token-at-a-time) mean inter-token latency, i.e. Avg ITL.
+_ITL_RE = re.compile(r"2nd\+ token latency ([\d.]+)ms")
+# "Average 2nd+ Token Latency: (ms) 47.726 (+-3.873)" - same mean, plus a std-dev across the
+# individual decode-step latencies (not full percentiles, so p50/p99 stay unavailable).
+_ITL_STDDEV_RE = re.compile(r"Average 2nd\+ Token Latency:.*\(\+-([\d.]+)\)")
+
+
 def parse_executor_log(path: Path, start_offset: int) -> dict:
     """Extract one KPI stage per inference (power_begin..Tokens Per Second block).
 
@@ -114,23 +128,43 @@ def parse_executor_log(path: Path, start_offset: int) -> dict:
     idx = 0
     capturing_prompt = False
     prompt_buf = []
+    # Task-scheduling metadata (cold/warm + per-turn new-token counts), logged upfront in the same
+    # repeating order stages are later emitted in - consumed one-per-emit via task_idx.
+    task_queue = []
+    task_idx = 0
 
     def _emit(stage):
-        nonlocal idx
+        nonlocal idx, task_idx
         idx += 1
         name = f"{idx:02d}_{_slug(stage.get('category', 'unknown'))}"
-        stages[name] = {
+        ttft_s = stage.get("ttft_s", 0)
+        avg_itl_ms = stage.get("avg_itl_ms")
+        entry = {
             "input_tokens": stage.get("input_tokens", 0),
             "output_tokens": stage.get("output_tokens", 0),
             "total_tokens": stage.get("input_tokens", 0) + stage.get("output_tokens", 0),
             "wall_time_s": round(stage["end_epoch"] - stage["start_epoch"], 3),
             "output_tokens_per_s": stage.get("output_tokens_per_s", 0),
-            "ttft_s": stage.get("ttft_s", 0),
+            "ttft_s": ttft_s,
             "start_epoch": stage["start_epoch"],
             "end_epoch": stage["end_epoch"],
             "start_iso": datetime.fromtimestamp(stage["start_epoch"]).isoformat(timespec="milliseconds"),
             "end_iso": datetime.fromtimestamp(stage["end_epoch"]).isoformat(timespec="milliseconds"),
         }
+        if avg_itl_ms is not None:
+            entry["avg_itl_ms"] = avg_itl_ms
+            # Prefill (+ KV cache build) estimate: TTFT minus one steady-state decode step, i.e.
+            # the part of TTFT not explained by generating the first token at the normal rate.
+            entry["prefill_ms_est"] = round(max(ttft_s * 1000 - avg_itl_ms, 0), 1)
+        if "itl_stddev_ms" in stage:
+            entry["itl_stddev_ms"] = stage["itl_stddev_ms"]
+        if task_idx < len(task_queue):
+            meta = task_queue[task_idx]
+            entry["is_cold"] = meta["is_cold"]
+            entry["history_tokens"] = meta["history_tokens"]
+            entry["turn_new_tokens"] = meta["turn_new_tokens"]
+        task_idx += 1
+        stages[name] = entry
 
     with open(path, "r", encoding="utf-8", errors="replace") as f:
         f.seek(start_offset)
@@ -156,6 +190,23 @@ def parse_executor_log(path: Path, start_offset: int) -> dict:
             elif msg.startswith("User prompt:"):
                 capturing_prompt = True
                 prompt_buf = [msg.split("User prompt:", 1)[1]]
+            elif "inference task added." in msg:
+                mi = _TASK_INFERENCE_RE.search(msg)
+                if mi:
+                    history = int(mi.group(1))
+                    task_queue.append({
+                        "is_cold": history == 0,
+                        "history_tokens": history,
+                        "turn_new_tokens": int(mi.group(2)),
+                    })
+            elif "warmup task added." in msg:
+                mw = _TASK_WARMUP_RE.search(msg)
+                if mw:
+                    task_queue.append({
+                        "is_cold": True,
+                        "history_tokens": 0,
+                        "turn_new_tokens": int(mw.group(1)),
+                    })
             elif msg == "power_begin":
                 if open_stage is not None and "end_epoch" in open_stage and closing_stage is None:
                     closing_stage = open_stage
@@ -176,6 +227,15 @@ def parse_executor_log(path: Path, start_offset: int) -> dict:
                     mm = re.search(r"TTFT ([\d.]+)ms", msg)
                     if mm:
                         target["ttft_s"] = round(float(mm.group(1)) / 1000, 4)
+                    mi = _ITL_RE.search(msg)
+                    if mi:
+                        target["avg_itl_ms"] = round(float(mi.group(1)), 3)
+            elif msg.startswith("Average 2nd+ Token Latency:"):
+                target = closing_stage if closing_stage is not None else open_stage
+                if target is not None:
+                    md = _ITL_STDDEV_RE.search(msg)
+                    if md:
+                        target["itl_stddev_ms"] = round(float(md.group(1)), 3)
             elif msg.startswith("Input tokens:"):
                 target = closing_stage if closing_stage is not None else open_stage
                 if target is not None:

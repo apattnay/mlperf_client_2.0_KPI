@@ -181,3 +181,56 @@ exercises the `apply_patch` tool in practice, only `read_file` in a loop.
 
 Each directory contains `dashboard.html` (HW telemetry), `kpi_report.html` (workflow KPIs),
 `workflow_kpi.json`, `experiment.json`, `hw_samples.csv`, and the raw `mlperf_stdout.log`.
+
+## 8. Identifying inference phases: Prefill, TTFT, Decode, Cold vs Warm
+
+Every agentic turn goes through: input tokens → **Prefill** (build the KV cache from the full
+prompt) → **first output token** → **Decode** (one token at a time, appending to the KV cache
+each step) → turn ends → next turn either starts a fresh context (**cold**) or continues the
+same conversation, carrying its KV cache forward (**warm**). `mlperf-windows.exe` doesn't log a
+named "prefill" or "decode" event, but `Logs/<scenario>_executor.log` (the file
+`run_kpi_workflow.py` already parses) contains everything needed to reconstruct these phase
+boundaries:
+
+```
+- inference task added. history: 149, user: 632, expected: 1212
+...
+TTFT 2756.537500ms, 2nd+ token latency 61.461646ms
+...
+Average 2nd+ Token Latency: (ms) 61.462 (+-4.021)
+```
+
+| Phase | How it's identified |
+|---|---|
+| **Cold vs Warm** | The `history:` field on the `inference task added` line. `history: 0` ⇒ **cold** (fresh context). `history: N > 0` ⇒ **warm** — `N` is literally the *previous turn's own generated-token count*, fed back in as context for this turn. |
+| **Prefill (+ KV cache build)** | Starts at `power_begin`, ends when the first token is emitted. Not logged as its own timestamp, but estimated as `prefill_ms ≈ TTFT − avg_2nd+_token_latency` (i.e. TTFT minus the cost of one normal decode step — the remainder is prefill/KV-warmup). |
+| **First Token / TTFT** | Logged directly: `TTFT <x>ms`. This is prefill + emitting token #1, combined (the standard TTFT definition). |
+| **Decode phase (steady-state, one token + KV update at a time)** | `2nd+ token latency` per call, and the aggregated `Average 2nd+ Token Latency: (ms) <mean> (+-<stddev>)` line (mean + std-dev across the individual per-token decode steps — not full percentiles, so true p50/p99 ITL isn't derivable from this log). Decode ends at `power_end` / `Ran inference and got N tokens...`, matching `output_tokens`. |
+| **Turn boundary / KV carry-forward** | The *next* turn's `history:` value equals *this* turn's generated-token count — direct evidence the conversation (and KV state) is being extended turn-over-turn rather than starting over. |
+
+**Is the KV cache actually being reused across turns, or is every turn re-prefilled from
+scratch?** TTFT scaling answers this. On the NPU SWE Agent run:
+
+| Turn | New tokens (history+user) | Total context | AVG TTFT |
+|---|---|---|---|
+| 1 (cold) | 8,198 | 8,198 | 14,634 ms |
+| 2 (warm) | 781 | 8,979 | 2,752 ms |
+| 3 (warm) | 1,272 | 10,251 | 7,818 ms |
+
+Turn 2 has a *larger total context* than turn 1 but a *5x smaller* TTFT. If the runtime were
+re-prefilling the whole context from scratch every turn, turn 2's TTFT would have to be ≥ turn
+1's — it isn't, which is direct evidence the OpenVINO GenAI pipeline reuses/extends the KV cache
+across turns instead of recomputing it. The per-new-token cost still rises with accumulated
+context (1.79 → 3.52 → 6.15 ms/new-token for turns 1→2→3), consistent with attention cost per new
+token scaling with the total KV cache length already resident.
+
+**Instrumentation added to close this gap:** `parse_executor_log()` now also extracts the
+`history:`/`user:` fields (→ per-stage `is_cold` / `history_tokens` / `turn_new_tokens`) and the
+`2nd+ token latency` mean + std-dev (→ `avg_itl_ms` / `itl_stddev_ms`, and a derived
+`prefill_ms_est`). `kpi_report.html`'s Per-Agent KPIs table now shows a cold/warm badge next to
+each stage name, a **Prefill (ms)** column, and a populated **Avg ITL (ms)** column (previously
+always `-` for these in-process NativeOpenVINO scenarios — the data existed in the log but wasn't
+being parsed). `p50/p99 ITL` remains `-`: the log only exposes mean + std-dev per turn, not a full
+per-token latency distribution, so real percentiles aren't derivable without further
+instrumentation upstream in mlperf-windows.exe itself.
+
