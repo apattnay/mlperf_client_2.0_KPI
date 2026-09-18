@@ -17,7 +17,11 @@
     {
       "description": "plot_utilization_interactive.py: added an analytical KV-Cache Size (Estimated) panel for non-OVMS (in-process NativeOpenVINO) scenarios, since the existing KV-cache panel only works when ovms_kv_cache_pct/mb columns are present (i.e. running against a real OVMS server). New load_phase_tokens()/estimate_kv_cache_series()/KV_CACHE_MB_PER_TOKEN derive an MB-over-time curve from each stage's input/output token counts + Llama-3.1-8B architecture constants (32 layers, 8 KV heads, head_dim 128, fp16 KV cache = 0.125 MB/token), read from the same --phases workflow_kpi.json already passed in. build_dashboard() gained a kv_cache_phases param; reapply after syncing a new snapshot.",
       "upstream_candidate": true
+    },
+    {
+      "description": "generate_kpi_report.py: run_kpi_workflow.py's extract_tool_calls() parses mlperf's Logs/results.json 'Output' field for Anthropic-style tool_use blocks and attaches per-stage tool-call counts to workflow_kpi.json; the Per-Agent KPIs table gained a 'Tools' column rendering these as badges, and the Workflow Timeline gained a distinct CPU bar (spanning the gap between a stage's end and the next stage's start) representing tool execution time. Also fixed hw_label defaulting to 'NVIDIA (Ollama)' for any non-ovms backend and PHASE_HW having no entries for SWE/Data Agent stage names - now falls back to exp_meta['device_type']. Reapply after syncing a new snapshot.",
+      "upstream_candidate": true
     }
   ],
-  "upstream_todo": "All local_patches above are generic improvements (not specific to this repo's setup) and should be proposed back to https://github.com/intel-sandbox/KPI-hub as PRs once validated. Diff against a fresh clone with: git diff --no-index <fresh-clone>/generate_kpi_report.py generate_kpi_report.py (and similarly for plot_utilization_interactive.py)."
+  "upstream_todo": "All local_patches above are generic improvements (not specific to this repo's setup) and should be proposed back to https://github.com/intel-sandbox/KPI-hub as PRs once validated. tools/KPI-hub/upstream/kpi-hub-local-patches.patch currently only covers patches 1-3 (generated before patch 4 landed, and the pristine vendored baseline is no longer available in this repo's git index to regenerate it from - regenerate by diffing a fresh clone of intel-sandbox/KPI-hub against this directory instead: git diff --no-index <fresh-clone> tools/KPI-hub -- ':!upstream' ':!.vendor-snapshot.json' ':!.gitignore')."
 }
