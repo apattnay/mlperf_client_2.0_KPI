@@ -19,6 +19,7 @@ tools/accuracy/ifeval/*.log
 .venv*/
 wmlp/
 Logs/
+kpi_runs/
 .vscode/*
 /build.*
 /build_release.*
