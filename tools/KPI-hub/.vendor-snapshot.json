@@ -23,5 +23,5 @@
       "upstream_candidate": true
     }
   ],
-  "upstream_todo": "All local_patches above are generic improvements (not specific to this repo's setup) and should be proposed back to https://github.com/intel-sandbox/KPI-hub as PRs once validated. tools/KPI-hub/upstream/kpi-hub-local-patches.patch currently only covers patches 1-3 (generated before patch 4 landed, and the pristine vendored baseline is no longer available in this repo's git index to regenerate it from - regenerate by diffing a fresh clone of intel-sandbox/KPI-hub against this directory instead: git diff --no-index <fresh-clone> tools/KPI-hub -- ':!upstream' ':!.vendor-snapshot.json' ':!.gitignore')."
+  "upstream_todo": "All local_patches above are generic improvements (not specific to this repo's setup) and should be proposed back to https://github.com/intel-sandbox/KPI-hub as PRs once validated. Apply in order against a fresh clone: git apply tools/KPI-hub/upstream/kpi-hub-local-patches.patch (patches 1-3: title, device_type, KV-cache estimate), then git apply tools/KPI-hub/upstream/kpi-hub-local-patches-2-tool-calls-timeline.patch (patch 4: tool-call column + CPU timeline segments + HW label fix). Round-trip verified 2026-09-17 (reverse-then-forward apply reproduces this repo's HEAD exactly)."
 }
