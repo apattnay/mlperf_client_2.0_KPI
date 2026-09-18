@@ -1,0 +1,270 @@
+﻿diff --git a/tools/KPI-hub/generate_kpi_report.py b/tools/KPI-hub/generate_kpi_report.py
+index 5c08fa2..ea1d5d1 100644
+--- a/tools/KPI-hub/generate_kpi_report.py
++++ b/tools/KPI-hub/generate_kpi_report.py
+@@ -486,9 +486,11 @@ def _build_sut_html(hw, sw):
+ 
+ 
+ def _build_efficiency_html(wkpi, exp_meta):
+-    """Derive and render GPU efficiency metrics — adapts to iGPU (OVMS) or NVIDIA (Ollama)."""
++    """Derive and render compute efficiency metrics — adapts to NPU, GPU (integrated), or NVIDIA (Ollama)."""
+     backend = exp_meta.get("backend", "ovms")
+     is_nvidia = backend == "ollama"
++    device_type = (exp_meta.get("device_type") or "").upper()
++    is_npu = not is_nvidia and device_type == "NPU"
+ 
+     # Compute decode-only throughput: exclude task_agent orchestrator and subtract TTFT from each agent
+     stages = wkpi.get("stages", {})
+@@ -556,12 +558,15 @@ def _build_efficiency_html(wkpi, exp_meta):
+             'Compute peaks are theoretical tensor-core maximums.'
+         )
+     else:
+-        IGPU_PEAK_TFLOPS_FP16 = 4.096
+-        IGPU_MEASURED_TOPS_INT4 = 0.078
+-        rows += [
+-            ("Measured iGPU INT4 GEMM Ceiling", f"{IGPU_MEASURED_TOPS_INT4:.3f} TOPS"),
+-            ("iGPU Theoretical Peak (FP16 FMA)", f"{IGPU_PEAK_TFLOPS_FP16:.2f} TFLOPS"),
+-        ]
++        device_label = "NPU" if is_npu else "GPU"
++        if not is_npu:
++            # Measured/theoretical peaks below are specific to this platform's integrated GPU.
++            IGPU_PEAK_TFLOPS_FP16 = 4.096
++            IGPU_MEASURED_TOPS_INT4 = 0.078
++            rows += [
++                (f"Measured {device_label} INT4 GEMM Ceiling", f"{IGPU_MEASURED_TOPS_INT4:.3f} TOPS"),
++                (f"{device_label} Theoretical Peak (FP16 FMA)", f"{IGPU_PEAK_TFLOPS_FP16:.2f} TFLOPS"),
++            ]
+         ddr5_peak_bw_gbs = 89.0
+         if model_weight_mb > 0:
+             mem_read_per_token_gb = model_weight_mb / 1024
+@@ -575,11 +580,12 @@ def _build_efficiency_html(wkpi, exp_meta):
+             ("DRAM BW Peak (DDR5)", f"{ddr5_peak_bw_gbs:.0f} GB/s"),
+             ("Memory BW Utilization", f"{mem_bw_utilization_pct:.1f}%"),
+         ]
+-        section_title = "iGPU Efficiency Analysis"
++        section_title = f"{device_label} Efficiency Analysis"
+         section_note = (
+-            'LLM decode is memory-bandwidth-bound: each token reads the full model weight from DRAM. '
+-            'Compute demand is theoretical (2×params); measured GEMM ceiling confirms low actual INT4 throughput on this iGPU. '
+-            'Memory BW utilization is the meaningful efficiency metric for decode.'
++            f'LLM decode is memory-bandwidth-bound: each token reads the full model weight from DRAM. '
++            f'Compute demand is theoretical (2×params)'
++            + ('; measured GEMM ceiling confirms low actual INT4 throughput on this GPU. ' if not is_npu else '. ')
++            + 'Memory BW utilization is the meaningful efficiency metric for decode.'
+         )
+ 
+     html = f'<div class="section"><h2>{section_title}</h2>'
+@@ -1020,7 +1026,7 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
+ <head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+-<title>LiteAgent KPI Report — {report_time}</title>
++<title>Multi-Agent KPI Report — {report_time}</title>
+ <style>
+ :root {{
+     --bg: #0d1117; --surface: #161b22; --border: #30363d;
+@@ -1091,7 +1097,7 @@ code {{ background: rgba(110,118,129,0.2); padding: 2px 6px; border-radius: 4px;
+ <body>
+ 
+ <div class="header">
+-    <h1>LiteAgent Multi-Agent KPI Report</h1>
++    <h1>Multi-Agent KPI Report</h1>
+     <div class="subtitle">Generated {report_time} &nbsp;|&nbsp; Source: <code>{html.escape(kpi_dir_name)}</code></div>
+     <div class="meta">
+         <div class="meta-item">
+diff --git a/tools/KPI-hub/plot_utilization_interactive.py b/tools/KPI-hub/plot_utilization_interactive.py
+index 822bb7b..98e7d9e 100644
+--- a/tools/KPI-hub/plot_utilization_interactive.py
++++ b/tools/KPI-hub/plot_utilization_interactive.py
+@@ -70,6 +70,76 @@ def load_phases(kpi_path: str) -> list:
+     return phases
+ 
+ 
++# KV-cache size per token, by model family (analytical estimate, not device-measured):
++#   bytes/token = 2 (K+V) * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes
++# Llama-3.1-8B: 32 layers, 8 KV heads (GQA), head_dim 128, fp16 KV cache (2 bytes) ->
++#   2*32*8*128*2 = 131072 bytes/token = 0.125 MB/token.
++KV_CACHE_MB_PER_TOKEN = [
++    ("Llama-3.1-8B", 0.125),
++]
++
++
++def _kv_cache_mb_per_token(model_name: str) -> float | None:
++    for prefix, mb_per_token in KV_CACHE_MB_PER_TOKEN:
++        if prefix in (model_name or ""):
++            return mb_per_token
++    return None
++
++
++def load_phase_tokens(kpi_path: str) -> tuple:
++    """Load per-stage token counts + timing for the KV-cache size estimate.
++
++    Returns (mb_per_token, [{start_dt, end_dt, ttft_s, input_tokens, output_tokens}, ...]),
++    or (None, []) if the model isn't in KV_CACHE_MB_PER_TOKEN or there's no stage data.
++    """
++    with open(kpi_path) as f:
++        kpi = json.load(f)
++    mb_per_token = _kv_cache_mb_per_token(kpi.get("model", ""))
++    if mb_per_token is None:
++        return None, []
++    stages = []
++    for data in kpi.get("stages", {}).values():
++        start_iso = data.get("start_iso")
++        end_iso = data.get("end_iso")
++        if not start_iso or not end_iso:
++            continue
++        stages.append({
++            "start_dt": datetime.fromisoformat(start_iso),
++            "end_dt": datetime.fromisoformat(end_iso),
++            "ttft_s": data.get("ttft_s", 0) or 0,
++            "input_tokens": data.get("input_tokens", 0),
++            "output_tokens": data.get("output_tokens", 0),
++        })
++    stages.sort(key=lambda s: s["start_dt"])
++    return mb_per_token, stages
++
++
++def estimate_kv_cache_series(ts, mb_per_token: float, stages: list):
++    """Estimate KV-cache size (MB) at each sample timestamp.
++
++    Within a stage: jumps to input_tokens right after TTFT (prefill), then ramps linearly
++    from input_tokens to input_tokens+output_tokens over the remaining decode time. This
++    mirrors the prefill-spike-then-decode-ramp shape already used elsewhere for phase shading.
++    """
++    import numpy as np
++
++    values = np.zeros(len(ts))
++    for i, t in enumerate(ts):
++        for s in stages:
++            if s["start_dt"] <= t <= s["end_dt"]:
++                total_s = (s["end_dt"] - s["start_dt"]).total_seconds()
++                elapsed = (t - s["start_dt"]).total_seconds()
++                if elapsed <= s["ttft_s"] or s["output_tokens"] == 0:
++                    tokens = s["input_tokens"]
++                else:
++                    decode_total = max(total_s - s["ttft_s"], 1e-6)
++                    decode_elapsed = min(elapsed - s["ttft_s"], decode_total)
++                    tokens = s["input_tokens"] + s["output_tokens"] * (decode_elapsed / decode_total)
++                values[i] = tokens * mb_per_token
++                break
++    return values
++
++
+ def load_data(csv_path: str) -> pd.DataFrame:
+     df = pd.read_csv(csv_path, on_bad_lines="skip")
+     df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+@@ -126,7 +196,7 @@ def classify_cores(df: pd.DataFrame) -> tuple:
+     return p_cores, e_cores
+ 
+ 
+-def build_dashboard(df: pd.DataFrame, output_path: str, phases: list | None = None):
++def build_dashboard(df: pd.DataFrame, output_path: str, phases: list | None = None, kv_cache_phases: tuple | None = None):
+     ts = df["timestamp"]
+     duration_min = (ts.iloc[-1] - ts.iloc[0]).total_seconds() / 60
+     n_samples = len(df)
+@@ -148,7 +218,15 @@ def build_dashboard(df: pd.DataFrame, output_path: str, phases: list | None = No
+     has_igpu = "igpu_pct" in df.columns
+     has_dram_latency = "dram_rd_latency_ns" in df.columns and df["dram_rd_latency_ns"].notna().any()
+     has_npu_infer = "npu_infer_ms" in df.columns and df["npu_infer_ms"].sum() > 0
+-    has_kv_cache = "ovms_kv_cache_pct" in df.columns and df["ovms_kv_cache_pct"].notna().any() and df["ovms_kv_cache_pct"].sum() > 0
++    has_kv_cache_ovms = "ovms_kv_cache_pct" in df.columns and df["ovms_kv_cache_pct"].notna().any() and df["ovms_kv_cache_pct"].sum() > 0
++    kv_cache_est = None
++    if kv_cache_phases:
++        mb_per_token, kv_stages = kv_cache_phases
++        if mb_per_token is not None and kv_stages:
++            kv_cache_est = estimate_kv_cache_series(ts, mb_per_token, kv_stages)
++            if kv_cache_est.sum() <= 0:
++                kv_cache_est = None
++    has_kv_cache = has_kv_cache_ovms or kv_cache_est is not None
+ 
+     p_cores, e_cores = classify_cores(df)
+ 
+@@ -232,7 +310,12 @@ def build_dashboard(df: pd.DataFrame, output_path: str, phases: list | None = No
+     if has_dram_latency:
+         titles.append(f"DRAM Read Latency & Page Hit — source: {dram_detail_src}")
+     if has_kv_cache:
+-        titles.append("OVMS KV-Cache Usage — source: OVMS Runtime Log (llm_executor)")
++        if has_kv_cache_ovms and kv_cache_est is not None:
++            titles.append("KV-Cache Size — source: OVMS Runtime Log + Analytical Estimate")
++        elif has_kv_cache_ovms:
++            titles.append("KV-Cache Usage — source: OVMS Runtime Log (llm_executor)")
++        else:
++            titles.append("KV-Cache Size (Estimated) — source: token count × model architecture")
+     titles.append("System RAM — source: psutil (OS WMI)")
+ 
+     fig = make_subplots(
+@@ -936,24 +1019,38 @@ def build_dashboard(df: pd.DataFrame, output_path: str, phases: list | None = No
+         fig.update_yaxes(title_text="Latency (ns)", secondary_y=False, row=row, col=1)
+         row += 1
+ 
+-    # ── Panel: OVMS KV-Cache Usage ──
++    # ── Panel: KV-Cache Size (OVMS-measured and/or analytical estimate) ──
+     if has_kv_cache:
+-        fig.add_trace(go.Scatter(
+-            x=ts, y=df["ovms_kv_cache_pct"],
+-            mode="lines", name="KV-Cache Usage (%)",
+-            fill="tozeroy", fillcolor="rgba(147,112,219,0.2)",
+-            line=dict(color="mediumpurple", width=2),
+-            hovertemplate="KV-Cache: %{y:.1f}%<extra></extra>",
+-        ), row=row, col=1)
+-        if "ovms_kv_cache_mb" in df.columns:
++        if has_kv_cache_ovms:
+             fig.add_trace(go.Scatter(
+-                x=ts, y=df["ovms_kv_cache_mb"],
+-                mode="lines", name="KV-Cache (MB)",
+-                line=dict(color="orchid", width=1.5, dash="dot"),
+-                hovertemplate="KV-Cache: %{y:.1f} MB<extra></extra>",
+-            ), row=row, col=1, secondary_y=True)
+-            fig.update_yaxes(title_text="MB", secondary_y=True, row=row, col=1)
+-        fig.update_yaxes(range=[0, 100], title_text="Cache %", secondary_y=False, row=row, col=1)
++                x=ts, y=df["ovms_kv_cache_pct"],
++                mode="lines", name="KV-Cache Usage (%)",
++                fill="tozeroy", fillcolor="rgba(147,112,219,0.2)",
++                line=dict(color="mediumpurple", width=2),
++                hovertemplate="KV-Cache: %{y:.1f}%<extra></extra>",
++            ), row=row, col=1)
++            fig.update_yaxes(range=[0, 100], title_text="Cache %", secondary_y=False, row=row, col=1)
++            if "ovms_kv_cache_mb" in df.columns:
++                fig.add_trace(go.Scatter(
++                    x=ts, y=df["ovms_kv_cache_mb"],
++                    mode="lines", name="KV-Cache (MB)",
++                    line=dict(color="orchid", width=1.5, dash="dot"),
++                    hovertemplate="KV-Cache: %{y:.1f} MB<extra></extra>",
++                ), row=row, col=1, secondary_y=True)
++        if kv_cache_est is not None:
++            fig.add_trace(go.Scatter(
++                x=ts, y=kv_cache_est,
++                mode="lines", name="KV-Cache Size (Est., MB)",
++                fill="tozeroy" if not has_kv_cache_ovms else None,
++                fillcolor="rgba(255,165,79,0.2)" if not has_kv_cache_ovms else None,
++                line=dict(color="darkorange", width=2 if not has_kv_cache_ovms else 1.5,
++                           dash=None if not has_kv_cache_ovms else "dot"),
++                hovertemplate="KV-Cache (est.): %{y:.1f} MB<extra></extra>",
++            ), row=row, col=1, secondary_y=has_kv_cache_ovms)
++            if has_kv_cache_ovms:
++                fig.update_yaxes(title_text="MB", secondary_y=True, row=row, col=1)
++            else:
++                fig.update_yaxes(title_text="Estimated KV-Cache (MB)", secondary_y=False, row=row, col=1)
+         row += 1
+ 
+     # ── Panel: RAM ──
+@@ -1178,16 +1275,18 @@ def main():
+         sys.exit(1)
+ 
+     phases = None
++    kv_cache_phases = None
+     if args.phases and Path(args.phases).exists():
+         phases = load_phases(args.phases)
+         if phases:
+             print(f"Loaded {len(phases)} agent phases from {args.phases}")
+         else:
+             print(f"Warning: {args.phases} has no phase timestamps")
++        kv_cache_phases = load_phase_tokens(args.phases)
+ 
+     df = load_data(args.input)
+     print(f"Loaded {len(df)} samples from {args.input}")
+-    build_dashboard(df, args.output, phases=phases)
++    build_dashboard(df, args.output, phases=phases, kv_cache_phases=kv_cache_phases)
+ 
+ 
+ if __name__ == "__main__":

@@ -1,0 +1,8 @@
+# LiteAgent-Instrumentation — HW Telemetry & Workflow Profiling
+# Core sampler dependencies
+pywin32>=312
+psutil>=7.0
+
+# Plotter dependencies
+pandas>=2.2
+plotly>=6.0

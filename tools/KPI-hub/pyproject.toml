@@ -1,0 +1,22 @@
+[project]
+name = "liteagent-instrumentation"
+version = "1.0.0"
+description = "Plug-and-play HW telemetry sampler and workflow profiling for heterogeneous compute platforms"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = [
+    "pywin32>=312",
+    "psutil>=7.0",
+    "pandas>=2.2",
+    "plotly>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["agentic_instrumentation*"]

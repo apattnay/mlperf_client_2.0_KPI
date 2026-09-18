@@ -1,0 +1,23 @@
+{
+  "source_repo": "https://github.com/intel-sandbox/KPI-hub",
+  "vendored_ref": "main",
+  "vendored_commit": "7f2b94d",
+  "vendored_commit_subject": "Make async phase tracing task-local",
+  "vendored_at": "2026-09-17",
+  "note": "This directory is a vendored snapshot, not a git submodule. Contributors without access to the source repo do not need it to build or run this project. To pull a newer snapshot (requires access to the source repo), run tools/sync_kpi_hub.ps1 and commit the resulting changes.",
+  "local_patches": [
+    {
+      "description": "generate_kpi_report.py: renamed report title/h1 from 'LiteAgent Multi-Agent KPI Report' to 'Multi-Agent KPI Report' - reapply after syncing a new snapshot.",
+      "upstream_candidate": true
+    },
+    {
+      "description": "generate_kpi_report.py: _build_efficiency_html now branches on exp_meta['device_type'] (NPU/GPU/NVIDIA) instead of always assuming iGPU - reapply after syncing a new snapshot. Companion change in tools/run_kpi_workflow.py adds device_type to experiment.json.",
+      "upstream_candidate": true
+    },
+    {
+      "description": "plot_utilization_interactive.py: added an analytical KV-Cache Size (Estimated) panel for non-OVMS (in-process NativeOpenVINO) scenarios, since the existing KV-cache panel only works when ovms_kv_cache_pct/mb columns are present (i.e. running against a real OVMS server). New load_phase_tokens()/estimate_kv_cache_series()/KV_CACHE_MB_PER_TOKEN derive an MB-over-time curve from each stage's input/output token counts + Llama-3.1-8B architecture constants (32 layers, 8 KV heads, head_dim 128, fp16 KV cache = 0.125 MB/token), read from the same --phases workflow_kpi.json already passed in. build_dashboard() gained a kv_cache_phases param; reapply after syncing a new snapshot.",
+      "upstream_candidate": true
+    }
+  ],
+  "upstream_todo": "All local_patches above are generic improvements (not specific to this repo's setup) and should be proposed back to https://github.com/intel-sandbox/KPI-hub as PRs once validated. Diff against a fresh clone with: git diff --no-index <fresh-clone>/generate_kpi_report.py generate_kpi_report.py (and similarly for plot_utilization_interactive.py)."
+}

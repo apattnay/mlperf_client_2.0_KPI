@@ -1,0 +1,132 @@
+{
+  "_comment": "Instrumentation source configuration for sample_utilization_fast.py",
+  "_usage": "Select a profile via --profile <name>, or override individual sources via --source key=value",
+
+  "active_profile": "lightweight",
+
+  "profiles": {
+    "lightweight": {
+      "description": "Minimal overhead for production monitoring (~5ms per sample)",
+      "sources": {
+        "bandwidth": "emon",
+        "microarch": "none",
+        "cache_detail": "none",
+        "dram_detail": "emon",
+        "power": "pdh",
+        "cstate": "none",
+        "cpu_util": "pdh",
+        "gpu_nvidia": "smi",
+        "gpu_intel": "pdh"
+      }
+    },
+    "simulation": {
+      "description": "Full data collection for hardware simulation projection (EMON-heavy, ~1s intervals)",
+      "sources": {
+        "bandwidth": "emon",
+        "microarch": "emon",
+        "cache_detail": "emon",
+        "dram_detail": "emon",
+        "power": "both",
+        "cstate": "emon",
+        "cpu_util": "pdh",
+        "gpu_nvidia": "smi",
+        "gpu_intel": "pdh"
+      }
+    },
+    "power_analysis": {
+      "description": "Deep power and C-state residency analysis",
+      "sources": {
+        "bandwidth": "none",
+        "microarch": "none",
+        "cache_detail": "none",
+        "dram_detail": "none",
+        "power": "emon",
+        "cstate": "emon",
+        "cpu_util": "pdh",
+        "gpu_nvidia": "smi",
+        "gpu_intel": "pdh"
+      }
+    },
+    "memory_deep": {
+      "description": "Deep memory subsystem analysis (bandwidth + page hit/miss + LLC)",
+      "sources": {
+        "bandwidth": "emon",
+        "microarch": "none",
+        "cache_detail": "emon",
+        "dram_detail": "emon",
+        "power": "pdh",
+        "cstate": "none",
+        "cpu_util": "pdh",
+        "gpu_nvidia": "smi",
+        "gpu_intel": "pdh"
+      }
+    },
+    "unified": {
+      "description": "Comprehensive single-run collection for Roofline + Hybrid Simulation. All non-conflicting sources run simultaneously.",
+      "sources": {
+        "bandwidth": "emon",
+        "microarch": "emon",
+        "cache_detail": "emon",
+        "dram_detail": "emon",
+        "power": "both",
+        "cstate": "emon",
+        "cpu_util": "pdh",
+        "gpu_nvidia": "smi",
+        "gpu_intel": "pdh"
+      },
+      "interval_ms": 1000,
+      "derive_metrics": true
+    }
+  },
+
+  "platform": {
+    "_comment": "Hardware specs for Roofline ceiling computation (auto-detected or manual)",
+    "cpu_name": "Intel Nova Lake S (NVL-S B0)",
+    "p_cores": 8,
+    "e_cores": 16,
+    "p_core_arch": "Coyote Cove",
+    "e_core_arch": "Arctic Wolf",
+    "p_core_max_freq_ghz": 4.9,
+    "e_core_max_freq_ghz": 3.7,
+    "p_core_flops_per_cycle": 32,
+    "e_core_flops_per_cycle": 16,
+    "l1d_per_core_kb": 48,
+    "l2_per_module_mb": 4,
+    "l3_total_mb": 36,
+    "dram_type": "DDR5",
+    "dram_channels": 2,
+    "dram_speed_mhz": 6400,
+    "dram_width_bits": 64,
+    "dram_peak_bw_gbs": 102.4,
+    "tdp_w": 125,
+    "igpu_eus": 128,
+    "igpu_max_freq_ghz": 2.0,
+    "npu_tops": 35,
+    "nvidia_gpu": "RTX 5070",
+    "nvidia_peak_tflops_fp16": 228,
+    "nvidia_peak_bw_gbs": 672
+  },
+
+  "emon": {
+    "bin_dir": null,
+    "interval_s": 1.0,
+    "auto_detect_paths": [
+      "C:\\Program Files (x86)\\IntelSWTools\\sep_private_5.59_win_04281049e4c352a42\\bin64",
+      "C:\\Program Files (x86)\\IntelSWTools\\sep\\bin64",
+      "C:\\Program Files\\Intel\\oneAPI\\vtune\\latest\\bin64\\sep\\bin64"
+    ],
+    "events": {
+      "bandwidth": ["UNC_M_CAS_COUNT_RD", "UNC_M_CAS_COUNT_WR", "LONGEST_LAT_CACHE.MISS"],
+      "microarch": ["INST_RETIRED.ANY", "CPU_CLK_UNHALTED.THREAD", "CPU_CLK_UNHALTED.REF_TSC", "TOPDOWN.SLOTS", "TOPDOWN_BAD_SPECULATION.ALL", "TOPDOWN_FE_BOUND.ALL", "TOPDOWN_RETIRING.ALL"],
+      "cache_detail": ["LONGEST_LAT_CACHE.MISS", "L2_RQSTS.DEMAND_DATA_RD_HIT", "L2_RQSTS.DEMAND_DATA_RD_MISS"],
+      "dram_detail": ["UNC_M_DRAM_PAGE_HIT_RD", "UNC_M_DRAM_PAGE_MISS_RD", "UNC_M_DRAM_PAGE_HIT_WR", "UNC_M_DRAM_PAGE_MISS_WR", "UNC_M_RD_OCCUPANCY_CH0", "UNC_M_RD_OCCUPANCY_CH1", "UNC_M_VC0_REQUESTS_RD", "UNC_M_CLOCKTICKS"],
+      "power": ["UNC_PKG_ENERGY_STATUS", "UNC_DRAM_ENERGY_STATUS", "UNC_PP1_ENERGY_STATUS"],
+      "cstate": ["FREERUN_CORE_C6_RESIDENCY", "FREERUN_PKG_C2_RESIDENCY", "FREERUN_PKG_C10_RESIDENCY"]
+    }
+  },
+
+  "pcm": {
+    "exe": null,
+    "interval_s": 0.1
+  }
+}
