@@ -47,7 +47,7 @@ iterations of every run — see `preset5_sweagent_npu_*/workflow_kpi.json`):
 Notable: turn 3 has the largest input context (10.2K tokens, all accumulated history) but the
 *smallest* output (43 tokens) and no tool call — the model just produces a short closing response.
 
-### Tool execution timing (NEW instrumentation, see §4)
+### Tool execution timing (NEW instrumentation, see §5)
 
 The gap between one stage's `end_epoch` and the next stage's `start_epoch` is when the harness
 actually executes the requested tool (NPU/iGPU sit idle during this window — confirmed via
@@ -96,7 +96,56 @@ that.
 iGPU generally out-throughputs NPU here except on `structured_text`, where NPU is notably faster
 (19.0 vs 14.8 tok/s) — worth further investigation if this pattern repeats across runs.
 
-## 4. Instrumentation added this session (see [tools/KPI-hub](../tools/KPI-hub) local patches)
+## 4. RCA: iGPU (GRw) never completes `apply_patch` — deterministic, not an anomaly
+
+Comparing preset 5 (NPU, `Llama-3.1-8B-Instruct_ov-int4-**CHw**`, channel-wise int4) against preset 6
+(iGPU, `Llama-3.1-8B-Instruct_ov-int4-**GRw**`, group-wise int4) on the *same* agentic SWE Agent
+config turned up a real, reproducible divergence, not a one-off fluke:
+
+| Turn | NPU (CHw) behavior | iGPU (GRw) behavior |
+|------|---------------------|----------------------|
+| turn 1 (`02/06/10_swe_agent`) | `read_file×1` | no tool call, 1000/1000 output tokens (hits cap) |
+| turn 2 (`03/07/11_swe_agent`) | `read×1` + `apply_patch×1` — completes the task | `read_file×4` in a loop, **no `apply_patch` ever emitted**, 1000/1000 output tokens (hits cap) |
+| turn 3 (`04/08/12_swe_agent`) | short closing reply (43 tok) | no tool call, 1000/1000 output tokens (hits cap) |
+
+**Root cause, confirmed via mlperf's `Logs/results.json` (JSON-lines, one entry per process launch)
+mined across every historical run of this session:**
+
+1. The scenario config (`data/configs/vendors_default/agentic/Llama3.1/Intel_NativeOpenVINO_{NPU,GPU}.json`)
+   references `"ResultsVerificationFile": "...generation-greedy-results.json"` — decoding is
+   **greedy** (always argmax, no sampling/temperature). With greedy decoding, output is a pure
+   function of (model weights, backend numerics, input tokens) — there is no randomness to
+   average out.
+2. Cross-checking **5 independent NPU launches** and **3 independent iGPU launches** (separate
+   `mlperf-windows.exe` process invocations at different points in the session, not just the 3
+   `Iterations` within one launch) showed the **exact same** tool-call pattern every single time,
+   per device — 5/5 for NPU, 3/3 for iGPU. Diffing the raw `Output` text between the
+   earliest and latest run of each device confirmed the generated text is **byte-for-byte
+   identical** across independent launches.
+3. Inspecting the actual generated text for the iGPU turn-2 stage shows the model stuck in a
+   genuine repetition loop: it calls `read_file` on the same path, explains the function, says
+   "I will now refactor the function to improve its readability and maintainability", then calls
+   `read_file` again on the *same* path — repeating this cycle 4 times until the 1000-token
+   output cap is hit, never reaching the point of emitting an `apply_patch` call.
+
+**Why "better" GRw quantization didn't help:** quantization fidelity (GRw's finer per-group
+scales vs CHw's per-channel scales) is normally measured as average perplexity/accuracy — it says
+nothing about avoiding degenerate repetition loops, a well-known pathology of *any*
+greedy-decoded transformer once a repeated phrase becomes locally arg-max-preferred at some
+decoding step. NPU and iGPU also run different OpenVINO kernel implementations (different
+matmul/attention fusion, accumulation order, int4 dequant paths) even for nominally "the same"
+math; at ~9K accumulated input tokens, small numeric differences are enough to flip a single
+argmax tie at the "wrap up and call `apply_patch`" decision point, and with greedy decoding (no
+repetition penalty, no sampling escape hatch) there is no way back out of the resulting loop. This
+is not a compute-capacity problem — iGPU's larger compute budget doesn't fix an argmax tie-break
+going the wrong way.
+
+**Conclusion:** this is a systematic, 100%-reproducible defect in the iGPU/GRw agentic SWE Agent
+path as currently configured (greedy decoding, no repetition penalty) — worth flagging to
+MLCommons/the model-quantization owners, since it means the iGPU run of this scenario *never*
+exercises the `apply_patch` tool in practice, only `read_file` in a loop.
+
+## 5. Instrumentation added this session (see [tools/KPI-hub](../tools/KPI-hub) local patches)
 
 - **RAPL power** (CPU/iGPU/NPU/SoC) — was silently disabled by default; now always collected.
 - **KV-Cache Size (Estimated)** panel in `dashboard.html` — analytical, derived from per-stage
@@ -109,7 +158,7 @@ iGPU generally out-throughputs NPU here except on `structured_text`, where NPU i
   (classify from prompt body instead), and back-to-back (`Delay=0`) prompts pipeline
   `power_begin`/`power_end` across stage boundaries (previously caused `0 stages parsed`).
 
-## 5. Key operational learnings (fresh-machine setup)
+## 6. Key operational learnings (fresh-machine setup)
 
 - Only **mlperf-windows.exe 2.0.0** supports the `IsAgentic` config field these scenarios need
   (v1.5 rejects it outright at config validation). See [tools/setup_mlperf_v2.ps1](../tools/setup_mlperf_v2.ps1).
@@ -119,7 +168,7 @@ iGPU generally out-throughputs NPU here except on `structured_text`, where NPU i
 - First run per device type downloads the ~4GB Llama-3.1-8B model fresh; subsequent runs reuse it.
 - Full details: [docs/run_benchmark_prompt.md](run_benchmark_prompt.md).
 
-## 6. Raw data index
+## 7. Raw data index
 
 | Run | Path |
 |-----|------|
