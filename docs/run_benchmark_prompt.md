@@ -8,10 +8,38 @@ collection (see [tools/run_kpi_workflow.py](../tools/run_kpi_workflow.py)), prod
 
 Output lands under `kpi_runs/<preset-name>_<timestamp>/` (gitignored).
 
+## Quickstart (fresh machine)
+
+```powershell
+git clone <this-repo>
+cd mlperf_client_2.0_KPI
+
+# 1. Python env for KPI-hub instrumentation (creates .venv + installs deps)
+.\tools\setup_kpi_hub_env.ps1
+
+# 2. mlperf-windows.exe 2.0.0 (NOT part of this repo - downloads ~190MB from the official
+#    MLCommons GitHub release). Idempotent - safe to re-run, skips if already installed.
+.\tools\setup_mlperf_v2.ps1
+
+# 3. On an Intel corporate network only: proxy is required to reach the model/prompt CDN.
+#    Re-run this once per NEW terminal session (env vars don't persist across sessions).
+. .\tools\set_proxy_env.ps1
+
+# 4. Run any preset - first run per device type downloads its model fresh (~4GB, a few
+#    minutes); subsequent runs on the same device type reuse the cached model.
+.venv\Scripts\python.exe tools\run_kpi_preset.py --preset 1
+```
+
+If step 4 fails with `could not connect to the download server`, you skipped/need step 3.
+If `.venv\Scripts\python.exe` crashes with `Failed to import encodings module`, some other tool
+on the machine (e.g. an OVMS install) has set a stray `PYTHONHOME` env var - clear it first:
+`Remove-Item Env:PYTHONHOME -ErrorAction SilentlyContinue`.
+
 ## Prerequisites
 
 ```powershell
 .\tools\setup_kpi_hub_env.ps1   # one-time: creates .venv + installs KPI-hub requirements
+.\tools\setup_mlperf_v2.ps1     # one-time: downloads + installs mlperf-windows.exe 2.0.0
 ```
 
 ## Presets
@@ -89,6 +117,14 @@ Override the mlperf installation directory if it's not at the default path:
 - The iGPU (GPU) presets have previously hit an OpenVINO driver bug
   (`CL_OUT_OF_RESOURCES`, see `Logs/error.log` in the mlperf install dir) on this machine. If a
   GPU preset fails or hangs, a reboot may be needed to reset the GPU driver state before retrying.
+  Not reproduced since migrating to the v2.0 binary, but keep an eye out.
 - `tools/run_kpi_preset.py` is a thin dispatcher over
   [tools/run_kpi_workflow.py](../tools/run_kpi_workflow.py); any extra CLI args after the preset
   flags are forwarded to it (e.g. `--hw-profile simulation`).
+- `tools/set_proxy_env.ps1`'s `netsh winhttp set proxy` line needs an elevated/admin shell to take
+  effect machine-wide; if it warns instead of confirming, re-run PowerShell as Administrator once.
+- The `tools_sandbox.zip`/`tools_sandbox/` used by presets 5/6's `execute` tool is committed to
+  this repo under `data/prompts/llama_3_1_8b_instruct/` - no separate download needed for it.
+- Disk/time budget: mlperf-windows.exe 2.0.0 itself is ~190MB; each device-type's Llama-3.1-8B
+  model is ~4GB (downloaded once, cached thereafter); presets 1/2 (full prompt set, 3 iterations)
+  take tens of minutes, presets 5/6 (agentic, tool-execution) take roughly 10-15 minutes each.
