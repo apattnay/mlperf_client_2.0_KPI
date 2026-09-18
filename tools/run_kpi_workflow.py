@@ -61,6 +61,42 @@ def _parse_ts(ts: str) -> float:
     return datetime.strptime(ts, "%m-%d-%Y %H:%M:%S.%f").timestamp()
 
 
+# Matches an Anthropic-style tool_use block the agentic system prompts define, e.g.:
+#   {"type": "tool_use", "name": "execute_command", "input": {...}}
+# Generic (not tool-name-specific) since different agent prompts define different tool sets
+# (SWE Agent: read_file/write_file/apply_patch/execute_command; Data Agent: read_file/write_file/execute).
+_TOOL_USE_RE = re.compile(r'"type"\s*:\s*"tool_use"[\s\S]{0,80}?"name"\s*:\s*"([a-zA-Z_]+)"')
+
+
+def extract_tool_calls(results_json_path: Path, start_offset: int) -> list:
+    """Per-turn tool-call counts for agentic scenarios, from the new Logs/results.json entry
+    appended by this run (mlperf-windows.exe's own per-prompt "Output" field). Returns a list
+    (one dict per non-warmup turn, in order) like [{"read_file": 2, "execute_command": 1}, ...],
+    or [] if results.json/its "Output" field isn't present (e.g. non-agentic scenarios)."""
+    if not results_json_path.exists():
+        return []
+    with open(results_json_path, "r", encoding="utf-8", errors="replace") as f:
+        f.seek(start_offset)
+        new_lines = [line for line in f.read().splitlines() if line.strip()]
+    if not new_lines:
+        return []
+    try:
+        entry = json.loads(new_lines[-1])
+    except json.JSONDecodeError:
+        return []
+    outputs = entry.get("Output")
+    if not isinstance(outputs, list):
+        return []
+    per_turn = []
+    for text in outputs:
+        counts = {}
+        for m in _TOOL_USE_RE.finditer(text or ""):
+            name = m.group(1)
+            counts[name] = counts.get(name, 0) + 1
+        per_turn.append(counts)
+    return per_turn
+
+
 def parse_executor_log(path: Path, start_offset: int) -> dict:
     """Extract one KPI stage per inference (power_begin..Tokens Per Second block).
 
@@ -245,6 +281,7 @@ def main():
     scenario_name = json.loads(config_abs.read_text(encoding="utf-8-sig"))["Scenarios"][0]["Name"]
     executor_log_name = args.executor_log or f"{_slug(scenario_name)}_executor.log"
     executor_log_path = mlperf_dir / "Logs" / executor_log_name
+    results_json_path = mlperf_dir / "Logs" / "results.json"
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = Path(args.output_root) / f"{args.name}_{ts}"
@@ -267,6 +304,7 @@ def main():
 
     # 2. Run the benchmark, only capturing executor-log lines appended during this run.
     start_offset = executor_log_path.stat().st_size if executor_log_path.exists() else 0
+    results_json_start_offset = results_json_path.stat().st_size if results_json_path.exists() else 0
     exe_cmd = [str(mlperf_exe), "-c", str(config_path), "-p", "false", "-n", "false", "-b", args.download_behaviour] + args.extra_args
     print(f"Running: {' '.join(exe_cmd)} (cwd={mlperf_dir})")
     run_start_epoch = time.time()
@@ -286,6 +324,15 @@ def main():
     # 4. Build workflow_kpi.json + experiment.json from the executor log.
     stages = parse_executor_log(executor_log_path, start_offset) if executor_log_path.exists() else {}
     print(f"Parsed {len(stages)} inference stage(s) from {executor_log_path.name}")
+
+    # Attach per-turn tool-call counts (agentic scenarios only) to non-warmup stages, in order.
+    tool_calls_per_turn = extract_tool_calls(results_json_path, results_json_start_offset)
+    non_warmup_names = [name for name in stages if not name.endswith("_warmup")]
+    for name, tool_calls in zip(non_warmup_names, tool_calls_per_turn):
+        if tool_calls:
+            stages[name]["tool_calls"] = tool_calls
+            stages[name]["tool_call_count"] = sum(tool_calls.values())
+
     workflow_kpi = build_workflow_kpi(args.name, stages, run_start_epoch, run_end_epoch, model_name, ep_name)
     (out_dir / "workflow_kpi.json").write_text(json.dumps(workflow_kpi, indent=2), encoding="utf-8")
 

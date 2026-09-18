@@ -818,6 +818,7 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
             "avg_itl_ms": s.get("avg_itl_ms", ""),
             "p50_itl_ms": s.get("p50_itl_ms", ""),
             "p99_itl_ms": s.get("p99_itl_ms", ""),
+            "tool_calls": s.get("tool_calls", {}),
         }
         table_rows.append(row)
     # Add any stages not in the predefined order
@@ -838,6 +839,7 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
                 "avg_itl_ms": s.get("avg_itl_ms", ""),
                 "p50_itl_ms": s.get("p50_itl_ms", ""),
                 "p99_itl_ms": s.get("p99_itl_ms", ""),
+                "tool_calls": s.get("tool_calls", {}),
             })
 
     # ---- RAG / Embedding section ----
@@ -975,6 +977,9 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
 
     # ---- Agent table ----
     rows_html = ""
+    has_tool_calls = any(r.get("tool_calls") for r in table_rows)
+    # Tools that actually run code/commands vs. tools that just read/inspect state.
+    _EXECUTION_TOOLS = {"execute_command", "execute", "run_command", "apply_patch"}
     for r in table_rows:
         ttft_cell = f"{r['ttft_s']}" if r.get('ttft_s') != '' else "-"
         itl_cell = f"{r['avg_itl_ms']}" if r.get('avg_itl_ms') != '' else "-"
@@ -989,6 +994,16 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
             tok_s_cell = f'<span title="Includes sub-agent wait time">{r["tok_s"]}</span>'
         else:
             tok_s_cell = str(r['tok_s'])
+        tools_cell = "-"
+        if has_tool_calls:
+            tool_calls = r.get("tool_calls") or {}
+            if tool_calls:
+                badges = "".join(
+                    f'<span class="tool-badge{" tool-badge-exec" if name in _EXECUTION_TOOLS else ""}" '
+                    f'title="{name} called {count}x">{html.escape(name)}\u00d7{count}</span>'
+                    for name, count in sorted(tool_calls.items())
+                )
+                tools_cell = badges
         rows_html += f"""
             <tr{row_style}>
                 <td><span class="gantt-dot" style="background:{r['color']}"></span> {html.escape(r['name'])}{orch_suffix}</td>
@@ -1001,7 +1016,7 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
                 <td class="num">{tok_s_cell}</td>
                 <td class="num">{ttft_cell}</td>
                 <td class="num">{itl_cell}</td>
-                <td class="num" title="p50 / p99">{p50_cell} / {p99_cell}</td>
+                <td class="num" title="p50 / p99">{p50_cell} / {p99_cell}</td>{f'<td>{tools_cell}</td>' if has_tool_calls else ''}
             </tr>"""
 
     total_out_tps = totals.get("output_tokens_per_s", 0)
@@ -1072,6 +1087,9 @@ code {{ background: rgba(110,118,129,0.2); padding: 2px 6px; border-radius: 4px;
 .rag-marker {{ position: absolute; top: 2px; height: 12px; background: #FF9800; border-radius: 2px;
                opacity: 0.9; min-width: 4px; cursor: default; }}
 .rag-marker:hover {{ opacity: 1; box-shadow: 0 0 6px rgba(255,152,0,0.5); }}
+.tool-badge {{ display: inline-block; font-size: 0.68rem; padding: 1px 6px; margin: 1px 2px; border-radius: 3px;
+               background: rgba(88,166,255,0.15); color: #79b8ff; white-space: nowrap; }}
+.tool-badge-exec {{ background: rgba(63,185,80,0.18); color: #56d364; }}
 .timeline-axis {{ display: flex; justify-content: space-between; color: var(--text2); font-size: 0.78rem;
                   margin-bottom: 4px; padding: 0 200px 0 0; margin-left: 200px; }}
 .timeline-legend {{ color: var(--text2); font-size: 0.78rem; margin-top: 8px; }}
@@ -1147,6 +1165,7 @@ code {{ background: rgba(110,118,129,0.2); padding: 2px 6px; border-radius: 4px;
                 <th style="text-align:right">TTFT (s)</th>
                 <th style="text-align:right">Avg ITL (ms)</th>
                 <th style="text-align:right">p50/p99 ITL (ms)</th>
+                {'<th>Tools</th>' if has_tool_calls else ''}
             </tr>
         </thead>
         <tbody>
@@ -1159,7 +1178,7 @@ code {{ background: rgba(110,118,129,0.2); padding: 2px 6px; border-radius: 4px;
                 <td class="num">{totals.get('total_tokens', 0):,}</td>
                 <td class="num">{wall_time:.1f}</td>
                 <td class="num">{total_out_tps}</td>
-                <td></td><td></td><td></td>
+                <td></td><td></td><td></td>{'<td></td>' if has_tool_calls else ''}
             </tr>
         </tbody>
     </table>
