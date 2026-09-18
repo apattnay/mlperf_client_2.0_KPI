@@ -1,0 +1,177 @@
+{
+  "model": "Llama-3.1-8B-Instruct_ov-int4-GRw",
+  "backend": "NativeOpenVINO",
+  "stages": {
+    "01_warmup": {
+      "input_tokens": 40,
+      "output_tokens": 53,
+      "total_tokens": 93,
+      "wall_time_s": 2.12,
+      "output_tokens_per_s": 25.015,
+      "ttft_s": 0.1263,
+      "start_epoch": 1789707942.832,
+      "end_epoch": 1789707944.952,
+      "start_iso": "2026-09-17T22:05:42.832",
+      "end_iso": "2026-09-17T22:05:44.952"
+    },
+    "02_swe_agent": {
+      "input_tokens": 8198,
+      "output_tokens": 1000,
+      "total_tokens": 9198,
+      "wall_time_s": 85.658,
+      "output_tokens_per_s": 11.675,
+      "ttft_s": 47.6522,
+      "start_epoch": 1789707949.957,
+      "end_epoch": 1789708035.615,
+      "start_iso": "2026-09-17T22:05:49.957",
+      "end_iso": "2026-09-17T22:07:15.615"
+    },
+    "03_swe_agent": {
+      "input_tokens": 8979,
+      "output_tokens": 1000,
+      "total_tokens": 9979,
+      "wall_time_s": 66.897,
+      "output_tokens_per_s": 14.95,
+      "ttft_s": 8.8417,
+      "start_epoch": 1789708040.628,
+      "end_epoch": 1789708107.525,
+      "start_iso": "2026-09-17T22:07:20.628",
+      "end_iso": "2026-09-17T22:08:27.525",
+      "tool_calls": {
+        "read_file": 4
+      },
+      "tool_call_count": 4
+    },
+    "04_swe_agent": {
+      "input_tokens": 10251,
+      "output_tokens": 1000,
+      "total_tokens": 11251,
+      "wall_time_s": 76.848,
+      "output_tokens_per_s": 13.016,
+      "ttft_s": 16.571,
+      "start_epoch": 1789708129.226,
+      "end_epoch": 1789708206.074,
+      "start_iso": "2026-09-17T22:08:49.226",
+      "end_iso": "2026-09-17T22:10:06.074"
+    },
+    "05_warmup": {
+      "input_tokens": 40,
+      "output_tokens": 53,
+      "total_tokens": 93,
+      "wall_time_s": 3.462,
+      "output_tokens_per_s": 15.31,
+      "ttft_s": 0.373,
+      "start_epoch": 1789708224.917,
+      "end_epoch": 1789708228.379,
+      "start_iso": "2026-09-17T22:10:24.917",
+      "end_iso": "2026-09-17T22:10:28.379"
+    },
+    "06_swe_agent": {
+      "input_tokens": 8198,
+      "output_tokens": 1000,
+      "total_tokens": 9198,
+      "wall_time_s": 113.035,
+      "output_tokens_per_s": 8.848,
+      "ttft_s": 49.8242,
+      "start_epoch": 1789708233.396,
+      "end_epoch": 1789708346.431,
+      "start_iso": "2026-09-17T22:10:33.396",
+      "end_iso": "2026-09-17T22:12:26.431"
+    },
+    "07_swe_agent": {
+      "input_tokens": 8979,
+      "output_tokens": 1000,
+      "total_tokens": 9979,
+      "wall_time_s": 76.57,
+      "output_tokens_per_s": 13.063,
+      "ttft_s": 9.1317,
+      "start_epoch": 1789708351.449,
+      "end_epoch": 1789708428.019,
+      "start_iso": "2026-09-17T22:12:31.449",
+      "end_iso": "2026-09-17T22:13:48.019",
+      "tool_calls": {
+        "read_file": 4
+      },
+      "tool_call_count": 4
+    },
+    "08_swe_agent": {
+      "input_tokens": 10251,
+      "output_tokens": 1000,
+      "total_tokens": 11251,
+      "wall_time_s": 84.354,
+      "output_tokens_per_s": 11.857,
+      "ttft_s": 16.4147,
+      "start_epoch": 1789708450.135,
+      "end_epoch": 1789708534.489,
+      "start_iso": "2026-09-17T22:14:10.135",
+      "end_iso": "2026-09-17T22:15:34.489"
+    },
+    "09_warmup": {
+      "input_tokens": 40,
+      "output_tokens": 53,
+      "total_tokens": 93,
+      "wall_time_s": 3.655,
+      "output_tokens_per_s": 14.505,
+      "ttft_s": 0.2819,
+      "start_epoch": 1789708552.907,
+      "end_epoch": 1789708556.562,
+      "start_iso": "2026-09-17T22:15:52.907",
+      "end_iso": "2026-09-17T22:15:56.562"
+    },
+    "10_swe_agent": {
+      "input_tokens": 8198,
+      "output_tokens": 1000,
+      "total_tokens": 9198,
+      "wall_time_s": 87.874,
+      "output_tokens_per_s": 11.382,
+      "ttft_s": 50.0326,
+      "start_epoch": 1789708561.573,
+      "end_epoch": 1789708649.447,
+      "start_iso": "2026-09-17T22:16:01.573",
+      "end_iso": "2026-09-17T22:17:29.447"
+    },
+    "11_swe_agent": {
+      "input_tokens": 8979,
+      "output_tokens": 1000,
+      "total_tokens": 9979,
+      "wall_time_s": 46.653,
+      "output_tokens_per_s": 21.437,
+      "ttft_s": 8.6239,
+      "start_epoch": 1789708654.449,
+      "end_epoch": 1789708701.102,
+      "start_iso": "2026-09-17T22:17:34.449",
+      "end_iso": "2026-09-17T22:18:21.102",
+      "tool_calls": {
+        "read_file": 4
+      },
+      "tool_call_count": 4
+    },
+    "12_swe_agent": {
+      "input_tokens": 10251,
+      "output_tokens": 1000,
+      "total_tokens": 11251,
+      "wall_time_s": 54.154,
+      "output_tokens_per_s": 18.468,
+      "ttft_s": 15.7718,
+      "start_epoch": 1789708710.935,
+      "end_epoch": 1789708765.089,
+      "start_iso": "2026-09-17T22:18:30.935",
+      "end_iso": "2026-09-17T22:19:25.089"
+    }
+  },
+  "totals": {
+    "input_tokens": 82404,
+    "output_tokens": 9159,
+    "total_tokens": 91563,
+    "output_tokens_per_s": 10.93
+  },
+  "workflow_wall_time_s": 838.28,
+  "workflow_start_iso": "2026-09-17T22:05:28.403",
+  "workflow_end_iso": "2026-09-17T22:19:26.681",
+  "timeline": {
+    "workflow_name": "preset6_sweagent_gpu",
+    "start_epoch": 1789707928.4034507,
+    "end_epoch": 1789708766.6817338,
+    "phases": []
+  }
+}

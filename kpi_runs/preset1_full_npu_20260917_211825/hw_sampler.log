@@ -1,0 +1,61 @@
+Profile: lightweight
+EMON categories: ['bandwidth', 'dram_detail']
+CPU logical cores: 16
+Intel RAPL Energy Meter detected (background poller, 2s interval)
+CPU thermal/throttle counters detected
+Intel GPU Engine monitor: iGPU=True, NPU=True
+Per-core base frequencies (MHz): 4708, 4717, 4714, 4722, 2114, 3360, 2746, 3416, 3434, 3184, 3154, 3350, 985, 1103, 1878, 1121
+nvidia-smi not found
+DRAM BW: EMON (UNC_M_CAS_COUNT via SEP driver)
+EMON deep sampler: ['bandwidth', 'dram_detail'] (interval=1.0s)
+[L0Sysman] Init OK: 3 engines, 2 freq, 1 mem, 0 temp, 0 power domains
+L0 Sysman: 9 columns (engine busy%, freq, mem — no OA contention)
+L0 TBS: 11 HW counter columns (ComputeBasic OA)
+
+Sampling interval: 1000ms
+Output: C:\mlperf_client_2.0_KPI\kpi_runs\preset1_full_npu_20260917_211825\hw_samples.csv
+Press Ctrl+C to stop
+
+[2026-09-17 21:18:49.460] CPU= 10.1% freq=500-4324MHz RAPL_SoC= 34.2W BW=85.6GB/s(emon) PageHit=83% iGPU=0% EU=0%act/1%stl NPU=99%(pdh) NV=0% RAM=20.9/63.4GB (1.0ms) #20
+[2026-09-17 21:19:09.485] CPU=  8.3% freq=485-4348MHz RAPL_SoC= 34.0W BW=25.2GB/s(emon) PageHit=81% iGPU=0% EU=0%act/1%stl NPU=93%(pdh) NV=0% RAM=20.8/63.4GB (0.8ms) #40
+[2026-09-17 21:19:29.494] CPU= 24.7% freq=1781-4726MHz RAPL_SoC= 33.5W BW=88.1GB/s(emon) PageHit=83% iGPU=0% EU=0%act/1%stl NPU=0%(pdh) NV=0% RAM=16.1/63.4GB (0.7ms) #60
+[2026-09-17 21:19:49.529] CPU= 67.4% freq=2963-4729MHz RAPL_SoC= 32.1W BW=3.2GB/s(emon) PageHit=90% iGPU=0% EU=0%act/1%stl NPU=0%(pdh) NV=0% RAM=24.0/63.4GB (0.8ms) #80
+[2026-09-17 21:20:09.540] CPU=  8.0% freq=521-4360MHz RAPL_SoC= 33.5W BW=85.4GB/s(emon) PageHit=83% iGPU=0% EU=0%act/1%stl NPU=97%(pdh) NV=0% RAM=20.9/63.4GB (0.7ms) #100
+[2026-09-17 21:20:29.560] CPU= 16.4% freq=1280-4725MHz RAPL_SoC= 32.7W BW=86.0GB/s(emon) PageHit=83% iGPU=0% EU=0%act/1%stl NPU=0%(pdh) NV=0% RAM=16.1/63.4GB (0.8ms) #120
+[2026-09-17 21:20:49.595] CPU= 14.5% freq=1194-4726MHz RAPL_SoC= 33.0W BW=3.1GB/s(emon) PageHit=91% iGPU=0% EU=0%act/1%stl NPU=0%(pdh) NV=0% RAM=24.0/63.4GB (0.8ms) #140
+[2026-09-17 21:21:09.610] CPU=  9.3% freq=428-4341MHz RAPL_SoC= 33.1W BW=84.2GB/s(emon) PageHit=82% iGPU=1% EU=1%act/20%stl NPU=97%(pdh) NV=0% RAM=21.0/63.4GB (0.8ms) #160
+[2026-09-17 21:21:29.620] CPU= 17.4% freq=942-4728MHz RAPL_SoC= 32.8W BW=86.0GB/s(emon) PageHit=82% iGPU=0% EU=1%act/17%stl NPU=0%(pdh) NV=0% RAM=16.2/63.4GB (0.7ms) #180
+[2026-09-17 21:21:49.632] CPU= 74.9% freq=2853-4711MHz RAPL_SoC= 30.8W BW=3.9GB/s(emon) PageHit=90% iGPU=0% EU=0%act/13%stl NPU=0%(pdh) NV=0% RAM=24.0/63.4GB (1.1ms) #200
+[2026-09-17 21:22:09.656] CPU= 14.7% freq=927-4729MHz RAPL_SoC= 34.0W BW=2.1GB/s(emon) PageHit=88% iGPU=1% EU=1%act/19%stl NPU=0%(pdh) NV=0% RAM=24.2/63.4GB (0.9ms) #220
+[2026-09-17 21:22:29.685] CPU= 10.7% freq=574-4321MHz RAPL_SoC= 35.6W BW=1.8GB/s(emon) PageHit=90% iGPU=0% EU=1%act/19%stl NPU=96%(pdh) NV=0% RAM=21.1/63.4GB (1.0ms) #240
+[2026-09-17 21:22:49.695] CPU= 10.2% freq=430-4332MHz RAPL_SoC= 35.9W BW=67.3GB/s(emon) PageHit=80% iGPU=1% EU=1%act/20%stl NPU=98%(pdh) NV=0% RAM=21.1/63.4GB (0.8ms) #260
+[2026-09-17 21:23:09.720] CPU= 14.6% freq=938-4729MHz RAPL_SoC= 30.8W BW=3.8GB/s(emon) PageHit=85% iGPU=1% EU=1%act/20%stl NPU=0%(pdh) NV=0% RAM=16.4/63.4GB (0.8ms) #280
+[2026-09-17 21:23:29.729] CPU= 14.1% freq=947-4729MHz RAPL_SoC= 30.8W BW=2.8GB/s(emon) PageHit=89% iGPU=0% EU=1%act/19%stl NPU=0%(pdh) NV=0% RAM=24.2/63.4GB (0.7ms) #300
+[2026-09-17 21:23:49.737] CPU= 14.1% freq=863-4727MHz RAPL_SoC= 32.5W BW=2.7GB/s(emon) PageHit=92% iGPU=1% EU=1%act/18%stl NPU=0%(pdh) NV=0% RAM=24.2/63.4GB (0.8ms) #320
+[2026-09-17 21:24:09.746] CPU=  9.3% freq=596-4320MHz RAPL_SoC= 35.5W BW=85.9GB/s(emon) PageHit=82% iGPU=1% EU=0%act/13%stl NPU=99%(pdh) NV=0% RAM=21.1/63.4GB (0.8ms) #340
+[2026-09-17 21:24:29.759] CPU=  9.8% freq=528-4315MHz RAPL_SoC= 39.1W BW=86.2GB/s(emon) PageHit=82% iGPU=0% EU=1%act/20%stl NPU=100%(pdh) NV=0% RAM=21.7/63.4GB (1.0ms) #360
+[2026-09-17 21:24:49.778] CPU=  8.7% freq=468-4424MHz RAPL_SoC= 33.0W BW=80.1GB/s(emon) PageHit=82% iGPU=1% EU=1%act/17%stl NPU=81%(pdh) NV=0% RAM=21.7/63.4GB (0.7ms) #380
+[2026-09-17 21:25:09.789] CPU= 19.8% freq=779-4124MHz RAPL_SoC= 33.5W BW=84.5GB/s(emon) PageHit=83% iGPU=0% EU=1%act/19%stl NPU=98%(pdh) NV=0% RAM=21.7/63.4GB (1.0ms) #400
+[2026-09-17 21:25:29.799] CPU= 14.9% freq=572-4228MHz RAPL_SoC= 39.3W BW=66.5GB/s(emon) PageHit=79% iGPU=1% EU=2%act/21%stl NPU=92%(pdh) NV=0% RAM=21.7/63.4GB (0.8ms) #420
+[2026-09-17 21:25:49.841] CPU= 20.4% freq=1052-4665MHz RAPL_SoC= 28.6W BW=3.0GB/s(emon) PageHit=89% iGPU=1% EU=1%act/16%stl NPU=0%(pdh) NV=0% RAM=24.4/63.4GB (4.5ms) #440
+[2026-09-17 21:26:09.849] CPU= 14.5% freq=920-4723MHz RAPL_SoC= 32.8W BW=2.4GB/s(emon) PageHit=90% iGPU=0% EU=2%act/20%stl NPU=0%(pdh) NV=0% RAM=24.8/63.4GB (0.9ms) #460
+[2026-09-17 21:26:29.878] CPU= 14.1% freq=921-4729MHz RAPL_SoC= 34.0W BW=1.9GB/s(emon) PageHit=91% iGPU=0% EU=1%act/17%stl NPU=0%(pdh) NV=0% RAM=24.6/63.4GB (1.1ms) #480
+[2026-09-17 21:26:49.902] CPU= 13.9% freq=850-4729MHz RAPL_SoC= 34.2W BW=1.3GB/s(emon) PageHit=91% iGPU=0% EU=1%act/21%stl NPU=0%(pdh) NV=0% RAM=24.6/63.4GB (0.9ms) #500
+[2026-09-17 21:27:09.923] CPU= 14.9% freq=952-4729MHz RAPL_SoC= 32.1W BW=2.4GB/s(emon) PageHit=91% iGPU=1% EU=1%act/19%stl NPU=0%(pdh) NV=0% RAM=24.8/63.4GB (1.1ms) #520
+[2026-09-17 21:27:29.931] CPU= 13.9% freq=882-4729MHz RAPL_SoC= 29.8W BW=3.5GB/s(emon) PageHit=91% iGPU=0% EU=1%act/20%stl NPU=0%(pdh) NV=0% RAM=25.0/63.4GB (0.7ms) #540
+[2026-09-17 21:27:49.939] CPU= 13.9% freq=888-4717MHz RAPL_SoC= 30.9W BW=5.4GB/s(emon) PageHit=80% iGPU=1% EU=0%act/15%stl NPU=0%(pdh) NV=0% RAM=24.6/63.4GB (0.8ms) #560
+[2026-09-17 21:28:09.947] CPU= 13.8% freq=1021-4727MHz RAPL_SoC= 35.2W BW=2.0GB/s(emon) PageHit=84% iGPU=0% EU=1%act/31%stl NPU=0%(pdh) NV=0% RAM=24.4/63.4GB (1.1ms) #580
+[2026-09-17 21:28:29.956] CPU= 14.6% freq=876-4729MHz RAPL_SoC= 33.3W BW=1.7GB/s(emon) PageHit=92% iGPU=0% EU=1%act/21%stl NPU=0%(pdh) NV=0% RAM=24.4/63.4GB (0.8ms) #600
+[2026-09-17 21:28:49.978] CPU= 14.6% freq=805-4720MHz RAPL_SoC= 30.1W BW=4.5GB/s(emon) PageHit=90% iGPU=0% EU=2%act/25%stl NPU=0%(pdh) NV=0% RAM=24.6/63.4GB (0.8ms) #620
+[2026-09-17 21:29:10.019] CPU= 16.3% freq=1116-4729MHz RAPL_SoC= 32.5W BW=3.0GB/s(emon) PageHit=91% iGPU=0% EU=1%act/19%stl NPU=0%(pdh) NV=0% RAM=24.5/63.4GB (0.7ms) #640
+[2026-09-17 21:29:30.027] CPU= 15.0% freq=763-4729MHz RAPL_SoC= 34.1W BW=1.4GB/s(emon) PageHit=90% iGPU=1% EU=1%act/17%stl NPU=0%(pdh) NV=0% RAM=24.4/63.4GB (1.0ms) #660
+[2026-09-17 21:29:50.048] CPU= 14.0% freq=1013-4724MHz RAPL_SoC= 32.4W BW=1.9GB/s(emon) PageHit=91% iGPU=1% EU=2%act/20%stl NPU=0%(pdh) NV=0% RAM=24.5/63.4GB (0.7ms) #680
+[2026-09-17 21:30:10.069] CPU= 14.5% freq=859-4726MHz RAPL_SoC= 30.2W BW=3.0GB/s(emon) PageHit=92% iGPU=0% EU=1%act/18%stl NPU=0%(pdh) NV=0% RAM=24.6/63.4GB (0.8ms) #700
+[2026-09-17 21:30:30.075] CPU=  8.7% freq=701-4387MHz RAPL_SoC= 33.5W BW=67.4GB/s(emon) PageHit=82% iGPU=1% EU=1%act/21%stl NPU=98%(pdh) NV=0% RAM=22.5/63.4GB (1.0ms) #720
+[2026-09-17 21:30:50.081] CPU=  8.9% freq=712-4347MHz RAPL_SoC= 33.3W BW=86.9GB/s(emon) PageHit=83% iGPU=0% EU=1%act/18%stl NPU=97%(pdh) NV=0% RAM=22.5/63.4GB (0.7ms) #740
+[2026-09-17 21:31:10.115] CPU= 14.2% freq=885-4729MHz RAPL_SoC= 33.5W BW=86.0GB/s(emon) PageHit=83% iGPU=1% EU=1%act/15%stl NPU=0%(pdh) NV=0% RAM=24.2/63.4GB (0.8ms) #760
+[2026-09-17 21:31:30.122] CPU= 14.3% freq=1005-4729MHz RAPL_SoC= 32.2W BW=3.1GB/s(emon) PageHit=90% iGPU=0% EU=1%act/17%stl NPU=0%(pdh) NV=0% RAM=24.4/63.4GB (0.9ms) #780
+[2026-09-17 21:31:50.138] CPU= 14.4% freq=1041-4726MHz RAPL_SoC= 35.1W BW=2.3GB/s(emon) PageHit=88% iGPU=0% EU=3%act/29%stl NPU=0%(pdh) NV=0% RAM=24.5/63.4GB (0.7ms) #800
+[2026-09-17 21:32:10.145] CPU= 28.0% freq=1083-4728MHz RAPL_SoC= 34.0W BW=1.3GB/s(emon) PageHit=91% iGPU=1% EU=1%act/15%stl NPU=0%(pdh) NV=0% RAM=24.5/63.4GB (0.9ms) #820
+[2026-09-17 21:32:30.166] CPU= 14.3% freq=1020-4723MHz RAPL_SoC= 28.6W BW=3.1GB/s(emon) PageHit=91% iGPU=1% EU=1%act/20%stl NPU=0%(pdh) NV=0% RAM=24.7/63.4GB (0.9ms) #840
+[2026-09-17 21:32:50.180] CPU= 14.6% freq=792-4718MHz RAPL_SoC= 29.4W BW=3.9GB/s(emon) PageHit=90% iGPU=1% EU=1%act/20%stl NPU=0%(pdh) NV=0% RAM=24.7/63.4GB (0.8ms) #860

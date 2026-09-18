@@ -1,0 +1,297 @@
+The default logger configuration file is used.
+Starting...
+
+Application Version: 2.0.0.c8d2dc0 MLCommons Standard Build
+
+Using scenarios from llm\Llama3.1\Intel_NativeOpenVINO_GPU_Default.json
+
+Configuring scenarios...
+
+
+Configuration tested by MLCommons
+
+Temp path is not set in the config; using default system temp path: C:\Users\ADMINI~1\AppData\Local\Temp\MLPerf\2.0.0.c8d2dc0
+
+Starting to run scenario Llama3, model Llama 3.1 8B Instruct
+
+
+Checking disk space before downloading...
+
+Disk space check passed.
+
+
+
+Downloading necessary files...
+
+
+Download openvino_model.xml (Task 1/33) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_model.bin (Task 2/33) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download IHV-OV-tokenizers.zip (Task 3/33) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download greedy-prompt_cot.39329.json (Task 4/33) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download greedy-prompt_t0.677207.json (Task 5/33) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download greedy-prompt_niv.123362.json (Task 6/33) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download greedy-prompt_niv.77134.json (Task 7/33) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download data_csv2json.json (Task 8/33) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download events_ics2xml.json (Task 9/33) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download command_parser_cpp_2k.json (Task 10/33) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download performance_counter_group_cpp_2k.json (Task 11/33) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download booksum_4k.json (Task 12/33) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download downloader_cpp_4k.json (Task 13/33) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download generation-greedy-results.json (Task 14/33) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino.dll (Task 15/33) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_auto_batch_plugin.dll (Task 16/33) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_hetero_plugin.dll (Task 17/33) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_auto_plugin.dll (Task 18/33) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_intel_gpu_plugin.dll (Task 19/33) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_c.dll (Task 20/33) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_genai.dll (Task 21/33) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_intel_cpu_plugin.dll (Task 22/33) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_pytorch_frontend.dll (Task 23/33) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_intel_npu_plugin.dll (Task 24/33) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_ir_frontend.dll (Task 25/33) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_onnx_frontend.dll (Task 26/33) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_paddle_frontend.dll (Task 27/33) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_tokenizers.dll (Task 28/33) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_tensorflow_frontend.dll (Task 29/33) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_tensorflow_lite_frontend.dll (Task 30/33) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download plugins.xml (Task 31/33) finished in 00:00:00.000 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download tbb12.dll (Task 32/33) finished in 00:00:00.000 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download tbbmalloc.dll (Task 33/33) finished in 00:00:00.000 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Unpacking downloaded files...
+
+Preparing for inferences execution...
+
+
+Verifying files...
+
+
+
+Running benchmarks for EPs NativeOpenVINO{"device_id":0,"device_name":"Intel(R) Graphics [PF] GPU (iGPU)","device_type":"GPU"} on model "Llama-3.1-8B-Instruct_ov-int4-GRw" (https://client.mlcommons-storage.org/deps/2.0/scenario_files/models/llama3/8b-instruct/NativeOpenVINO/GPU/openvino_model.xml -> data\Llama3/18345001786246745328\openvino_model.xml), added 1 task(s)
+
+
+
+Preparing to run the benchmark for the EP NativeOpenVINO{"device_id":0,"device_name":"Intel(R) Graphics [PF] GPU (iGPU)","device_type":"GPU"}
+
+power_begin - start llama3 llama_3_1_8b_instruct NativeOpenVINO {"device_id":0,"device_name":"Intel(R) Graphics [PF] GPU (iGPU)","device_type":"GPU"}
+
+Model Llama 3.1 8B Instruct (llama_3_1_8b_instruct), scenario Llama3, model path Result: https://client.mlcommons-storage.org/deps/2.0/scenario_files/models/llama3/8b-instruct/NativeOpenVINO/GPU/openvino_model.xml
+
+power_end - end llama3 llama_3_1_8b_instruct NativeOpenVINO {"device_id":0,"device_name":"Intel(R) Graphics [PF] GPU (iGPU)","device_type":"GPU"}
+
+NativeOpenVINO on GPU for Llama 3.1 8B Instruct (Task 1/1) finished in 00:13:45 seconds
+
+
+Overall Progress: [============] 100% (1/1 benchmark(s) completed)
+
+
+
+
+Finished running scenario Llama3, model Llama 3.1 8B Instruct in 825.729719 seconds
+
+
+Benchmark Results 09-17-2026 21:52:29:
+
+== Application Version: 2.0.0.c8d2dc0 MLCommons Standard Build ==
+== Configuration tested by MLCommons ==
+
+Model Variants:
+
+1. Llama-3.1-8B-Instruct_ov-int4-GRw (https://client.mlcommons-storage.org/deps/2.0/scenario_files/models/llama3/8b-instruct/NativeOpenVINO/GPU/openvino_model.xml)
+
+Shared Information:
+
+    Assets:
+    Input Files:
+        greedy-prompt_cot.39329.json
+        greedy-prompt_t0.677207.json
+        greedy-prompt_niv.123362.json
+        greedy-prompt_niv.77134.json
+        data_csv2json.json
+        events_ics2xml.json
+        command_parser_cpp_2k.json
+        performance_counter_group_cpp_2k.json
+        booksum_4k.json
+        downloader_cpp_4k.json
+    Iterations: 3
+    WarmUp Iterations: 1
+
+Execution Summary:
+
+Model: Llama-3.1-8B-Instruct_ov-int4-GRw (#1):
+    GPU:
+        NativeOpenVINO {"device_id":0,"device_name":"Intel(R) Graphics [PF] GPU (iGPU)","device_type":"GPU"}:
+            OVERALL:	Geomean Time to First Token: 0.37 s, Geomean 2nd+ Token Generation Rate: 22.18 tokens/s, Avg Input Tokens: 1332, Avg Generated Tokens: 256
+            Creative Writing:	Avg Time to First Token: 0.177 s, Avg 2nd+ Token Generation Rate: 22.26 tokens/s, Avg Input Tokens: 479, Avg Generated Tokens: 512
+            Content Generation:	Avg Time to First Token: 0.084 s, Avg 2nd+ Token Generation Rate: 22.37 tokens/s, Avg Input Tokens: 124, Avg Generated Tokens: 256
+            Summarization, Intermediate:	Avg Time to First Token: 1.8 s, Avg 2nd+ Token Generation Rate: 25.7 tokens/s, Avg Input Tokens: 3370, Avg Generated Tokens: 128
+            Structured Text:	Avg Time to First Token: 0.331 s, Avg 2nd+ Token Generation Rate: 15.42 tokens/s, Avg Input Tokens: 834, Avg Generated Tokens: 256
+            Code Analysis:	Avg Time to First Token: 0.78 s, Avg 2nd+ Token Generation Rate: 27.18 tokens/s, Avg Input Tokens: 1856, Avg Generated Tokens: 128
+
+
+
+

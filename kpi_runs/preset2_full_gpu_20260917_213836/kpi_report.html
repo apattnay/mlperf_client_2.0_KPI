@@ -1,0 +1,1222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multi-Agent KPI Report — 2026-09-17 21:53:20</title>
+<style>
+:root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --text2: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --red: #f85149; --yellow: #d29922;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+       background: var(--bg); color: var(--text); padding: 24px; line-height: 1.5; }
+h1 { font-size: 1.6rem; margin-bottom: 4px; }
+h2 { font-size: 1.15rem; color: var(--accent); margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.header { margin-bottom: 24px; }
+.header .subtitle { color: var(--text2); font-size: 0.9rem; }
+.header .meta { display: flex; gap: 24px; margin-top: 8px; flex-wrap: wrap; }
+.header .meta-item { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; }
+.header .meta-label { color: var(--text2); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
+.header .meta-value { font-size: 1.3rem; font-weight: 600; }
+.header .meta-value.green { color: var(--green); }
+.section { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+th { text-align: left; color: var(--text2); font-weight: 500; padding: 8px 10px; border-bottom: 2px solid var(--border); }
+td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: 'SF Mono', Consolas, monospace; }
+tr:hover td { background: rgba(88,166,255,0.06); }
+code { background: rgba(110,118,129,0.2); padding: 2px 6px; border-radius: 4px; font-size: 0.85em; }
+
+/* Gantt chart */
+.gantt-chart { margin: 8px 0; }
+.gantt-row { display: flex; align-items: center; margin-bottom: 6px; }
+.gantt-label { width: 200px; flex-shrink: 0; font-size: 0.82rem; padding-right: 12px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gantt-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.gantt-track { flex: 1; height: 28px; background: rgba(48,54,61,0.5); border-radius: 4px; position: relative; overflow: hidden; }
+.gantt-bar { position: absolute; top: 2px; height: 24px; border-radius: 3px; opacity: 0.85; display: flex; align-items: center;
+              justify-content: center; cursor: default; transition: opacity 0.15s; min-width: 2px; }
+.gantt-bar:hover { opacity: 1; box-shadow: 0 0 8px rgba(88,166,255,0.3); }
+.gantt-bar-text { color: #fff; font-size: 0.7rem; font-weight: 600; text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+                   white-space: nowrap; overflow: hidden; padding: 0 4px; }
+.gantt-hw { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); font-size: 0.6rem;
+             background: rgba(0,0,0,0.45); color: #ddd; padding: 1px 5px; border-radius: 3px;
+             white-space: nowrap; line-height: 1.2; pointer-events: none; }
+.gantt-bg-bar { opacity: 0.45; border: 1px dashed rgba(255,255,255,0.3); }
+.gantt-bg-bar:hover { opacity: 0.7; }
+.rag-marker { position: absolute; top: 2px; height: 12px; background: #FF9800; border-radius: 2px;
+               opacity: 0.9; min-width: 4px; cursor: default; }
+.rag-marker:hover { opacity: 1; box-shadow: 0 0 6px rgba(255,152,0,0.5); }
+.tool-badge { display: inline-block; font-size: 0.68rem; padding: 1px 6px; margin: 1px 2px; border-radius: 3px;
+               background: rgba(88,166,255,0.15); color: #79b8ff; white-space: nowrap; }
+.tool-badge-exec { background: rgba(63,185,80,0.18); color: #56d364; }
+.timeline-axis { display: flex; justify-content: space-between; color: var(--text2); font-size: 0.78rem;
+                  margin-bottom: 4px; padding: 0 200px 0 0; margin-left: 200px; }
+.timeline-legend { color: var(--text2); font-size: 0.78rem; margin-top: 8px; }
+.no-data { color: var(--text2); font-style: italic; }
+
+/* Device cards */
+.device-grid { display: flex; gap: 14px; flex-wrap: wrap; }
+.device-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px;
+                min-width: 180px; flex: 1; }
+.device-icon { font-size: 1.5rem; margin-bottom: 4px; }
+.device-role { font-weight: 600; font-size: 0.9rem; }
+.device-target { color: var(--text2); font-size: 0.8rem; margin-top: 2px; }
+
+/* Responsive */
+@media (max-width: 800px) {
+    .gantt-label { width: 120px; font-size: 0.72rem; }
+    .timeline-axis { margin-left: 120px; padding: 0 0; }
+    .header .meta { gap: 10px; }
+    .device-grid { flex-direction: column; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Multi-Agent KPI Report</h1>
+    <div class="subtitle">Generated 2026-09-17 21:53:20 &nbsp;|&nbsp; Source: <code>preset2_full_gpu_20260917_213836</code></div>
+    <div class="meta">
+        <div class="meta-item">
+            <div class="meta-label">Model</div>
+            <div class="meta-value">Llama-3.1-8B-Instruct_ov-int4-GRw</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Backend</div>
+            <div class="meta-value">NativeOpenVINO</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Wall Time</div>
+            <div class="meta-value">829.9s</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Output Tokens</div>
+            <div class="meta-value green">10,240</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Throughput</div>
+            <div class="meta-value green">12.34 tok/s</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Run Window</div>
+            <div class="meta-value" style="font-size:1rem">21:38:39 → 21:52:29</div>
+        </div>
+    </div>
+</div>
+
+
+
+
+        <div class="section">
+            <h2>Workflow Timeline</h2>
+            <div class="timeline-axis">
+                <span>21:38:55</span>
+                <span>← 830s total →</span>
+                <span>21:52:28</span>
+            </div>
+            <div class="gantt-chart">
+                
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    01_content_generation
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:0.0%;width:1.13%;background:#64B5F6"
+                         title="01_content_generation: 21:38:55 - 21:39:04 (9.23s, 256 tokens, 27.738 tok/s)">
+                        <span class="gantt-bar-text">9.23s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    02_content_generation
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:1.75%;width:1.09%;background:#64B5F6"
+                         title="02_content_generation: 21:39:09 - 21:39:18 (8.846s, 256 tokens, 28.942 tok/s)">
+                        <span class="gantt-bar-text">8.846s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    03_content_generation
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:3.45%;width:1.09%;background:#64B5F6"
+                         title="03_content_generation: 21:39:23 - 21:39:32 (8.879s, 256 tokens, 28.835 tok/s)">
+                        <span class="gantt-bar-text">8.879s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    04_content_generation
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:5.16%;width:1.14%;background:#64B5F6"
+                         title="04_content_generation: 21:39:37 - 21:39:46 (9.274s, 256 tokens, 27.608 tok/s)">
+                        <span class="gantt-bar-text">9.274s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    05_content_generation
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:8.57%;width:1.92%;background:#64B5F6"
+                         title="05_content_generation: 21:40:05 - 21:40:20 (15.587s, 256 tokens, 16.427 tok/s)">
+                        <span class="gantt-bar-text">15.587s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    06_content_generation
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:11.1%;width:1.73%;background:#64B5F6"
+                         title="06_content_generation: 21:40:25 - 21:40:39 (14.034s, 256 tokens, 18.242 tok/s)">
+                        <span class="gantt-bar-text">14.034s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    07_content_generation
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:13.44%;width:1.89%;background:#64B5F6"
+                         title="07_content_generation: 21:40:44 - 21:41:00 (15.411s, 256 tokens, 16.614 tok/s)">
+                        <span class="gantt-bar-text">15.411s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    08_content_generation
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:15.95%;width:2.23%;background:#64B5F6"
+                         title="08_content_generation: 21:41:05 - 21:41:23 (18.1s, 256 tokens, 14.146 tok/s)">
+                        <span class="gantt-bar-text">18.1s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    09_creative_writing
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:20.51%;width:2.25%;background:#64B5F6"
+                         title="09_creative_writing: 21:41:42 - 21:42:00 (18.302s, 512 tokens, 27.976 tok/s)">
+                        <span class="gantt-bar-text">18.302s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    10_creative_writing
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:23.38%;width:2.21%;background:#64B5F6"
+                         title="10_creative_writing: 21:42:05 - 21:42:23 (17.946s, 512 tokens, 28.531 tok/s)">
+                        <span class="gantt-bar-text">17.946s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    11_creative_writing
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:26.2%;width:2.24%;background:#64B5F6"
+                         title="11_creative_writing: 21:42:28 - 21:42:46 (18.212s, 512 tokens, 28.116 tok/s)">
+                        <span class="gantt-bar-text">18.212s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    12_creative_writing
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:29.06%;width:2.23%;background:#64B5F6"
+                         title="12_creative_writing: 21:42:51 - 21:43:10 (18.174s, 512 tokens, 28.176 tok/s)">
+                        <span class="gantt-bar-text">18.174s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    13_creative_writing
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:32.56%;width:2.24%;background:#64B5F6"
+                         title="13_creative_writing: 21:43:20 - 21:43:38 (18.181s, 512 tokens, 28.164 tok/s)">
+                        <span class="gantt-bar-text">18.181s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    14_creative_writing
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:35.41%;width:2.39%;background:#64B5F6"
+                         title="14_creative_writing: 21:43:43 - 21:44:02 (19.402s, 512 tokens, 26.393 tok/s)">
+                        <span class="gantt-bar-text">19.402s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    15_creative_writing
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:38.41%;width:4.28%;background:#64B5F6"
+                         title="15_creative_writing: 21:44:07 - 21:44:42 (34.774s, 512 tokens, 14.724 tok/s)">
+                        <span class="gantt-bar-text">34.774s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    16_creative_writing
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:43.3%;width:5.17%;background:#64B5F6"
+                         title="16_creative_writing: 21:44:47 - 21:45:29 (42.015s, 512 tokens, 12.187 tok/s)">
+                        <span class="gantt-bar-text">42.015s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    17_structured_text
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:50.92%;width:3.03%;background:#64B5F6"
+                         title="17_structured_text: 21:45:49 - 21:46:14 (24.681s, 256 tokens, 10.374 tok/s)">
+                        <span class="gantt-bar-text">24.681s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    18_structured_text
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:54.57%;width:2.85%;background:#64B5F6"
+                         title="18_structured_text: 21:46:19 - 21:46:42 (23.187s, 256 tokens, 11.042 tok/s)">
+                        <span class="gantt-bar-text">23.187s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    19_structured_text
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:58.04%;width:2.43%;background:#64B5F6"
+                         title="19_structured_text: 21:46:47 - 21:47:07 (19.732s, 256 tokens, 12.976 tok/s)">
+                        <span class="gantt-bar-text">19.732s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    20_structured_text
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:61.08%;width:2.87%;background:#64B5F6"
+                         title="20_structured_text: 21:47:12 - 21:47:35 (23.37s, 256 tokens, 10.956 tok/s)">
+                        <span class="gantt-bar-text">23.37s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    21_structured_text
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:66.14%;width:1.89%;background:#64B5F6"
+                         title="21_structured_text: 21:47:53 - 21:48:08 (15.345s, 256 tokens, 16.685 tok/s)">
+                        <span class="gantt-bar-text">15.345s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    22_structured_text
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:68.64%;width:1.67%;background:#64B5F6"
+                         title="22_structured_text: 21:48:13 - 21:48:27 (13.616s, 256 tokens, 18.805 tok/s)">
+                        <span class="gantt-bar-text">13.616s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    23_structured_text
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:70.93%;width:1.88%;background:#64B5F6"
+                         title="23_structured_text: 21:48:32 - 21:48:47 (15.267s, 256 tokens, 16.772 tok/s)">
+                        <span class="gantt-bar-text">15.267s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    24_structured_text
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:73.43%;width:1.49%;background:#64B5F6"
+                         title="24_structured_text: 21:48:52 - 21:49:04 (12.119s, 256 tokens, 21.127 tok/s)">
+                        <span class="gantt-bar-text">12.119s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    25_code_analysis
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:76.74%;width:0.91%;background:#64B5F6"
+                         title="25_code_analysis: 21:49:19 - 21:49:27 (7.412s, 128 tokens, 17.275 tok/s)">
+                        <span class="gantt-bar-text">7.412s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    26_code_analysis
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:78.27%;width:0.7%;background:#64B5F6"
+                         title="26_code_analysis: 21:49:32 - 21:49:37 (5.708s, 128 tokens, 22.438 tok/s)">
+                        <span class="gantt-bar-text">5.708s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    27_code_analysis
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:79.58%;width:0.68%;background:#64B5F6"
+                         title="27_code_analysis: 21:49:42 - 21:49:48 (5.5s, 128 tokens, 23.281 tok/s)">
+                        <span class="gantt-bar-text">5.5s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    28_code_analysis
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:80.87%;width:0.68%;background:#64B5F6"
+                         title="28_code_analysis: 21:49:53 - 21:49:58 (5.504s, 128 tokens, 23.265 tok/s)">
+                        <span class="gantt-bar-text">5.504s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    29_code_analysis
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:82.79%;width:0.67%;background:#64B5F6"
+                         title="29_code_analysis: 21:50:08 - 21:50:14 (5.471s, 128 tokens, 23.407 tok/s)">
+                        <span class="gantt-bar-text">5.471s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    30_code_analysis
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:84.08%;width:0.66%;background:#64B5F6"
+                         title="30_code_analysis: 21:50:19 - 21:50:24 (5.374s, 128 tokens, 23.832 tok/s)">
+                        <span class="gantt-bar-text">5.374s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    31_code_analysis
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:85.35%;width:0.65%;background:#64B5F6"
+                         title="31_code_analysis: 21:50:29 - 21:50:35 (5.322s, 128 tokens, 24.057 tok/s)">
+                        <span class="gantt-bar-text">5.322s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    32_code_analysis
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:86.63%;width:0.65%;background:#64B5F6"
+                         title="32_code_analysis: 21:50:40 - 21:50:45 (5.324s, 128 tokens, 24.051 tok/s)">
+                        <span class="gantt-bar-text">5.324s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    33_summarization_intermediate
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:88.47%;width:0.86%;background:#64B5F6"
+                         title="33_summarization_intermediate: 21:50:55 - 21:51:02 (6.963s, 128 tokens, 18.387 tok/s)">
+                        <span class="gantt-bar-text">6.963s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    34_summarization_intermediate
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:89.94%;width:0.85%;background:#64B5F6"
+                         title="34_summarization_intermediate: 21:51:07 - 21:51:13 (6.949s, 128 tokens, 18.429 tok/s)">
+                        <span class="gantt-bar-text">6.949s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    35_summarization_intermediate
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:91.41%;width:0.84%;background:#64B5F6"
+                         title="35_summarization_intermediate: 21:51:18 - 21:51:25 (6.803s, 128 tokens, 18.824 tok/s)">
+                        <span class="gantt-bar-text">6.803s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    36_summarization_intermediate
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:92.86%;width:0.84%;background:#64B5F6"
+                         title="36_summarization_intermediate: 21:51:30 - 21:51:37 (6.803s, 128 tokens, 18.823 tok/s)">
+                        <span class="gantt-bar-text">6.803s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    37_summarization_intermediate
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:94.88%;width:0.82%;background:#64B5F6"
+                         title="37_summarization_intermediate: 21:51:47 - 21:51:53 (6.697s, 128 tokens, 19.123 tok/s)">
+                        <span class="gantt-bar-text">6.697s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    38_summarization_intermediate
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:96.32%;width:0.81%;background:#64B5F6"
+                         title="38_summarization_intermediate: 21:51:58 - 21:52:05 (6.568s, 128 tokens, 19.496 tok/s)">
+                        <span class="gantt-bar-text">6.568s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    39_summarization_intermediate
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:97.74%;width:0.81%;background:#64B5F6"
+                         title="39_summarization_intermediate: 21:52:10 - 21:52:17 (6.602s, 128 tokens, 19.398 tok/s)">
+                        <span class="gantt-bar-text">6.602s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    40_summarization_intermediate
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:99.17%;width:0.83%;background:#64B5F6"
+                         title="40_summarization_intermediate: 21:52:22 - 21:52:28 (6.74s, 128 tokens, 18.999 tok/s)">
+                        <span class="gantt-bar-text">6.74s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+                
+            </div>
+            <div class="timeline-legend">
+                <em>Hover bars for detail. Concurrent bars (summary_agent_1/2) show parallel execution.</em>
+                <br><em style="font-size:0.72rem">HW badges show responsible hardware. ★ rag_query marks NPU embedding + HNSW vector search events.</em>
+            </div>
+        </div>
+
+<div class="section">
+    <h2>Per-Agent KPIs</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Agent</th>
+                <th style="text-align:right">Start</th>
+                <th style="text-align:right">End</th>
+                <th style="text-align:right">In Tok</th>
+                <th style="text-align:right">Out Tok</th>
+                <th style="text-align:right">Total</th>
+                <th style="text-align:right">Time (s)</th>
+                <th style="text-align:right">Tok/s</th>
+                <th style="text-align:right">TTFT (s)</th>
+                <th style="text-align:right">Avg ITL (ms)</th>
+                <th style="text-align:right">p50/p99 ITL (ms)</th>
+                
+            </tr>
+        </thead>
+        <tbody>
+            
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 01_content_generation</td>
+                <td class="num">21:38:55</td>
+                <td class="num">21:39:04</td>
+                <td class="num">118</td>
+                <td class="num">256</td>
+                <td class="num">374</td>
+                <td class="num">9.2</td>
+                <td class="num">27.738</td>
+                <td class="num">0.2993</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 02_content_generation</td>
+                <td class="num">21:39:09</td>
+                <td class="num">21:39:18</td>
+                <td class="num">118</td>
+                <td class="num">256</td>
+                <td class="num">374</td>
+                <td class="num">8.8</td>
+                <td class="num">28.942</td>
+                <td class="num">0.0623</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 03_content_generation</td>
+                <td class="num">21:39:23</td>
+                <td class="num">21:39:32</td>
+                <td class="num">118</td>
+                <td class="num">256</td>
+                <td class="num">374</td>
+                <td class="num">8.9</td>
+                <td class="num">28.835</td>
+                <td class="num">0.062</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 04_content_generation</td>
+                <td class="num">21:39:37</td>
+                <td class="num">21:39:46</td>
+                <td class="num">118</td>
+                <td class="num">256</td>
+                <td class="num">374</td>
+                <td class="num">9.3</td>
+                <td class="num">27.608</td>
+                <td class="num">0.0618</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 05_content_generation</td>
+                <td class="num">21:40:05</td>
+                <td class="num">21:40:20</td>
+                <td class="num">131</td>
+                <td class="num">256</td>
+                <td class="num">387</td>
+                <td class="num">15.6</td>
+                <td class="num">16.427</td>
+                <td class="num">0.349</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 06_content_generation</td>
+                <td class="num">21:40:25</td>
+                <td class="num">21:40:39</td>
+                <td class="num">131</td>
+                <td class="num">256</td>
+                <td class="num">387</td>
+                <td class="num">14.0</td>
+                <td class="num">18.242</td>
+                <td class="num">0.1006</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 07_content_generation</td>
+                <td class="num">21:40:44</td>
+                <td class="num">21:41:00</td>
+                <td class="num">131</td>
+                <td class="num">256</td>
+                <td class="num">387</td>
+                <td class="num">15.4</td>
+                <td class="num">16.614</td>
+                <td class="num">0.1181</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 08_content_generation</td>
+                <td class="num">21:41:05</td>
+                <td class="num">21:41:23</td>
+                <td class="num">131</td>
+                <td class="num">256</td>
+                <td class="num">387</td>
+                <td class="num">18.1</td>
+                <td class="num">14.146</td>
+                <td class="num">0.1008</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 09_creative_writing</td>
+                <td class="num">21:41:42</td>
+                <td class="num">21:42:00</td>
+                <td class="num">496</td>
+                <td class="num">512</td>
+                <td class="num">1,008</td>
+                <td class="num">18.3</td>
+                <td class="num">27.976</td>
+                <td class="num">0.3023</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 10_creative_writing</td>
+                <td class="num">21:42:05</td>
+                <td class="num">21:42:23</td>
+                <td class="num">496</td>
+                <td class="num">512</td>
+                <td class="num">1,008</td>
+                <td class="num">17.9</td>
+                <td class="num">28.531</td>
+                <td class="num">0.1714</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 11_creative_writing</td>
+                <td class="num">21:42:28</td>
+                <td class="num">21:42:46</td>
+                <td class="num">496</td>
+                <td class="num">512</td>
+                <td class="num">1,008</td>
+                <td class="num">18.2</td>
+                <td class="num">28.116</td>
+                <td class="num">0.1772</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 12_creative_writing</td>
+                <td class="num">21:42:51</td>
+                <td class="num">21:43:10</td>
+                <td class="num">496</td>
+                <td class="num">512</td>
+                <td class="num">1,008</td>
+                <td class="num">18.2</td>
+                <td class="num">28.176</td>
+                <td class="num">0.1745</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 13_creative_writing</td>
+                <td class="num">21:43:20</td>
+                <td class="num">21:43:38</td>
+                <td class="num">462</td>
+                <td class="num">512</td>
+                <td class="num">974</td>
+                <td class="num">18.2</td>
+                <td class="num">28.164</td>
+                <td class="num">0.3024</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 14_creative_writing</td>
+                <td class="num">21:43:43</td>
+                <td class="num">21:44:02</td>
+                <td class="num">462</td>
+                <td class="num">512</td>
+                <td class="num">974</td>
+                <td class="num">19.4</td>
+                <td class="num">26.393</td>
+                <td class="num">0.1672</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 15_creative_writing</td>
+                <td class="num">21:44:07</td>
+                <td class="num">21:44:42</td>
+                <td class="num">462</td>
+                <td class="num">512</td>
+                <td class="num">974</td>
+                <td class="num">34.8</td>
+                <td class="num">14.724</td>
+                <td class="num">0.1824</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 16_creative_writing</td>
+                <td class="num">21:44:47</td>
+                <td class="num">21:45:29</td>
+                <td class="num">462</td>
+                <td class="num">512</td>
+                <td class="num">974</td>
+                <td class="num">42.0</td>
+                <td class="num">12.187</td>
+                <td class="num">0.1902</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 17_structured_text</td>
+                <td class="num">21:45:49</td>
+                <td class="num">21:46:14</td>
+                <td class="num">856</td>
+                <td class="num">256</td>
+                <td class="num">1,112</td>
+                <td class="num">24.7</td>
+                <td class="num">10.374</td>
+                <td class="num">0.7853</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 18_structured_text</td>
+                <td class="num">21:46:19</td>
+                <td class="num">21:46:42</td>
+                <td class="num">856</td>
+                <td class="num">256</td>
+                <td class="num">1,112</td>
+                <td class="num">23.2</td>
+                <td class="num">11.042</td>
+                <td class="num">0.3365</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 19_structured_text</td>
+                <td class="num">21:46:47</td>
+                <td class="num">21:47:07</td>
+                <td class="num">856</td>
+                <td class="num">256</td>
+                <td class="num">1,112</td>
+                <td class="num">19.7</td>
+                <td class="num">12.976</td>
+                <td class="num">0.3182</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 20_structured_text</td>
+                <td class="num">21:47:12</td>
+                <td class="num">21:47:35</td>
+                <td class="num">856</td>
+                <td class="num">256</td>
+                <td class="num">1,112</td>
+                <td class="num">23.4</td>
+                <td class="num">10.956</td>
+                <td class="num">0.3282</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 21_structured_text</td>
+                <td class="num">21:47:53</td>
+                <td class="num">21:48:08</td>
+                <td class="num">812</td>
+                <td class="num">256</td>
+                <td class="num">1,068</td>
+                <td class="num">15.3</td>
+                <td class="num">16.685</td>
+                <td class="num">0.5474</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 22_structured_text</td>
+                <td class="num">21:48:13</td>
+                <td class="num">21:48:27</td>
+                <td class="num">812</td>
+                <td class="num">256</td>
+                <td class="num">1,068</td>
+                <td class="num">13.6</td>
+                <td class="num">18.805</td>
+                <td class="num">0.32</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 23_structured_text</td>
+                <td class="num">21:48:32</td>
+                <td class="num">21:48:47</td>
+                <td class="num">812</td>
+                <td class="num">256</td>
+                <td class="num">1,068</td>
+                <td class="num">15.3</td>
+                <td class="num">16.772</td>
+                <td class="num">0.3075</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 24_structured_text</td>
+                <td class="num">21:48:52</td>
+                <td class="num">21:49:04</td>
+                <td class="num">812</td>
+                <td class="num">256</td>
+                <td class="num">1,068</td>
+                <td class="num">12.1</td>
+                <td class="num">21.127</td>
+                <td class="num">0.3736</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 25_code_analysis</td>
+                <td class="num">21:49:19</td>
+                <td class="num">21:49:27</td>
+                <td class="num">1,929</td>
+                <td class="num">128</td>
+                <td class="num">2,057</td>
+                <td class="num">7.4</td>
+                <td class="num">17.275</td>
+                <td class="num">1.2894</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 26_code_analysis</td>
+                <td class="num">21:49:32</td>
+                <td class="num">21:49:37</td>
+                <td class="num">1,929</td>
+                <td class="num">128</td>
+                <td class="num">2,057</td>
+                <td class="num">5.7</td>
+                <td class="num">22.438</td>
+                <td class="num">0.8856</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 27_code_analysis</td>
+                <td class="num">21:49:42</td>
+                <td class="num">21:49:48</td>
+                <td class="num">1,929</td>
+                <td class="num">128</td>
+                <td class="num">2,057</td>
+                <td class="num">5.5</td>
+                <td class="num">23.281</td>
+                <td class="num">0.8241</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 28_code_analysis</td>
+                <td class="num">21:49:53</td>
+                <td class="num">21:49:58</td>
+                <td class="num">1,929</td>
+                <td class="num">128</td>
+                <td class="num">2,057</td>
+                <td class="num">5.5</td>
+                <td class="num">23.265</td>
+                <td class="num">0.8128</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 29_code_analysis</td>
+                <td class="num">21:50:08</td>
+                <td class="num">21:50:14</td>
+                <td class="num">1,783</td>
+                <td class="num">128</td>
+                <td class="num">1,911</td>
+                <td class="num">5.5</td>
+                <td class="num">23.407</td>
+                <td class="num">0.8566</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 30_code_analysis</td>
+                <td class="num">21:50:19</td>
+                <td class="num">21:50:24</td>
+                <td class="num">1,783</td>
+                <td class="num">128</td>
+                <td class="num">1,911</td>
+                <td class="num">5.4</td>
+                <td class="num">23.832</td>
+                <td class="num">0.7241</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 31_code_analysis</td>
+                <td class="num">21:50:29</td>
+                <td class="num">21:50:35</td>
+                <td class="num">1,783</td>
+                <td class="num">128</td>
+                <td class="num">1,911</td>
+                <td class="num">5.3</td>
+                <td class="num">24.057</td>
+                <td class="num">0.716</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 32_code_analysis</td>
+                <td class="num">21:50:40</td>
+                <td class="num">21:50:45</td>
+                <td class="num">1,783</td>
+                <td class="num">128</td>
+                <td class="num">1,911</td>
+                <td class="num">5.3</td>
+                <td class="num">24.051</td>
+                <td class="num">0.7178</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 33_summarization_intermediate</td>
+                <td class="num">21:50:55</td>
+                <td class="num">21:51:02</td>
+                <td class="num">3,526</td>
+                <td class="num">128</td>
+                <td class="num">3,654</td>
+                <td class="num">7.0</td>
+                <td class="num">18.387</td>
+                <td class="num">2.0083</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 34_summarization_intermediate</td>
+                <td class="num">21:51:07</td>
+                <td class="num">21:51:13</td>
+                <td class="num">3,526</td>
+                <td class="num">128</td>
+                <td class="num">3,654</td>
+                <td class="num">6.9</td>
+                <td class="num">18.429</td>
+                <td class="num">1.9828</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 35_summarization_intermediate</td>
+                <td class="num">21:51:18</td>
+                <td class="num">21:51:25</td>
+                <td class="num">3,526</td>
+                <td class="num">128</td>
+                <td class="num">3,654</td>
+                <td class="num">6.8</td>
+                <td class="num">18.824</td>
+                <td class="num">1.9063</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 36_summarization_intermediate</td>
+                <td class="num">21:51:30</td>
+                <td class="num">21:51:37</td>
+                <td class="num">3,526</td>
+                <td class="num">128</td>
+                <td class="num">3,654</td>
+                <td class="num">6.8</td>
+                <td class="num">18.823</td>
+                <td class="num">1.8686</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 37_summarization_intermediate</td>
+                <td class="num">21:51:47</td>
+                <td class="num">21:51:53</td>
+                <td class="num">3,215</td>
+                <td class="num">128</td>
+                <td class="num">3,343</td>
+                <td class="num">6.7</td>
+                <td class="num">19.123</td>
+                <td class="num">1.7844</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 38_summarization_intermediate</td>
+                <td class="num">21:51:58</td>
+                <td class="num">21:52:05</td>
+                <td class="num">3,215</td>
+                <td class="num">128</td>
+                <td class="num">3,343</td>
+                <td class="num">6.6</td>
+                <td class="num">19.496</td>
+                <td class="num">1.6591</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 39_summarization_intermediate</td>
+                <td class="num">21:52:10</td>
+                <td class="num">21:52:17</td>
+                <td class="num">3,215</td>
+                <td class="num">128</td>
+                <td class="num">3,343</td>
+                <td class="num">6.6</td>
+                <td class="num">19.398</td>
+                <td class="num">1.6627</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 40_summarization_intermediate</td>
+                <td class="num">21:52:22</td>
+                <td class="num">21:52:28</td>
+                <td class="num">3,215</td>
+                <td class="num">128</td>
+                <td class="num">3,343</td>
+                <td class="num">6.7</td>
+                <td class="num">18.999</td>
+                <td class="num">1.7214</td>
+                <td class="num">-</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr style="font-weight:600; border-top: 2px solid var(--border);">
+                <td>TOTAL</td>
+                <td></td><td></td>
+                <td class="num">53,312</td>
+                <td class="num">10,240</td>
+                <td class="num">63,552</td>
+                <td class="num">829.9</td>
+                <td class="num">12.34</td>
+                <td></td><td></td><td></td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+
+
+<div class="section"><h2>GPU Efficiency Analysis</h2><p style="color:var(--text2);font-size:0.8rem;">LLM decode is memory-bandwidth-bound: each token reads the full model weight from DRAM. Compute demand is theoretical (2×params); measured GEMM ceiling confirms low actual INT4 throughput on this GPU. Memory BW utilization is the meaningful efficiency metric for decode.</p><table><tr><th>Metric</th><th>Value</th></tr><tr><td>End-to-End Throughput</td><td class="num">12.3 tok/s</td></tr><tr><td>Decode Throughput (sum-of-agents)</td><td class="num">20.2 tok/s</td></tr><tr><td>Model Weight</td><td class="num">-</td></tr><tr><td>Est. Parameters</td><td class="num">~4.0B</td></tr><tr><td>FLOPs/Token (2×params est.)</td><td class="num">8.0 GFLOPs</td></tr><tr><td>Theoretical Compute Demand</td><td class="num">0.162 TFLOPS</td></tr><tr><td>Measured GPU INT4 GEMM Ceiling</td><td class="num">0.078 TOPS</td></tr><tr><td>GPU Theoretical Peak (FP16 FMA)</td><td class="num">4.10 TFLOPS</td></tr><tr><td>DRAM BW Achieved</td><td class="num">0.0 GB/s</td></tr><tr><td>DRAM BW Peak (DDR5)</td><td class="num">89 GB/s</td></tr><tr><td>Memory BW Utilization</td><td class="num">0.0%</td></tr></table></div>
+
+
+
+
+
+
+
+<div class="section"><h2>System Under Test — Hardware</h2><table><tr><th style="width:200px">Component</th><th>Detail</th></tr><tr><td>Platform</td><td>-</td></tr><tr><td>OEM</td><td>-</td></tr><tr><td>CPU</td><td>-</td></tr><tr><td>Cores / Threads</td><td>- / -</td></tr><tr><td>Max Clock</td><td>- MHz</td></tr><tr><td>RAM</td><td>- GB</td></tr><tr><td>Intel iGPU</td><td>Intel(R) Graphics [PF] GPU (96 EUs (10 threads/EU, SIMD16), 12 Xe Cores, 2300 MHz, DevID 0xD75F)</td></tr><tr><td>iGPU VRAM</td><td>4095 MB dedicated / 33.6 GB max (shared USM)</td></tr><tr><td>NVIDIA GPU</td><td>-</td></tr><tr><td>NVIDIA VRAM</td><td>-</td></tr><tr><td>NPU</td><td>Intel(R) NPU</td></tr><tr><td>Hostname</td><td>JF04WVAW0867-TA</td></tr><tr><td>OS</td><td>Windows 10.0.28000</td></tr></table></div><div class="section"><h2>System Under Test — Software / Middleware</h2><table><tr><th style="width:200px">Component</th><th>Version</th></tr><tr><td>Python</td><td><code>3.13.3</code></td></tr><tr><td>OVMS</td><td><code>2026.2.1.1122f03bf</code></td></tr><tr><td>OpenVINO Backend</td><td><code>2026.2.1-21919-ede283a88e3-releases/2026/2</code></td></tr><tr><td>OpenVINO (pip)</td><td><code>-</code></td></tr><tr><td>Agent Framework</td><td><code>-</code></td></tr><tr><td>Agent Framework Core</td><td><code>-</code></td></tr><tr><td>OpenAI SDK</td><td><code>-</code></td></tr><tr><td>MCP SDK</td><td><code>-</code></td></tr><tr><td>FastAPI</td><td><code>-</code></td></tr><tr><td>Plotly</td><td><code>7.1.0</code></td></tr><tr><td>NVIDIA Driver</td><td><code>-</code></td></tr><tr><td>Intel iGPU Driver</td><td><code>32.0.101.8949</code></td></tr><tr><td>NPU Driver</td><td><code>32.0.100.5488</code></td></tr></table></div>
+
+<div style="color:var(--text2); font-size:0.75rem; text-align:center; margin-top:20px;">
+    LiteAgent-Clash &mdash; Heterogeneous AI Workload Orchestration
+</div>
+
+</body>
+</html>

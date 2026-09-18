@@ -1,0 +1,10 @@
+{
+  "backend": "NativeOpenVINO",
+  "device_type": "GPU",
+  "model": "Llama-3.1-8B-Instruct_ov-int4-GRw",
+  "kpi_mode": "full",
+  "workflow_exit_code": 0,
+  "workflow_duration_s": 838.28,
+  "model_weight_mb": 0,
+  "model_weight_path": "https://client.mlcommons-storage.org/deps/2.0/scenario_files/models/llama3/8b-instruct/NativeOpenVINO/GPU/openvino_model.xml"
+}

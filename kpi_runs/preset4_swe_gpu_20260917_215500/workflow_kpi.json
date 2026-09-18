@@ -1,0 +1,69 @@
+{
+  "model": "Llama-3.1-8B-Instruct_ov-int4-GRw",
+  "backend": "NativeOpenVINO",
+  "stages": {
+    "01_code_analysis": {
+      "input_tokens": 1929,
+      "output_tokens": 128,
+      "total_tokens": 2057,
+      "wall_time_s": 5.901,
+      "output_tokens_per_s": 21.697,
+      "ttft_s": 1.1237,
+      "start_epoch": 1789707318.244,
+      "end_epoch": 1789707324.145,
+      "start_iso": "2026-09-17T21:55:18.244",
+      "end_iso": "2026-09-17T21:55:24.145"
+    },
+    "02_code_analysis": {
+      "input_tokens": 1929,
+      "output_tokens": 128,
+      "total_tokens": 2057,
+      "wall_time_s": 5.507,
+      "output_tokens_per_s": 23.251,
+      "ttft_s": 0.818,
+      "start_epoch": 1789707329.146,
+      "end_epoch": 1789707334.653,
+      "start_iso": "2026-09-17T21:55:29.146",
+      "end_iso": "2026-09-17T21:55:34.653"
+    },
+    "03_code_analysis": {
+      "input_tokens": 1783,
+      "output_tokens": 128,
+      "total_tokens": 1911,
+      "wall_time_s": 5.613,
+      "output_tokens_per_s": 22.815,
+      "ttft_s": 0.9087,
+      "start_epoch": 1789707344.294,
+      "end_epoch": 1789707349.907,
+      "start_iso": "2026-09-17T21:55:44.294",
+      "end_iso": "2026-09-17T21:55:49.907"
+    },
+    "04_code_analysis": {
+      "input_tokens": 1783,
+      "output_tokens": 128,
+      "total_tokens": 1911,
+      "wall_time_s": 5.363,
+      "output_tokens_per_s": 23.876,
+      "ttft_s": 0.7187,
+      "start_epoch": 1789707354.913,
+      "end_epoch": 1789707360.276,
+      "start_iso": "2026-09-17T21:55:54.913",
+      "end_iso": "2026-09-17T21:56:00.276"
+    }
+  },
+  "totals": {
+    "input_tokens": 7424,
+    "output_tokens": 512,
+    "total_tokens": 7936,
+    "output_tokens_per_s": 8.87
+  },
+  "workflow_wall_time_s": 57.72,
+  "workflow_start_iso": "2026-09-17T21:55:03.887",
+  "workflow_end_iso": "2026-09-17T21:56:01.604",
+  "timeline": {
+    "workflow_name": "preset4_swe_gpu",
+    "start_epoch": 1789707303.8871453,
+    "end_epoch": 1789707361.6048598,
+    "phases": []
+  }
+}

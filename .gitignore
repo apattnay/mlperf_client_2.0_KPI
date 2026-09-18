@@ -18,7 +18,6 @@ tools/accuracy/mmlu/*.log
 tools/accuracy/ifeval/*.log
 .venv*/
 wmlp/
-kpi_runs/
 Logs/
 .vscode/*
 /build.*

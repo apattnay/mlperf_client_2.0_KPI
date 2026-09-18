@@ -1,0 +1,366 @@
+The default logger configuration file is used.
+Starting...
+
+Application Version: 2.0.0.c8d2dc0 MLCommons Standard Build
+
+Using scenarios from C:\mlperf_client_2.0_KPI\data\configs\vendors_default\agentic\Llama3.1\Intel_NativeOpenVINO_NPU.json
+
+Configuring scenarios...
+
+
+Configuration tested by MLCommons
+
+Temp path is not set in the config; using default system temp path: C:\Users\ADMINI~1\AppData\Local\Temp\MLPerf\2.0.0.c8d2dc0
+
+Python path override used: system
+
+Starting to run scenario Llama3, model Llama 3.1 8B Instruct
+
+
+Checking disk space before downloading...
+
+Disk space check passed.
+
+
+
+Downloading necessary files...
+
+
+Download openvino_model.xml (Task 1/43) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download IHV-OV-tokenizers.zip (Task 2/43) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_model.bin (Task 3/43) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download swe-agent-prompts.json (Task 4/43) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download swe_warmup.md (Task 5/43) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download swe_user_0.md (Task 6/43) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download swe_system.md (Task 7/43) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download swe_user_1.md (Task 8/43) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download swe_user_2.md (Task 9/43) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download swe_agent_0.md (Task 10/43) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download swe_agent_1.md (Task 11/43) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download swe_agent_2.md (Task 12/43) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download da_warmup.md (Task 13/43) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download da_system.md (Task 14/43) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download da_user_0.md (Task 15/43) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download da_user_1.md (Task 16/43) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download da_user_2.md (Task 17/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download da_user_3.md (Task 18/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download da_agent_0.md (Task 19/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download da_agent_1.md (Task 20/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download da_agent_2.md (Task 21/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download da_agent_3.md (Task 22/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download tools_sandbox.zip (Task 23/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download generation-greedy-results.json (Task 24/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino.dll (Task 25/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_auto_batch_plugin.dll (Task 26/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_hetero_plugin.dll (Task 27/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_auto_plugin.dll (Task 28/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_intel_gpu_plugin.dll (Task 29/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_c.dll (Task 30/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_genai.dll (Task 31/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_intel_cpu_plugin.dll (Task 32/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_pytorch_frontend.dll (Task 33/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_intel_npu_plugin.dll (Task 34/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_ir_frontend.dll (Task 35/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_onnx_frontend.dll (Task 36/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_paddle_frontend.dll (Task 37/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_tokenizers.dll (Task 38/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_tensorflow_frontend.dll (Task 39/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_tensorflow_lite_frontend.dll (Task 40/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download plugins.xml (Task 41/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download tbb12.dll (Task 42/43) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download tbbmalloc.dll (Task 43/43) finished in 00:00:00.000 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Unpacking downloaded files...
+
+Preparing for inferences execution...
+
+Python: system PATH
+
+
+Verifying files...
+
+
+
+Running benchmarks for EPs NativeOpenVINO{"device_id":0,"device_name":"Intel(R) AI Boost","device_type":"NPU"} on model "Llama-3.1-8B-Instruct_ov-int4-CHw" (https://client.mlcommons-storage.org/deps/2.0/scenario_files/models/llama3/8b-instruct/NativeOpenVINO/NPU/openvino_model.xml -> data\Llama3/373195660866641561\openvino_model.xml), added 1 task(s)
+
+
+
+Preparing to run the benchmark for the EP NativeOpenVINO{"device_id":0,"device_name":"Intel(R) AI Boost","device_type":"NPU"}
+
+power_begin - start llama3 llama_3_1_8b_instruct NativeOpenVINO {"device_id":0,"device_name":"Intel(R) AI Boost","device_type":"NPU"}
+
+Model Llama 3.1 8B Instruct (llama_3_1_8b_instruct), scenario Llama3, model path Result: https://client.mlcommons-storage.org/deps/2.0/scenario_files/models/llama3/8b-instruct/NativeOpenVINO/NPU/openvino_model.xml
+
+power_end - end llama3 llama_3_1_8b_instruct NativeOpenVINO {"device_id":0,"device_name":"Intel(R) AI Boost","device_type":"NPU"}
+
+NativeOpenVINO on NPU for Llama 3.1 8B Instruct (Task 1/1) finished in 00:08:33 seconds
+
+
+Overall Progress: [============] 100% (1/1 benchmark(s) completed)
+
+
+
+
+Finished running scenario Llama3, model Llama 3.1 8B Instruct in 514.529006 seconds
+
+
+Benchmark Results 09-17-2026 22:05:02:
+
+== Application Version: 2.0.0.c8d2dc0 MLCommons Standard Build ==
+== Configuration tested by MLCommons ==
+
+Model Variants:
+
+1. Llama-3.1-8B-Instruct_ov-int4-CHw (https://client.mlcommons-storage.org/deps/2.0/scenario_files/models/llama3/8b-instruct/NativeOpenVINO/NPU/openvino_model.xml)
+
+Shared Information:
+
+    Assets:
+        https://client.mlcommons-storage.org/deps/2.0/scenario_files/agentic/prompts/llama3/8b-instruct/swe_agent/swe_warmup.md
+        https://client.mlcommons-storage.org/deps/2.0/scenario_files/agentic/prompts/llama3/8b-instruct/swe_agent/swe_system.md
+        https://client.mlcommons-storage.org/deps/2.0/scenario_files/agentic/prompts/llama3/8b-instruct/swe_agent/swe_user_0.md
+        https://client.mlcommons-storage.org/deps/2.0/scenario_files/agentic/prompts/llama3/8b-instruct/swe_agent/swe_user_1.md
+        https://client.mlcommons-storage.org/deps/2.0/scenario_files/agentic/prompts/llama3/8b-instruct/swe_agent/swe_user_2.md
+        https://client.mlcommons-storage.org/deps/2.0/scenario_files/agentic/prompts/llama3/8b-instruct/swe_agent/swe_agent_0.md
+        https://client.mlcommons-storage.org/deps/2.0/scenario_files/agentic/prompts/llama3/8b-instruct/swe_agent/swe_agent_1.md
+        https://client.mlcommons-storage.org/deps/2.0/scenario_files/agentic/prompts/llama3/8b-instruct/swe_agent/swe_agent_2.md
+        https://client.mlcommons-storage.org/deps/2.0/scenario_files/agentic/prompts/llama3/8b-instruct/data_agent/da_warmup.md
+        https://client.mlcommons-storage.org/deps/2.0/scenario_files/agentic/prompts/llama3/8b-instruct/data_agent/da_system.md
+        https://client.mlcommons-storage.org/deps/2.0/scenario_files/agentic/prompts/llama3/8b-instruct/data_agent/da_user_0.md
+        https://client.mlcommons-storage.org/deps/2.0/scenario_files/agentic/prompts/llama3/8b-instruct/data_agent/da_user_1.md
+        https://client.mlcommons-storage.org/deps/2.0/scenario_files/agentic/prompts/llama3/8b-instruct/data_agent/da_user_2.md
+        https://client.mlcommons-storage.org/deps/2.0/scenario_files/agentic/prompts/llama3/8b-instruct/data_agent/da_user_3.md
+        https://client.mlcommons-storage.org/deps/2.0/scenario_files/agentic/prompts/llama3/8b-instruct/data_agent/da_agent_0.md
+        https://client.mlcommons-storage.org/deps/2.0/scenario_files/agentic/prompts/llama3/8b-instruct/data_agent/da_agent_1.md
+        https://client.mlcommons-storage.org/deps/2.0/scenario_files/agentic/prompts/llama3/8b-instruct/data_agent/da_agent_2.md
+        https://client.mlcommons-storage.org/deps/2.0/scenario_files/agentic/prompts/llama3/8b-instruct/data_agent/da_agent_3.md
+        https://client.mlcommons-storage.org/deps/2.0/scenario_files/agentic/tools_sandbox.zip
+    Input Files:
+        swe-agent-prompts.json
+    Iterations: 3
+    WarmUp Iterations: 1
+
+Execution Summary:
+
+Model: Llama-3.1-8B-Instruct_ov-int4-CHw (#1):
+    NPU:
+        NativeOpenVINO {"device_id":0,"device_name":"Intel(R) AI Boost","device_type":"NPU"}:
+            SWE Agent:	Avg Expected Duration: 116.595 s, Avg Tools Duration: 4.811 s, Context Window Size: 10251
+
+
+
+

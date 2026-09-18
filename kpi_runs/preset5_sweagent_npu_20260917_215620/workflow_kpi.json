@@ -1,0 +1,192 @@
+{
+  "model": "Llama-3.1-8B-Instruct_ov-int4-CHw",
+  "backend": "NativeOpenVINO",
+  "stages": {
+    "01_warmup": {
+      "input_tokens": 40,
+      "output_tokens": 44,
+      "total_tokens": 84,
+      "wall_time_s": 3.154,
+      "output_tokens_per_s": 13.955,
+      "ttft_s": 1.1671,
+      "start_epoch": 1789707399.958,
+      "end_epoch": 1789707403.112,
+      "start_iso": "2026-09-17T21:56:39.958",
+      "end_iso": "2026-09-17T21:56:43.112"
+    },
+    "02_swe_agent": {
+      "input_tokens": 8198,
+      "output_tokens": 747,
+      "total_tokens": 8945,
+      "wall_time_s": 60.581,
+      "output_tokens_per_s": 12.332,
+      "ttft_s": 14.6992,
+      "start_epoch": 1789707408.121,
+      "end_epoch": 1789707468.702,
+      "start_iso": "2026-09-17T21:56:48.121",
+      "end_iso": "2026-09-17T21:57:48.702",
+      "tool_calls": {
+        "read_file": 1
+      },
+      "tool_call_count": 1
+    },
+    "03_swe_agent": {
+      "input_tokens": 8979,
+      "output_tokens": 1000,
+      "total_tokens": 9979,
+      "wall_time_s": 64.163,
+      "output_tokens_per_s": 15.587,
+      "ttft_s": 2.7565,
+      "start_epoch": 1789707473.715,
+      "end_epoch": 1789707537.878,
+      "start_iso": "2026-09-17T21:57:53.715",
+      "end_iso": "2026-09-17T21:58:57.878",
+      "tool_calls": {
+        "read": 1,
+        "apply_patch": 1
+      },
+      "tool_call_count": 2
+    },
+    "04_swe_agent": {
+      "input_tokens": 10251,
+      "output_tokens": 43,
+      "total_tokens": 10294,
+      "wall_time_s": 10.576,
+      "output_tokens_per_s": 4.067,
+      "ttft_s": 7.7502,
+      "start_epoch": 1789707547.695,
+      "end_epoch": 1789707558.271,
+      "start_iso": "2026-09-17T21:59:07.695",
+      "end_iso": "2026-09-17T21:59:18.271"
+    },
+    "05_warmup": {
+      "input_tokens": 40,
+      "output_tokens": 44,
+      "total_tokens": 84,
+      "wall_time_s": 3.19,
+      "output_tokens_per_s": 13.798,
+      "ttft_s": 1.188,
+      "start_epoch": 1789707570.808,
+      "end_epoch": 1789707573.998,
+      "start_iso": "2026-09-17T21:59:30.808",
+      "end_iso": "2026-09-17T21:59:33.998"
+    },
+    "06_swe_agent": {
+      "input_tokens": 8198,
+      "output_tokens": 747,
+      "total_tokens": 8945,
+      "wall_time_s": 60.415,
+      "output_tokens_per_s": 12.365,
+      "ttft_s": 14.4794,
+      "start_epoch": 1789707579.005,
+      "end_epoch": 1789707639.42,
+      "start_iso": "2026-09-17T21:59:39.005",
+      "end_iso": "2026-09-17T22:00:39.420",
+      "tool_calls": {
+        "read_file": 1
+      },
+      "tool_call_count": 1
+    },
+    "07_swe_agent": {
+      "input_tokens": 8979,
+      "output_tokens": 1000,
+      "total_tokens": 9979,
+      "wall_time_s": 64.187,
+      "output_tokens_per_s": 15.581,
+      "ttft_s": 2.7534,
+      "start_epoch": 1789707644.429,
+      "end_epoch": 1789707708.616,
+      "start_iso": "2026-09-17T22:00:44.429",
+      "end_iso": "2026-09-17T22:01:48.616",
+      "tool_calls": {
+        "read": 1,
+        "apply_patch": 1
+      },
+      "tool_call_count": 2
+    },
+    "08_swe_agent": {
+      "input_tokens": 10251,
+      "output_tokens": 43,
+      "total_tokens": 10294,
+      "wall_time_s": 10.648,
+      "output_tokens_per_s": 4.04,
+      "ttft_s": 7.7979,
+      "start_epoch": 1789707718.465,
+      "end_epoch": 1789707729.113,
+      "start_iso": "2026-09-17T22:01:58.465",
+      "end_iso": "2026-09-17T22:02:09.113"
+    },
+    "09_warmup": {
+      "input_tokens": 40,
+      "output_tokens": 44,
+      "total_tokens": 84,
+      "wall_time_s": 3.156,
+      "output_tokens_per_s": 13.945,
+      "ttft_s": 1.1488,
+      "start_epoch": 1789707741.8,
+      "end_epoch": 1789707744.956,
+      "start_iso": "2026-09-17T22:02:21.800",
+      "end_iso": "2026-09-17T22:02:24.956"
+    },
+    "10_swe_agent": {
+      "input_tokens": 8198,
+      "output_tokens": 747,
+      "total_tokens": 8945,
+      "wall_time_s": 60.788,
+      "output_tokens_per_s": 12.289,
+      "ttft_s": 14.7225,
+      "start_epoch": 1789707749.972,
+      "end_epoch": 1789707810.76,
+      "start_iso": "2026-09-17T22:02:29.972",
+      "end_iso": "2026-09-17T22:03:30.760",
+      "tool_calls": {
+        "read_file": 1
+      },
+      "tool_call_count": 1
+    },
+    "11_swe_agent": {
+      "input_tokens": 8979,
+      "output_tokens": 1000,
+      "total_tokens": 9979,
+      "wall_time_s": 64.29,
+      "output_tokens_per_s": 15.556,
+      "ttft_s": 2.7462,
+      "start_epoch": 1789707815.768,
+      "end_epoch": 1789707880.058,
+      "start_iso": "2026-09-17T22:03:35.768",
+      "end_iso": "2026-09-17T22:04:40.058",
+      "tool_calls": {
+        "read": 1,
+        "apply_patch": 1
+      },
+      "tool_call_count": 2
+    },
+    "12_swe_agent": {
+      "input_tokens": 10251,
+      "output_tokens": 43,
+      "total_tokens": 10294,
+      "wall_time_s": 10.768,
+      "output_tokens_per_s": 3.995,
+      "ttft_s": 7.9073,
+      "start_epoch": 1789707889.863,
+      "end_epoch": 1789707900.631,
+      "start_iso": "2026-09-17T22:04:49.863",
+      "end_iso": "2026-09-17T22:05:00.631"
+    }
+  },
+  "totals": {
+    "input_tokens": 82404,
+    "output_tokens": 5502,
+    "total_tokens": 87906,
+    "output_tokens_per_s": 10.61
+  },
+  "workflow_wall_time_s": 518.57,
+  "workflow_start_iso": "2026-09-17T21:56:23.661",
+  "workflow_end_iso": "2026-09-17T22:05:02.234",
+  "timeline": {
+    "workflow_name": "preset5_sweagent_npu",
+    "start_epoch": 1789707383.6614614,
+    "end_epoch": 1789707902.2342045,
+    "phases": []
+  }
+}
