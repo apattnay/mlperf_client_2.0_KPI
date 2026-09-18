@@ -178,6 +178,7 @@ exercises the `apply_patch` tool in practice, only `read_file` in a loop.
 | Preset 4 (iGPU, code-analysis) | `kpi_runs/preset4_swe_gpu_20260917_215500/` |
 | Preset 5 (NPU, SWE Agent agentic) | `kpi_runs/preset5_sweagent_npu_20260917_215620/` |
 | Preset 6 (iGPU, SWE Agent agentic) | `kpi_runs/preset6_sweagent_gpu_20260917_220525/` |
+| Preset 5 + cold/warm/Prefill/ITL instrumentation (NPU, §8) | `kpi_runs/preset5_sweagent_npu_itl_20260918_002637/` |
 
 Each directory contains `dashboard.html` (HW telemetry), `kpi_report.html` (workflow KPIs),
 `workflow_kpi.json`, `experiment.json`, `hw_samples.csv`, and the raw `mlperf_stdout.log`.
