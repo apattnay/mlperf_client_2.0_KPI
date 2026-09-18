@@ -1,27 +1,20 @@
 {
   "source_repo": "https://github.com/intel-sandbox/KPI-hub",
   "vendored_ref": "main",
-  "vendored_commit": "7f2b94d",
-  "vendored_commit_subject": "Make async phase tracing task-local",
-  "vendored_at": "2026-09-17",
+  "vendored_commit": "609a0ad",
+  "vendored_commit_subject": "Add device-aware efficiency, tool-call identification, and CPU timeline segments to kpi_report.html",
+  "vendored_at": "2026-09-18",
   "note": "This directory is a vendored snapshot, not a git submodule. Contributors without access to the source repo do not need it to build or run this project. To pull a newer snapshot (requires access to the source repo), run tools/sync_kpi_hub.ps1 and commit the resulting changes.",
   "local_patches": [
     {
-      "description": "generate_kpi_report.py: renamed report title/h1 from 'LiteAgent Multi-Agent KPI Report' to 'Multi-Agent KPI Report' - reapply after syncing a new snapshot.",
+      "description": "generate_kpi_report.py: Per-Agent KPIs table gains a cold/warm badge next to each stage name (warm shows the carried-over history token count), a new 'Prefill (ms)' column, and a populated 'Avg ITL (ms)' column (was always '-' for NativeOpenVINO in-process scenarios). Sourced from new is_cold/history_tokens/avg_itl_ms/itl_stddev_ms/prefill_ms_est fields tools/run_kpi_workflow.py's parse_executor_log() now extracts from the executor log's 'inference task added. history:/user:' and 'TTFT .../2nd+ token latency ...'/'Average 2nd+ Token Latency:' lines. Reapply after syncing a new snapshot (patch file: tools/KPI-hub/upstream/kpi-hub-local-patches-3-phase-cold-warm-itl.patch).",
       "upstream_candidate": true
     },
     {
-      "description": "generate_kpi_report.py: _build_efficiency_html now branches on exp_meta['device_type'] (NPU/GPU/NVIDIA) instead of always assuming iGPU - reapply after syncing a new snapshot. Companion change in tools/run_kpi_workflow.py adds device_type to experiment.json.",
-      "upstream_candidate": true
-    },
-    {
-      "description": "plot_utilization_interactive.py: added an analytical KV-Cache Size (Estimated) panel for non-OVMS (in-process NativeOpenVINO) scenarios, since the existing KV-cache panel only works when ovms_kv_cache_pct/mb columns are present (i.e. running against a real OVMS server). New load_phase_tokens()/estimate_kv_cache_series()/KV_CACHE_MB_PER_TOKEN derive an MB-over-time curve from each stage's input/output token counts + Llama-3.1-8B architecture constants (32 layers, 8 KV heads, head_dim 128, fp16 KV cache = 0.125 MB/token), read from the same --phases workflow_kpi.json already passed in. build_dashboard() gained a kv_cache_phases param; reapply after syncing a new snapshot.",
-      "upstream_candidate": true
-    },
-    {
-      "description": "generate_kpi_report.py: run_kpi_workflow.py's extract_tool_calls() parses mlperf's Logs/results.json 'Output' field for Anthropic-style tool_use blocks and attaches per-stage tool-call counts to workflow_kpi.json; the Per-Agent KPIs table gained a 'Tools' column rendering these as badges, and the Workflow Timeline gained a distinct CPU bar (spanning the gap between a stage's end and the next stage's start) representing tool execution time. Also fixed hw_label defaulting to 'NVIDIA (Ollama)' for any non-ovms backend and PHASE_HW having no entries for SWE/Data Agent stage names - now falls back to exp_meta['device_type']. Reapply after syncing a new snapshot.",
+      "description": "DATA_SOURCES.md: documents the 'KV-Cache Size Estimate, Native EP' feature (analytical estimate in plot_utilization_interactive.py, already upstreamed as part of 609a0ad) - this doc section itself was never included in the upstreamed patch, so tools/sync_kpi_hub.ps1 wipes it on every refresh. Reapply (or fold into an upstream PR for DATA_SOURCES.md) after syncing a new snapshot.",
       "upstream_candidate": true
     }
   ],
-  "upstream_todo": "DONE 2026-09-17: all 4 local_patches above were upstreamed to https://github.com/intel-sandbox/KPI-hub main as commit 609a0ad (\"Add device-aware efficiency, tool-call identification, and CPU timeline segments to kpi_report.html\"), merged via fast-forward from branch upstream/mlperf-client-2p0-kpi-patches (applied with `git apply -p3` against a fresh clone at 7f2b94d, since the patch files use this repo's tools/KPI-hub/ prefix). This vendored snapshot (7f2b94d) is therefore one commit behind upstream main; run tools/sync_kpi_hub.ps1 to pick up 609a0ad and then these local_patches entries can be removed since they're now part of upstream."
+  "upstream_todo": "Patches 1-4 (title rename, device_type-aware efficiency, KV-cache estimate panel, tool-call+CPU-timeline) were upstreamed 2026-09-17 as intel-sandbox/KPI-hub@609a0ad and are now part of this vendored snapshot - no longer listed as local_patches. One new local patch remains (see local_patches above, added 2026-09-18): apply tools/KPI-hub/upstream/kpi-hub-local-patches-3-phase-cold-warm-itl.patch (with `git apply -p3` against a fresh KPI-hub clone) after any future tools/sync_kpi_hub.ps1 refresh, then propose it upstream the same way (clone KPI-hub, branch, apply, commit, fast-forward push to main - see /memories/repo/kpi-hub-integration.md for the exact steps)."
 }
+
