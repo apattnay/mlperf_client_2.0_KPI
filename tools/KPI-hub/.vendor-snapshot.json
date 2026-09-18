@@ -23,5 +23,5 @@
       "upstream_candidate": true
     }
   ],
-  "upstream_todo": "All local_patches above are generic improvements (not specific to this repo's setup) and should be proposed back to https://github.com/intel-sandbox/KPI-hub as PRs once validated. Apply in order against a fresh clone: git apply tools/KPI-hub/upstream/kpi-hub-local-patches.patch (patches 1-3: title, device_type, KV-cache estimate), then git apply tools/KPI-hub/upstream/kpi-hub-local-patches-2-tool-calls-timeline.patch (patch 4: tool-call column + CPU timeline segments + HW label fix). Round-trip verified 2026-09-17 (reverse-then-forward apply reproduces this repo's HEAD exactly)."
+  "upstream_todo": "DONE 2026-09-17: all 4 local_patches above were upstreamed to https://github.com/intel-sandbox/KPI-hub main as commit 609a0ad (\"Add device-aware efficiency, tool-call identification, and CPU timeline segments to kpi_report.html\"), merged via fast-forward from branch upstream/mlperf-client-2p0-kpi-patches (applied with `git apply -p3` against a fresh clone at 7f2b94d, since the patch files use this repo's tools/KPI-hub/ prefix). This vendored snapshot (7f2b94d) is therefore one commit behind upstream main; run tools/sync_kpi_hub.ps1 to pick up 609a0ad and then these local_patches entries can be removed since they're now part of upstream."
 }
