@@ -775,13 +775,17 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
         # Determine LLM label based on backend
         llm_label = "iGPU (OVMS)" if backend == "ovms" else "NVIDIA (Ollama)"
         embed_label = _embed_device_label(rkpi)
+        # Generic device label for stages not covered by the legacy PHASE_HW dict below
+        # (e.g. SWE Agent / Data Agent stages, which aren't part of the fixed 5-agent RAG flow).
+        device_type = (exp_meta.get("device_type") or "").upper()
+        generic_llm_label = device_type or backend
 
-        for name, data in ordered:
+        for i, (name, data) in enumerate(ordered):
             left_pct = (data["start_epoch"] - t0_epoch) / total_span * 100
             width_pct = (data["end_epoch"] - data["start_epoch"]) / total_span * 100
             width_pct = max(width_pct, 0.5)  # minimum visibility
             hw_raw = PHASE_HW.get(name, "")
-            hw_label = hw_raw.replace("LLM", llm_label).replace("EMBED_DEVICE", embed_label) if hw_raw else ""
+            hw_label = hw_raw.replace("LLM", llm_label).replace("EMBED_DEVICE", embed_label) if hw_raw else generic_llm_label
             timeline_rows.append({
                 "name": name,
                 "left_pct": round(left_pct, 2),
@@ -796,6 +800,32 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
                 "is_background": False,
                 "extra_tooltip": "",
             })
+
+            # Tool execution (CPU-bound): the gap between this stage's inference ending and
+            # the next stage's inference starting is where the harness runs the tool call(s)
+            # this stage's output requested (read_file/write_file/apply_patch/execute_command).
+            tool_calls = data.get("tool_calls")
+            if tool_calls and i + 1 < len(ordered):
+                next_start = ordered[i + 1][1]["start_epoch"]
+                gap_s = next_start - data["end_epoch"]
+                if gap_s > 0.2:
+                    tool_left_pct = (data["end_epoch"] - t0_epoch) / total_span * 100
+                    tool_width_pct = max(gap_s / total_span * 100, 0.5)
+                    tool_summary = ", ".join(f"{tn}\u00d7{tc}" for tn, tc in sorted(tool_calls.items()))
+                    timeline_rows.append({
+                        "name": f"{name} (tools)",
+                        "left_pct": round(tool_left_pct, 2),
+                        "width_pct": round(tool_width_pct, 2),
+                        "start_time": _fmt_time(data.get("end_iso", "")),
+                        "end_time": _fmt_time(ordered[i + 1][1].get("start_iso", "")),
+                        "duration_s": round(gap_s, 1),
+                        "color": "rgba(139,148,158,0.55)",
+                        "tokens": 0,
+                        "tok_s": 0,
+                        "hw": "CPU",
+                        "is_background": True,
+                        "extra_tooltip": tool_summary,
+                    })
 
     # ---- Build agent table rows ----
     agent_order = ["task_agent", "analysis_agent", "summary_agent_1", "summary_agent_2", "executive_summary_agent"]
