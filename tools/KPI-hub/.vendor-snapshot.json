@@ -1,16 +1,11 @@
 {
   "source_repo": "https://github.com/intel-sandbox/KPI-hub",
   "vendored_ref": "main",
-  "vendored_commit": "08ad29b",
-  "vendored_commit_subject": "Add cold/warm turn classification, Prefill/ITL columns, and Roofline projection",
+  "vendored_commit": "f94664c",
+  "vendored_commit_subject": "Document KV-Cache Size Estimate (Native EP) in DATA_SOURCES.md",
   "vendored_at": "2026-09-23",
   "note": "This directory is a vendored snapshot, not a git submodule. Contributors without access to the source repo do not need it to build or run this project. To pull a newer snapshot (requires access to the source repo), run tools/sync_kpi_hub.ps1 and commit the resulting changes.",
-  "local_patches": [
-    {
-      "description": "DATA_SOURCES.md: documents the 'KV-Cache Size Estimate, Native EP' feature (analytical estimate in plot_utilization_interactive.py, already upstreamed as part of 609a0ad) - this doc section itself was never included in the upstreamed patch, so tools/sync_kpi_hub.ps1 wipes it on every refresh. Reapply (or fold into an upstream PR for DATA_SOURCES.md) after syncing a new snapshot.",
-      "upstream_candidate": true
-    }
-  ],
-  "upstream_todo": "All code patches (title rename, device_type-aware efficiency, KV-cache estimate panel, tool-call+CPU-timeline, cold/warm+Prefill/ITL, Roofline projection) are now upstreamed to intel-sandbox/KPI-hub main as of commit 08ad29b and are part of this vendored snapshot - no longer listed as local_patches. Only the DATA_SOURCES.md doc-only addition above remains outstanding."
+  "local_patches": [],
+  "upstream_todo": "All local patches from this project (title rename, device_type-aware efficiency, KV-cache estimate panel + its DATA_SOURCES.md docs, tool-call+CPU-timeline, cold/warm+Prefill/ITL, Roofline projection) are fully upstreamed to intel-sandbox/KPI-hub main as of commit f94664c. Nothing outstanding - this vendored snapshot is a clean 1:1 mirror of upstream."
 }
 
