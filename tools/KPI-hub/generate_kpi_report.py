@@ -166,6 +166,36 @@ def _collect_sut_info():
     except Exception:
         pass
 
+    # DRAM theoretical bandwidth: computed from THIS machine's actual per-channel memory
+    # speed/width via PowerShell/CIM (not `wmic` - deprecated/broken with "Invalid namespace" on
+    # some current Windows builds, confirmed on this exact test machine), rather than assuming a
+    # fixed platform constant - different machines can have very different memory subsystems
+    # (e.g. desktop 2ch/64-bit DDR5 vs. mobile 8ch/16-bit LPDDR5X have very different peaks).
+    try:
+        r = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+             "Get-CimInstance Win32_PhysicalMemory | "
+             "Select-Object ConfiguredClockSpeed,DataWidth | ConvertTo-Json -Compress"],
+            capture_output=True, text=True, timeout=10,
+        )
+        channels = json.loads(r.stdout.strip() or "[]")
+        if isinstance(channels, dict):
+            channels = [channels]
+        total_gbs = 0.0
+        for ch in channels:
+            try:
+                mts = float(ch.get("ConfiguredClockSpeed") or 0)
+                bits = float(ch.get("DataWidth") or 0)
+                if mts > 0 and bits > 0:
+                    total_gbs += mts * 1e6 * (bits / 8) / 1e9
+            except (ValueError, TypeError, AttributeError):
+                continue
+        if total_gbs > 0:
+            hw["dram_bw_gbs"] = round(total_gbs, 1)
+            hw["dram_channels"] = str(len(channels))
+    except Exception:
+        pass
+
     # System/board
     try:
         r = subprocess.run(
@@ -443,6 +473,7 @@ def _build_sut_html(hw, sw):
         ("Cores / Threads", cores_str),
         ("Max Clock", f"{hw.get('cpu_max_mhz', '-')} MHz"),
         ("RAM", f"{hw.get('ram_gb', '-')} GB"),
+        ("DRAM BW (measured config)", f"{hw['dram_bw_gbs']} GB/s ({hw.get('dram_channels', '?')} ch)" if hw.get("dram_bw_gbs") else "-"),
         ("Intel iGPU", igpu_detail),
         ("iGPU VRAM", igpu_vram),
         ("NVIDIA GPU", nvidia_detail),
@@ -511,6 +542,18 @@ def _estimate_params_b(model_weight_mb, bytes_per_weight) -> float:
     return 4.0  # fallback used when weight size couldn't be measured (matches prior convention)
 
 
+def _dram_bw_gbs(hw_info, fallback=89.0):
+    """(peak_gbs, is_detected) - prefer this machine's actual measured memory config (see
+    _collect_sut_info's dram_bw_gbs, computed from real per-channel speed/width) over a fixed
+    platform assumption, since different machines can have very different memory subsystems
+    (e.g. a 2ch/64-bit DDR5 desktop vs. an 8ch/16-bit LPDDR5X mobile platform have very different
+    peaks - a hardcoded constant calibrated on one is not portable to the other)."""
+    detected = (hw_info or {}).get("dram_bw_gbs")
+    if detected:
+        return float(detected), True
+    return fallback, False
+
+
 def _roofline_points(wkpi, params_b, bytes_per_weight):
     """Per-stage (prefill, decode) roofline points.
 
@@ -548,7 +591,7 @@ def _roofline_points(wkpi, params_b, bytes_per_weight):
     return points
 
 
-def _build_roofline_html(wkpi, exp_meta):
+def _build_roofline_html(wkpi, exp_meta, hw_info=None):
     """Roofline analysis: plots each stage's prefill/decode phase as (arithmetic intensity,
     achieved GFLOPs/s) against this device's memory-bandwidth and compute roofs, on a log-log
     chart. See docs/AGENTIC_WORKFLOW_CHARACTERIZATION.md section 9 for the full methodology."""
@@ -571,12 +614,13 @@ def _build_roofline_html(wkpi, exp_meta):
         return ""
 
     # ---- Memory + compute roofs ----
+    mem_bw_detected = False
     if is_nvidia:
         mem_bw_gbs = 672.0  # GDDR7, matches _build_efficiency_html's NVIDIA constant
         compute_roofs = [("NVIDIA FP16 Tensor Peak (theoretical)", 123400.0, True)]
         device_label = "NVIDIA GPU"
     elif is_npu:
-        mem_bw_gbs = 89.0  # shared system DDR5
+        mem_bw_gbs, mem_bw_detected = _dram_bw_gbs(hw_info)
         # No vendor-published NPU FLOPS spec is detectable from this benchmark's HW probing, so
         # the compute roof is derived empirically from this run's own best prefill throughput
         # (prefill is deep in the compute-bound region, making it a reasonable practical ceiling).
@@ -585,10 +629,10 @@ def _build_roofline_html(wkpi, exp_meta):
         compute_roofs = [("NPU Empirically Observed Peak (this run)", empirical_peak, False)]
         device_label = "NPU"
     else:
-        mem_bw_gbs = 89.0  # shared system DDR5
+        mem_bw_gbs, mem_bw_detected = _dram_bw_gbs(hw_info)
         compute_roofs = [
             ("iGPU Theoretical Peak (FP16 FMA)", 4096.0, True),
-            ("iGPU Measured INT4 GEMM Ceiling", 78.0, False),
+            ("iGPU Measured INT4 GEMM Ceiling (different reference chip)", 78.0, False),
         ]
         device_label = "iGPU"
 
@@ -650,7 +694,10 @@ def _build_roofline_html(wkpi, exp_meta):
         f'intensity, typically compute-bound. Decode (●) re-reads the full weight per token (batch=1) - '
         f'a small constant intensity ({2/bytes_per_weight:.1f} FLOPs/Byte) regardless of context length, '
         f'the classic memory-bandwidth-bound signature. Points near/above a roof are running near that '
-        f'ceiling for this device.'
+        f'ceiling for this device. Memory roof ({mem_bw_gbs:.1f} GB/s) is '
+        + ('measured from this machine\'s actual memory configuration (channels × width × clock).'
+           if mem_bw_detected else
+           'a fallback assumption - this machine\'s memory config could not be detected.')
     )
 
     return f"""<div class="section"><h2>{device_label} Roofline Projection</h2>
@@ -660,7 +707,7 @@ def _build_roofline_html(wkpi, exp_meta):
 {rows_html}</table></div>"""
 
 
-def _build_efficiency_html(wkpi, exp_meta):
+def _build_efficiency_html(wkpi, exp_meta, hw_info=None):
     """Derive and render compute efficiency metrics — adapts to NPU, GPU (integrated), or NVIDIA (Ollama)."""
     backend = exp_meta.get("backend", "ovms")
     is_nvidia = backend == "ollama"
@@ -737,10 +784,10 @@ def _build_efficiency_html(wkpi, exp_meta):
             IGPU_PEAK_TFLOPS_FP16 = 4.096
             IGPU_MEASURED_TOPS_INT4 = 0.078
             rows += [
-                (f"Measured {device_label} INT4 GEMM Ceiling", f"{IGPU_MEASURED_TOPS_INT4:.3f} TOPS"),
+                (f"Measured {device_label} INT4 GEMM Ceiling (different reference chip)", f"{IGPU_MEASURED_TOPS_INT4:.3f} TOPS"),
                 (f"{device_label} Theoretical Peak (FP16 FMA)", f"{IGPU_PEAK_TFLOPS_FP16:.2f} TFLOPS"),
             ]
-        ddr5_peak_bw_gbs = 89.0
+        ddr5_peak_bw_gbs, bw_detected = _dram_bw_gbs(hw_info)
         if model_weight_mb > 0:
             mem_read_per_token_gb = model_weight_mb / 1024
             achieved_bw_gbs = decode_tok_per_s * mem_read_per_token_gb
@@ -750,14 +797,14 @@ def _build_efficiency_html(wkpi, exp_meta):
             mem_bw_utilization_pct = 0.0
         rows += [
             ("DRAM BW Achieved", f"{achieved_bw_gbs:.1f} GB/s"),
-            ("DRAM BW Peak (DDR5)", f"{ddr5_peak_bw_gbs:.0f} GB/s"),
+            ("DRAM BW Peak" + (" (measured)" if bw_detected else " (DDR5 assumption)"), f"{ddr5_peak_bw_gbs:.1f} GB/s"),
             ("Memory BW Utilization", f"{mem_bw_utilization_pct:.1f}%"),
         ]
         section_title = f"{device_label} Efficiency Analysis"
         section_note = (
             f'LLM decode is memory-bandwidth-bound: each token reads the full model weight from DRAM. '
             f'Compute demand is theoretical (2×params)'
-            + ('; measured GEMM ceiling confirms low actual INT4 throughput on this GPU. ' if not is_npu else '. ')
+            + ('; measured GEMM ceiling was recorded on a different reference iGPU (128 EU), not this machine\'s - treat as directional only. ' if not is_npu else '. ')
             + 'Memory BW utilization is the meaningful efficiency metric for decode.'
         )
 
@@ -1248,8 +1295,8 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
     sut_html = _build_sut_html(hw_info, sw_info)
 
     # ---- New KPI sections ----
-    efficiency_html = _build_efficiency_html(wkpi, exp_meta)
-    roofline_html = _build_roofline_html(wkpi, exp_meta)
+    efficiency_html = _build_efficiency_html(wkpi, exp_meta, hw_info)
+    roofline_html = _build_roofline_html(wkpi, exp_meta, hw_info)
     peak_rss_html = _build_peak_rss_html(peak_rss)
     model_weight_html = _build_model_weight_html(exp_meta)
     startup_html = _build_startup_timing_html(exp_meta, rkpi)
