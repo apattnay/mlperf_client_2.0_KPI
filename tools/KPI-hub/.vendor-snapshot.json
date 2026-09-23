@@ -1,20 +1,16 @@
 {
   "source_repo": "https://github.com/intel-sandbox/KPI-hub",
   "vendored_ref": "main",
-  "vendored_commit": "609a0ad",
-  "vendored_commit_subject": "Add device-aware efficiency, tool-call identification, and CPU timeline segments to kpi_report.html",
-  "vendored_at": "2026-09-18",
+  "vendored_commit": "08ad29b",
+  "vendored_commit_subject": "Add cold/warm turn classification, Prefill/ITL columns, and Roofline projection",
+  "vendored_at": "2026-09-23",
   "note": "This directory is a vendored snapshot, not a git submodule. Contributors without access to the source repo do not need it to build or run this project. To pull a newer snapshot (requires access to the source repo), run tools/sync_kpi_hub.ps1 and commit the resulting changes.",
   "local_patches": [
-    {
-      "description": "generate_kpi_report.py: Per-Agent KPIs table gains a cold/warm badge next to each stage name (warm shows the carried-over history token count), a new 'Prefill (ms)' column, and a populated 'Avg ITL (ms)' column (was always '-' for NativeOpenVINO in-process scenarios). Sourced from new is_cold/history_tokens/avg_itl_ms/itl_stddev_ms/prefill_ms_est fields tools/run_kpi_workflow.py's parse_executor_log() now extracts from the executor log's 'inference task added. history:/user:' and 'TTFT .../2nd+ token latency ...'/'Average 2nd+ Token Latency:' lines. Reapply after syncing a new snapshot (patch file: tools/KPI-hub/upstream/kpi-hub-local-patches-3-phase-cold-warm-itl.patch).",
-      "upstream_candidate": true
-    },
     {
       "description": "DATA_SOURCES.md: documents the 'KV-Cache Size Estimate, Native EP' feature (analytical estimate in plot_utilization_interactive.py, already upstreamed as part of 609a0ad) - this doc section itself was never included in the upstreamed patch, so tools/sync_kpi_hub.ps1 wipes it on every refresh. Reapply (or fold into an upstream PR for DATA_SOURCES.md) after syncing a new snapshot.",
       "upstream_candidate": true
     }
   ],
-  "upstream_todo": "Patches 1-4 (title rename, device_type-aware efficiency, KV-cache estimate panel, tool-call+CPU-timeline) were upstreamed 2026-09-17 as intel-sandbox/KPI-hub@609a0ad and are now part of this vendored snapshot - no longer listed as local_patches. One new local patch remains (see local_patches above, added 2026-09-18): apply tools/KPI-hub/upstream/kpi-hub-local-patches-3-phase-cold-warm-itl.patch (with `git apply -p3` against a fresh KPI-hub clone) after any future tools/sync_kpi_hub.ps1 refresh, then propose it upstream the same way (clone KPI-hub, branch, apply, commit, fast-forward push to main - see /memories/repo/kpi-hub-integration.md for the exact steps)."
+  "upstream_todo": "All code patches (title rename, device_type-aware efficiency, KV-cache estimate panel, tool-call+CPU-timeline, cold/warm+Prefill/ITL, Roofline projection) are now upstreamed to intel-sandbox/KPI-hub main as of commit 08ad29b and are part of this vendored snapshot - no longer listed as local_patches. Only the DATA_SOURCES.md doc-only addition above remains outstanding."
 }
 
