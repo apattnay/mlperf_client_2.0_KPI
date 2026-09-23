@@ -179,6 +179,8 @@ exercises the `apply_patch` tool in practice, only `read_file` in a loop.
 | Preset 5 (NPU, SWE Agent agentic) | `kpi_runs/preset5_sweagent_npu_20260917_215620/` |
 | Preset 6 (iGPU, SWE Agent agentic) | `kpi_runs/preset6_sweagent_gpu_20260917_220525/` |
 | Preset 5 + cold/warm/Prefill/ITL instrumentation (NPU, §8) | `kpi_runs/preset5_sweagent_npu_itl_20260918_002637/` |
+| Preset 5 + roofline projection (NPU, §10) | `kpi_runs/preset5_roofline_20260923_140129/` (local-only) |
+| Preset 6 + roofline projection (iGPU, §10) | `kpi_runs/preset6_roofline_20260923_141035/` (local-only) |
 
 Each directory contains `dashboard.html` (HW telemetry), `kpi_report.html` (workflow KPIs),
 `workflow_kpi.json`, `experiment.json`, `hw_samples.csv`, and the raw `mlperf_stdout.log`.
@@ -312,4 +314,56 @@ reports the corrected `Est. Parameters`/`DRAM BW Achieved`/`Memory BW Utilizatio
 `achieved_BW = 281 GFLOPs/s / 4 FLOPs/Byte ≈ 70 GB/s` — 79% of the 89 GB/s DDR5 peak for that
 specific turn (the previously-reported `0.0%` was purely the `model_weight_mb` sizing bug, not a
 real efficiency finding).
+
+## 10. Preset 5 vs 6 roofline comparison (fresh run, 2026-09-23)
+
+Clean re-run of both presets back-to-back to validate section 9's methodology and compare NPU vs
+iGPU roofline positioning directly (`kpi_runs/preset5_roofline_20260923_140129/` NPU,
+`kpi_runs/preset6_roofline_20260923_141035/` iGPU — local-only, not pushed).
+
+| Metric | NPU (CHw) | iGPU (GRw) |
+|---|---|---|
+| Est. Parameters | ~8.1B | ~8.4B |
+| Model Weight | 3,868 MB | 3,984 MB |
+| End-to-End Throughput | 11.2 tok/s | 13.3 tok/s |
+| Decode Throughput (sum-of-agents) | 17.3 tok/s | 24.8 tok/s |
+| DRAM BW Achieved | 65.2 GB/s | 96.6 GB/s |
+| Memory BW Utilization | 73.2% | 108.6% ⚠️ (see caveat below) |
+
+### The roofline split: NPU wins prefill, iGPU wins decode
+
+Pulling the actual (AI, achieved GFLOPs/s) points from both reports' roofline charts:
+
+| Phase | NPU achieved | iGPU achieved | Winner |
+|---|---|---|---|
+| Prefill, turn 0 (cold, AI≈32,792) | ~10,000-10,400 GFLOPs/s | ~2,770-2,780 GFLOPs/s | **NPU, ~3.7x** |
+| Prefill, turn 1 (warm, AI≈35,916) | ~59,000-61,200 GFLOPs/s | ~16,540-16,610 GFLOPs/s | **NPU, ~3.6x** |
+| Prefill, turn 2 (warm, AI≈41,004) | ~24,070-24,360 GFLOPs/s | ~10,340-10,360 GFLOPs/s | **NPU, ~2.3x** |
+| Decode, all turns (AI=4, constant) | ~250-370 GFLOPs/s | ~410-460 GFLOPs/s | **iGPU, ~1.5x** |
+
+A consistent, clean architectural split: **NPU dominates the compute-bound prefill phase by
+2-4x**, **iGPU dominates the memory-bound decode phase by ~1.5x** — plausible given NPUs typically
+carry dedicated matmul/systolic-array acceleration well-suited to large batched GEMMs (prefill),
+while the iGPU's memory subsystem sustains higher single-token streaming reads (decode).
+
+### Data-quality caveats surfaced by this comparison
+
+1. **iGPU's 108.6% Memory BW Utilization is physically impossible** (achieved can't exceed true
+   peak) — strong evidence the hardcoded `ddr5_peak_bw_gbs = 89.0` constant in
+   `_build_efficiency_html`/`_build_roofline_html` under-estimates this specific platform's real
+   DRAM bandwidth. `Win32_Processor` reports a masked `"Genuine Intel(R) 0000"` CPU name on this
+   machine, so there's no way to look up/verify a real spec — treat 89 GB/s as a conservative
+   placeholder, not a verified number, until a real CPU/memory spec can be confirmed.
+2. **iGPU's existing `IGPU_MEASURED_TOPS_INT4 = 0.078` TOPS (78 GFLOPs/s) constant looks stale** —
+   this run's actual measured decode throughput (410-460 GFLOPs/s) is 5-6x higher. That constant
+   predates this session and its exact derivation (likely a narrower synthetic GEMM microbenchmark,
+   not a full decode workload) isn't documented in the code, so it wasn't changed here — but it
+   should be re-verified or re-labeled to clarify what it actually measures, since it's currently
+   misleading next to real decode-throughput numbers on the same chart.
+3. Per the section 4 RCA: **every iGPU turn hits the 1000-token cap** (repetition loop, never
+   calls `apply_patch`) while NPU completes tasks with variable, smaller output (747/1000/43). So
+   iGPU's decode throughput reflects *how fast it loops*, not *how fast it completes real work* —
+   the per-token GFLOPs/s comparison is still valid, but the two devices aren't producing
+   equivalent amounts of useful output in this scenario.
+
 
