@@ -348,18 +348,24 @@ while the iGPU's memory subsystem sustains higher single-token streaming reads (
 
 ### Data-quality caveats surfaced by this comparison
 
-1. **iGPU's 108.6% Memory BW Utilization is physically impossible** (achieved can't exceed true
-   peak) — strong evidence the hardcoded `ddr5_peak_bw_gbs = 89.0` constant in
-   `_build_efficiency_html`/`_build_roofline_html` under-estimates this specific platform's real
-   DRAM bandwidth. `Win32_Processor` reports a masked `"Genuine Intel(R) 0000"` CPU name on this
-   machine, so there's no way to look up/verify a real spec — treat 89 GB/s as a conservative
-   placeholder, not a verified number, until a real CPU/memory spec can be confirmed.
-2. **iGPU's existing `IGPU_MEASURED_TOPS_INT4 = 0.078` TOPS (78 GFLOPs/s) constant looks stale** —
-   this run's actual measured decode throughput (410-460 GFLOPs/s) is 5-6x higher. That constant
-   predates this session and its exact derivation (likely a narrower synthetic GEMM microbenchmark,
-   not a full decode workload) isn't documented in the code, so it wasn't changed here — but it
-   should be re-verified or re-labeled to clarify what it actually measures, since it's currently
-   misleading next to real decode-throughput numbers on the same chart.
+1. **RESOLVED 2026-09-23** — iGPU's 108.6% Memory BW Utilization was physically impossible
+   (achieved can't exceed true peak). Root-caused via `tools/KPI-hub/DATA_SOURCES.md`'s own
+   "Hardware Platform Reference" table: the hardcoded `89 GB/s` constant was measured on a
+   *different* reference platform (2 channels × 64-bit DDR5-6400 = 102.4 GB/s theoretical), not
+   this machine. Queried this machine's actual memory config directly
+   (`Get-CimInstance Win32_PhysicalMemory`: 8 channels × 16-bit × 8533 MT/s configured clock =
+   **136.5 GB/s** real theoretical peak — a fundamentally different, higher-bandwidth memory
+   subsystem). `generate_kpi_report.py` now detects this dynamically per-machine instead of
+   assuming a fixed constant (see `docs/KPI_HUB_INTEGRATION_NOTES.md` §7). Recomputed with the
+   correct peak: NPU 47.8%, iGPU 70.8% — both physically valid, and their ratio (1.48x) matches
+   the ~1.5x decode-speed advantage already established above.
+2. **PARTIALLY EXPLAINED 2026-09-23** — the `IGPU_MEASURED_TOPS_INT4 = 0.078` TOPS (78 GFLOPs/s)
+   constant isn't simply "stale"; `DATA_SOURCES.md` §6/§10 documents it was measured via a
+   synthetic SYCL GEMM microbenchmark on only 16 of a **128-EU reference iGPU** — a different chip
+   than this machine's 96-EU iGPU (confirmed via the SUT hardware section), using a fundamentally
+   different measurement method (isolated matmul kernel vs. real OpenVINO decode throughput). Left
+   as-is but now labeled `"(different reference chip)"` in the report so it's not read as directly
+   comparable to this machine's real decode numbers.
 3. Per the section 4 RCA: **every iGPU turn hits the 1000-token cap** (repetition loop, never
    calls `apply_patch`) while NPU completes tasks with variable, smaller output (747/1000/43). So
    iGPU's decode throughput reflects *how fast it loops*, not *how fast it completes real work* —

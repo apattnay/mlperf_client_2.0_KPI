@@ -192,17 +192,29 @@ methodology, formulas, and a worked numeric example are in
   `"Intel(R) NPU"` string, no EU count/clock) — the compute roof is instead derived **empirically**
   from the run's own best prefill-phase throughput, clearly labeled as such rather than presented
   as a vendor spec.
-- **Open finding (2026-09-23, not yet fixed)**: a fresh NPU-vs-iGPU comparison (see
+- **RESOLVED 2026-09-23**: a fresh NPU-vs-iGPU comparison (see
   `docs/AGENTIC_WORKFLOW_CHARACTERIZATION.md` §10) showed NPU winning prefill by 2-4x and iGPU
-  winning decode by ~1.5x — but also surfaced two data-quality caveats worth revisiting:
+  winning decode by ~1.5x — and surfaced two data-quality issues, both investigated with hard
+  evidence (no speculation):
   1. iGPU's `Memory BW Utilization` came out to **108.6%** (physically impossible — achieved can't
-     exceed true peak), implying the hardcoded `ddr5_peak_bw_gbs = 89.0` constant under-estimates
-     this platform's real DRAM bandwidth. Can't verify the true spec — `Win32_Processor` reports a
-     masked `"Genuine Intel(R) 0000"` CPU name on this machine.
-  2. The pre-existing `IGPU_MEASURED_TOPS_INT4 = 0.078` TOPS (78 GFLOPs/s) constant looks stale —
-     real measured decode throughput was 410-460 GFLOPs/s (5-6x higher) in that same run. Left
-     unchanged since its exact original derivation isn't documented in the code (it may be a
-     narrower synthetic GEMM microbenchmark, not comparable to a real decode workload).
+     exceed true peak). Root cause: the hardcoded `89 GB/s` constant was measured on a *different*
+     reference platform — `DATA_SOURCES.md`'s own "Hardware Platform Reference" table documents it
+     as 2 channels × 64-bit DDR5-6400 (102.4 GB/s theoretical). Querying this machine's actual
+     memory directly (`Get-CimInstance Win32_PhysicalMemory`) found 8 channels × 16-bit ×
+     8533 MT/s configured clock = **136.5 GB/s** real theoretical peak, a fundamentally different
+     (higher-bandwidth) memory subsystem. **Fixed**: `_collect_sut_info()` now detects real DRAM
+     bandwidth per-machine via PowerShell/CIM (not `wmic` — confirmed broken/deprecated on this
+     exact machine, returning `"ERROR: Invalid namespace"`), and `_build_efficiency_html`/
+     `_build_roofline_html` use the detected value, falling back to the old constant (now labeled
+     `"(DDR5 assumption)"`) only if detection fails. Recomputed utilization with the correct peak:
+     NPU 47.8%, iGPU 70.8% — both physically valid, ratio matches the ~1.5x decode-speed
+     difference already established.
+  2. The pre-existing `IGPU_MEASURED_TOPS_INT4 = 0.078` TOPS (78 GFLOPs/s) constant isn't simply
+     stale — `DATA_SOURCES.md` §6/§10 documents it was measured via a synthetic SYCL GEMM
+     microbenchmark on only 16 of a **128-EU reference iGPU**, a different chip than this
+     machine's 96-EU iGPU, using a fundamentally different method (isolated matmul kernel vs. real
+     decode throughput). Left as a reference data point but relabeled `"(different reference
+     chip)"` in the report so it isn't read as directly comparable.
 
 ## 8. `kpi_runs/` data policy
 
