@@ -179,8 +179,8 @@ exercises the `apply_patch` tool in practice, only `read_file` in a loop.
 | Preset 5 (NPU, SWE Agent agentic) | `kpi_runs/preset5_sweagent_npu_20260917_215620/` |
 | Preset 6 (iGPU, SWE Agent agentic) | `kpi_runs/preset6_sweagent_gpu_20260917_220525/` |
 | Preset 5 + cold/warm/Prefill/ITL instrumentation (NPU, §8) | `kpi_runs/preset5_sweagent_npu_itl_20260918_002637/` |
-| Preset 5 + roofline projection (NPU, §10) | `kpi_runs/preset5_roofline_20260923_140129/` (local-only) |
-| Preset 6 + roofline projection (iGPU, §10) | `kpi_runs/preset6_roofline_20260923_141035/` (local-only) |
+| Preset 5 + roofline projection (NPU, §10) | `kpi_runs/preset5_roofline_20260923_140129/` |
+| Preset 6 + roofline projection (iGPU, §10) | `kpi_runs/preset6_roofline_20260923_141035/` |
 
 Each directory contains `dashboard.html` (HW telemetry), `kpi_report.html` (workflow KPIs),
 `workflow_kpi.json`, `experiment.json`, `hw_samples.csv`, and the raw `mlperf_stdout.log`.
@@ -319,7 +319,7 @@ real efficiency finding).
 
 Clean re-run of both presets back-to-back to validate section 9's methodology and compare NPU vs
 iGPU roofline positioning directly (`kpi_runs/preset5_roofline_20260923_140129/` NPU,
-`kpi_runs/preset6_roofline_20260923_141035/` iGPU — local-only, not pushed).
+`kpi_runs/preset6_roofline_20260923_141035/` iGPU).
 
 | Metric | NPU (CHw) | iGPU (GRw) |
 |---|---|---|
