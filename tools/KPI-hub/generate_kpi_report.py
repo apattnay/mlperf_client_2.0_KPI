@@ -20,6 +20,7 @@ Produces:
 import argparse
 import ctypes
 import json
+import math
 import os
 import shutil
 import struct
@@ -485,6 +486,180 @@ def _build_sut_html(hw, sw):
     return hw_html + sw_html
 
 
+# Bytes per weight element, keyed by quantization tag found in the model name (rough heuristic
+# covering the schemes this benchmark's presets actually use).
+_QUANT_BYTES_PER_WEIGHT = [
+    ("int4", 0.5),
+    ("int8", 1.0),
+    ("fp16", 2.0),
+    ("bf16", 2.0),
+    ("fp32", 4.0),
+]
+
+
+def _bytes_per_weight(model_name: str) -> float:
+    name_lower = (model_name or "").lower()
+    for tag, b in _QUANT_BYTES_PER_WEIGHT:
+        if tag in name_lower:
+            return b
+    return 0.5  # default: every current preset is int4-quantized
+
+
+def _estimate_params_b(model_weight_mb, bytes_per_weight) -> float:
+    if model_weight_mb and model_weight_mb > 0:
+        return (model_weight_mb * 1024 * 1024) / bytes_per_weight / 1e9
+    return 4.0  # fallback used when weight size couldn't be measured (matches prior convention)
+
+
+def _roofline_points(wkpi, params_b, bytes_per_weight):
+    """Per-stage (prefill, decode) roofline points.
+
+    Prefill processes the whole prompt as one batched pass - weight bytes are read once but
+    reused across every input token, so its arithmetic intensity scales with input length and is
+    typically deep in the compute-bound region. Decode processes one token at a time (batch=1) -
+    the full weight has to be re-read from memory for every single token, so its intensity is a
+    small constant (2 / bytes_per_weight) regardless of context length or model size - the classic
+    memory-bandwidth-bound LLM decode signature.
+
+    Returns a list of dicts: {stage, phase, ai_flops_per_byte, gflops_s, is_cold}.
+    """
+    params = params_b * 1e9
+    points = []
+    for name, s in wkpi.get("stages", {}).items():
+        if name == "task_agent":
+            continue
+        input_tokens = s.get("input_tokens", 0)
+        prefill_ms = s.get("prefill_ms_est")
+        if input_tokens and prefill_ms:
+            gflops_s = (2 * params * input_tokens) / (prefill_ms / 1000) / 1e9
+            points.append({
+                "stage": name, "phase": "prefill",
+                "ai_flops_per_byte": (2 * input_tokens) / bytes_per_weight,
+                "gflops_s": gflops_s, "is_cold": s.get("is_cold"),
+            })
+        avg_itl_ms = s.get("avg_itl_ms")
+        if avg_itl_ms:
+            gflops_s = (2 * params) / (avg_itl_ms / 1000) / 1e9
+            points.append({
+                "stage": name, "phase": "decode",
+                "ai_flops_per_byte": 2 / bytes_per_weight,
+                "gflops_s": gflops_s, "is_cold": s.get("is_cold"),
+            })
+    return points
+
+
+def _build_roofline_html(wkpi, exp_meta):
+    """Roofline analysis: plots each stage's prefill/decode phase as (arithmetic intensity,
+    achieved GFLOPs/s) against this device's memory-bandwidth and compute roofs, on a log-log
+    chart. See docs/AGENTIC_WORKFLOW_CHARACTERIZATION.md section 9 for the full methodology."""
+    try:
+        import plotly.graph_objects as go
+    except ImportError:
+        return ""
+
+    backend = exp_meta.get("backend", "ovms")
+    is_nvidia = backend == "ollama"
+    device_type = (exp_meta.get("device_type") or "").upper()
+    is_npu = not is_nvidia and device_type == "NPU"
+    model_name = exp_meta.get("model", "")
+    model_weight_mb = exp_meta.get("model_weight_mb", 0)
+
+    bytes_per_weight = _bytes_per_weight(model_name)
+    params_b = _estimate_params_b(model_weight_mb, bytes_per_weight)
+    points = _roofline_points(wkpi, params_b, bytes_per_weight)
+    if not points:
+        return ""
+
+    # ---- Memory + compute roofs ----
+    if is_nvidia:
+        mem_bw_gbs = 672.0  # GDDR7, matches _build_efficiency_html's NVIDIA constant
+        compute_roofs = [("NVIDIA FP16 Tensor Peak (theoretical)", 123400.0, True)]
+        device_label = "NVIDIA GPU"
+    elif is_npu:
+        mem_bw_gbs = 89.0  # shared system DDR5
+        # No vendor-published NPU FLOPS spec is detectable from this benchmark's HW probing, so
+        # the compute roof is derived empirically from this run's own best prefill throughput
+        # (prefill is deep in the compute-bound region, making it a reasonable practical ceiling).
+        prefill_gflops = [p["gflops_s"] for p in points if p["phase"] == "prefill"]
+        empirical_peak = max(prefill_gflops) if prefill_gflops else 0.0
+        compute_roofs = [("NPU Empirically Observed Peak (this run)", empirical_peak, False)]
+        device_label = "NPU"
+    else:
+        mem_bw_gbs = 89.0  # shared system DDR5
+        compute_roofs = [
+            ("iGPU Theoretical Peak (FP16 FMA)", 4096.0, True),
+            ("iGPU Measured INT4 GEMM Ceiling", 78.0, False),
+        ]
+        device_label = "iGPU"
+
+    mem_bw_bytes_s = mem_bw_gbs * 1e9
+    ridge_ai = max((r[1] * 1e9 / mem_bw_bytes_s for r in compute_roofs if r[1] > 0), default=1.0)
+
+    # ---- Roofline curves (log-log): memory-bound diagonal up to each roof's ridge point, then flat ----
+    ai_values = [p["ai_flops_per_byte"] for p in points]
+    ai_min = min(0.5, min(ai_values) / 2) if ai_values else 0.5
+    ai_max = max(ridge_ai * 4, max(ai_values, default=1.0) * 2)
+
+    fig = go.Figure()
+    for label, peak_gflops_s, is_theoretical in compute_roofs:
+        if peak_gflops_s <= 0:
+            continue
+        peak_bytes_s = peak_gflops_s * 1e9
+        this_ridge_ai = peak_bytes_s / mem_bw_bytes_s
+        xs = [ai_min, this_ridge_ai, ai_max]
+        ys = [ai_min * mem_bw_bytes_s / 1e9, peak_gflops_s, peak_gflops_s]
+        fig.add_trace(go.Scatter(
+            x=xs, y=ys, mode="lines", name=label,
+            line=dict(dash="dot" if is_theoretical else "solid", width=2),
+        ))
+
+    phase_style = {
+        "prefill": dict(symbol="triangle-up", color="#58a6ff"),
+        "decode": dict(symbol="circle", color="#ff9838"),
+    }
+    for phase in ("prefill", "decode"):
+        subset = [p for p in points if p["phase"] == phase]
+        if not subset:
+            continue
+        fig.add_trace(go.Scatter(
+            x=[p["ai_flops_per_byte"] for p in subset],
+            y=[p["gflops_s"] for p in subset],
+            mode="markers", name=phase.capitalize(),
+            marker=dict(size=10, **phase_style[phase]),
+            text=[f"{p['stage']} ({'cold' if p['is_cold'] else 'warm' if p['is_cold'] is False else '?'})" for p in subset],
+            hovertemplate="%{text}<br>AI=%{x:.2f} FLOPs/B<br>%{y:.1f} GFLOPs/s<extra></extra>",
+        ))
+
+    fig.update_xaxes(type="log", title="Arithmetic Intensity (FLOPs/Byte)")
+    fig.update_yaxes(type="log", title="Achieved Performance (GFLOPs/s)")
+    fig.update_layout(
+        template="plotly_dark", height=480, margin=dict(l=60, r=20, t=20, b=50),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(22,27,34,1)",
+    )
+    chart_html = fig.to_html(include_plotlyjs="cdn", full_html=False)
+
+    rows_html = "".join(
+        f'<tr><td>{html.escape(p["stage"])}</td><td>{p["phase"]}</td>'
+        f'<td class="num">{p["ai_flops_per_byte"]:.2f}</td><td class="num">{p["gflops_s"]:.1f}</td></tr>'
+        for p in sorted(points, key=lambda p: (p["stage"], p["phase"]))
+    )
+    note = (
+        f'Params estimated at ~{params_b:.1f}B from model weight size ({bytes_per_weight} bytes/weight). '
+        f'Prefill (▲) reuses weights across the whole prompt in one batched pass - high arithmetic '
+        f'intensity, typically compute-bound. Decode (●) re-reads the full weight per token (batch=1) - '
+        f'a small constant intensity ({2/bytes_per_weight:.1f} FLOPs/Byte) regardless of context length, '
+        f'the classic memory-bandwidth-bound signature. Points near/above a roof are running near that '
+        f'ceiling for this device.'
+    )
+
+    return f"""<div class="section"><h2>{device_label} Roofline Projection</h2>
+<p style="color:var(--text2);font-size:0.8rem;">{note}</p>
+{chart_html}
+<table><tr><th>Stage</th><th>Phase</th><th style="text-align:right">AI (FLOPs/Byte)</th><th style="text-align:right">GFLOPs/s</th></tr>
+{rows_html}</table></div>"""
+
+
 def _build_efficiency_html(wkpi, exp_meta):
     """Derive and render compute efficiency metrics — adapts to NPU, GPU (integrated), or NVIDIA (Ollama)."""
     backend = exp_meta.get("backend", "ovms")
@@ -517,10 +692,8 @@ def _build_efficiency_html(wkpi, exp_meta):
     decode_tok_per_s = decode_tokens / decode_seconds
 
     model_weight_mb = exp_meta.get("model_weight_mb", 0)
-    if model_weight_mb > 0:
-        est_params_b = (model_weight_mb * 1024 * 1024) / 0.5 / 1e9
-    else:
-        est_params_b = 4.0
+    bytes_per_weight = _bytes_per_weight(exp_meta.get("model", ""))
+    est_params_b = _estimate_params_b(model_weight_mb, bytes_per_weight)
 
     flops_per_token = 2 * est_params_b * 1e9
     theoretical_tops = decode_tok_per_s * flops_per_token / 1e12
@@ -1076,6 +1249,7 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
 
     # ---- New KPI sections ----
     efficiency_html = _build_efficiency_html(wkpi, exp_meta)
+    roofline_html = _build_roofline_html(wkpi, exp_meta)
     peak_rss_html = _build_peak_rss_html(peak_rss)
     model_weight_html = _build_model_weight_html(exp_meta)
     startup_html = _build_startup_timing_html(exp_meta, rkpi)
@@ -1241,6 +1415,8 @@ code {{ background: rgba(110,118,129,0.2); padding: 2px 6px; border-radius: 4px;
 {rag_html}
 
 {efficiency_html}
+
+{roofline_html}
 
 {model_weight_html}
 

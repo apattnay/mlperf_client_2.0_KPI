@@ -235,3 +235,81 @@ being parsed). `p50/p99 ITL` remains `-`: the log only exposes mean + std-dev pe
 per-token latency distribution, so real percentiles aren't derivable without further
 instrumentation upstream in mlperf-windows.exe itself.
 
+## 9. Roofline projection methodology
+
+The [Roofline model](https://en.wikipedia.org/wiki/Roofline_model) bounds achievable performance
+by the lesser of two "roofs": a device's peak compute rate, and its peak memory bandwidth scaled
+by the workload's **arithmetic intensity** (AI, FLOPs processed per byte moved from memory). Where
+a workload sits relative to these roofs tells you whether it's compute-bound or memory-bound, and
+how much headroom is left. Section 8 already gives us the two phases (prefill/decode) needed to
+apply this per turn.
+
+### Deriving arithmetic intensity for prefill vs decode
+
+Both phases do the same `2 × params` FLOPs of work per output token (standard transformer FLOPs
+estimate), but access memory completely differently:
+
+- **Prefill** processes the entire prompt as one batched pass — the model weights are read from
+  memory **once** but reused across every input token, so intensity scales *with prompt length*:
+  `AI_prefill = (2 × N_input_tokens) / bytes_per_weight`. Longer prompts push further right on the
+  roofline (deeper into the compute-bound region).
+- **Decode** generates one token at a time (batch=1) — the *entire* weight has to be re-read from
+  memory for every single token, so intensity is a small **constant**, independent of context
+  length or parameter count: `AI_decode = 2 / bytes_per_weight`. For our int4 models
+  (0.5 bytes/weight), that's `AI_decode = 4 FLOPs/Byte` — always the same point on the x-axis,
+  deep in the memory-bound region. This is the textbook reason LLM decode is memory-bandwidth
+  bound regardless of how fast the compute unit is.
+
+### Achieved performance per phase
+
+Using the already-instrumented per-stage fields from section 8:
+
+- `GFLOPs/s_prefill = (2 × params × input_tokens) / (prefill_ms_est / 1000) / 1e9`
+- `GFLOPs/s_decode = (2 × params) / (avg_itl_ms / 1000) / 1e9`
+
+`params` is estimated from the *actual* downloaded model weight file size (`model_weight_mb`) and
+the quantization scheme's bytes/weight (0.5 for int4, our presets' scheme) —
+`params = model_weight_mb × 1024² / bytes_per_weight`. This was previously broken for every
+NPU/iGPU run in this benchmark: `resolve_model()` only sized `model_weight_mb` for `file://`-style
+configs, and every LLM/agentic preset uses `https://`-downloaded models, so it silently stayed `0`,
+which cascaded into `Est. Parameters` falling back to a hardcoded `~4.0B` (half the real ~8B) and
+`DRAM BW Achieved`/`Memory BW Utilization` always showing `0.0`/`0.0%` in the efficiency table.
+Fixed by checking the predictable local cache path mlperf-windows.exe actually downloads
+`https://` models into: `dependencies/llm/<scenario>/models/<backend>/<model_name>/` (e.g.
+`.../models/NativeOpenVINO/Llama-3.1-8B-Instruct_ov-int4-CHw/`, confirmed on disk at 3835 MB for
+CHw / 3950 MB for GRw — both correctly resolve to ~8.0B params once sized).
+
+### The two roofs
+
+- **Memory bandwidth roof** (diagonal on log-log axes): peak system DRAM bandwidth (89 GB/s DDR5,
+  shared by CPU/iGPU/NPU on this platform — confirmed via the SUT hardware section showing the
+  iGPU has no dedicated VRAM, only "shared USM"). NVIDIA (Ollama) configs use the dedicated VRAM
+  bandwidth instead (672 GB/s GDDR7).
+- **Compute roof** (flat line): device-dependent, and NOT equally knowable for every device here:
+  - **iGPU**: a *theoretical* peak (4.096 TFLOPS FP16 FMA, derived from this exact iGPU's detected
+    96 EU / 2300 MHz spec) **and** a *measured* practical ceiling (78 GFLOPS/s int4 GEMM,
+    empirically observed) — both plotted, since real achievable throughput is well below the
+    theoretical spec sheet number.
+  - **NVIDIA**: theoretical tensor-core peak (123.4 TFLOPS FP16) from vendor spec sheets.
+  - **NPU**: this benchmark's hardware probing only detects a generic `"Intel(R) NPU"` string, with
+    no exposed EU count/clock or vendor TOPS spec to compute a theoretical peak from (unlike the
+    iGPU case above). Rather than guess a number we can't verify, the NPU compute roof is derived
+    **empirically from the run itself**: the maximum observed prefill-phase GFLOPs/s across all
+    stages (prefill sits deep in the compute-bound region, making it a reasonable practical ceiling
+    proxy) — labeled clearly as "Empirically Observed Peak (this run)", not a vendor spec.
+
+### Implementation
+
+`tools/KPI-hub/generate_kpi_report.py`'s new `_build_roofline_html()` renders this as a log-log
+Plotly scatter chart (one point per stage per phase — ▲ prefill, ● decode, colored/labeled with
+cold/warm) against the roofline curves, plus a plain data table, in a new "*Device* Roofline
+Projection" report section (next to the existing Efficiency Analysis section, which now also
+reports the corrected `Est. Parameters`/`DRAM BW Achieved`/`Memory BW Utilization` numbers).
+
+**Worked example** (preset 5, NPU, turn 1 / `02_swe_agent_0`, cold, 8198 input tokens): prefill AI
+≈ 32,792 FLOPs/Byte (deep compute-bound) at ~10 TFLOPs/s achieved; decode AI = 4 FLOPs/Byte
+(memory-bound, constant across every stage) at ~281 GFLOPs/s achieved, cross-checking to
+`achieved_BW = 281 GFLOPs/s / 4 FLOPs/Byte ≈ 70 GB/s` — 79% of the 89 GB/s DDR5 peak for that
+specific turn (the previously-reported `0.0%` was purely the `model_weight_mb` sizing bug, not a
+real efficiency finding).
+

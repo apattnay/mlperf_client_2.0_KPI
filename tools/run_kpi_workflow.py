@@ -132,11 +132,22 @@ def parse_executor_log(path: Path, start_offset: int) -> dict:
     # repeating order stages are later emitted in - consumed one-per-emit via task_idx.
     task_queue = []
     task_idx = 0
+    # Per-round turn index for "*_agent" categories (SWE Agent/Data Agent), reset at each warmup
+    # so it lines up with the 0-based data/prompts/.../<agent>_N.md file naming (e.g. swe_agent_0,
+    # swe_agent_1, swe_agent_2 per round instead of 3 indistinguishable "swe_agent" stages).
+    agent_turn_counters = {}
 
     def _emit(stage):
         nonlocal idx, task_idx
         idx += 1
-        name = f"{idx:02d}_{_slug(stage.get('category', 'unknown'))}"
+        slug = _slug(stage.get("category", "unknown"))
+        if slug == "warmup":
+            agent_turn_counters.clear()
+        elif slug.endswith("_agent"):
+            turn = agent_turn_counters.get(slug, 0)
+            agent_turn_counters[slug] = turn + 1
+            slug = f"{slug}_{turn}"
+        name = f"{idx:02d}_{slug}"
         ttft_s = stage.get("ttft_s", 0)
         avg_itl_ms = stage.get("avg_itl_ms")
         entry = {
@@ -285,6 +296,7 @@ def resolve_model(mlperf_dir: Path, config_path: Path):
         ep = cfg["Scenarios"][0]["ExecutionProviders"][0]
         ep_name = ep["Name"]
         device_type = ep.get("Config", {}).get("device_type", "")
+        scenario_name = cfg["Scenarios"][0].get("Name", "")
     except (KeyError, IndexError):
         return "", "", None, ""
     file_path = model.get("FilePath", "")
@@ -293,9 +305,13 @@ def resolve_model(mlperf_dir: Path, config_path: Path):
         rel = file_path.replace("file://", "").lstrip("./")
         model_dir = (mlperf_dir / rel).resolve().parent
     elif file_path.startswith(("http://", "https://")):
-        # Remotely-fetched model: actual local cache path is an opaque hash directory
-        # managed by mlperf-windows.exe, not derivable from the config alone.
-        model_dir = None
+        # Remotely-fetched model: mlperf-windows.exe caches it under a predictable path keyed
+        # by scenario/EP/model name (not derivable from the config's FilePath itself, but stable
+        # across runs) - e.g. dependencies/llm/llama3/models/NativeOpenVINO/<ModelName>/.
+        model_name_guess = model.get("ModelName", "")
+        candidate = mlperf_dir / "dependencies" / "llm" / scenario_name.lower() / "models" / ep_name / model_name_guess
+        if candidate.exists():
+            model_dir = candidate
     return model.get("ModelName", ""), ep_name, model_dir, device_type, file_path
 
 
