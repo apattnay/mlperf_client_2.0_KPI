@@ -215,6 +215,20 @@ methodology, formulas, and a worked numeric example are in
      machine's 96-EU iGPU, using a fundamentally different method (isolated matmul kernel vs. real
      decode throughput). Left as a reference data point but relabeled `"(different reference
      chip)"` in the report so it isn't read as directly comparable.
+- **RESOLVED 2026-09-23 (follow-up)**: further investigation confirmed the Nova Lake reference
+  constants (4096 GFLOPs/s theoretical, 78 GFLOPs/s measured GEMM ceiling) are unusable for ANY
+  machine's utilization-percentage math, for a THIRD independent reason beyond the chip mismatch —
+  the reference GEMM microbenchmark used a synthetic 2048×2048×2048 square matrix, while real LLM
+  GEMMs (prefill: tall-skinny `M×4096×14336`; decode: pure GEMV, `M=1`) never look like that shape.
+  Fix: `_build_roofline_html()` now computes an **empirical compute peak** (this run's own best
+  observed prefill GFLOPs/s) for ALL device types (previously only NPU had this; iGPU and NVIDIA now
+  match), and uses ONLY that empirical peak for a new per-stage **"Compute Util. %"** column
+  (always ≤100% by construction; decode rows show 0% since compute-boundedness doesn't apply to the
+  memory-bound decode phase). The Nova Lake reference lines remain on the chart as visual context
+  only, relabeled `"(different chip+shape, context only)"`. `DATA_SOURCES.md` §10 is now also
+  explicitly annotated `"[This is a Phantom HW, Just for Example, Dont use it for calculation]"`.
+  Committed+pushed (`da40697`, `26044e2`) and upstreamed to `intel-sandbox/KPI-hub` main
+  (commit `7e447d8`).
 
 ## 8. `kpi_runs/` data policy
 

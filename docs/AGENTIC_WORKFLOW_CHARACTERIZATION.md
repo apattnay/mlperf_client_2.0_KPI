@@ -371,5 +371,15 @@ while the iGPU's memory subsystem sustains higher single-token streaming reads (
    iGPU's decode throughput reflects *how fast it loops*, not *how fast it completes real work* —
    the per-token GFLOPs/s comparison is still valid, but the two devices aren't producing
    equivalent amounts of useful output in this scenario.
+4. **RESOLVED 2026-09-23** — caveat 2 above (the 128-EU reference iGPU constant) turned out to have
+   a third independent problem beyond the chip mismatch: the reference GEMM microbenchmark used a
+   synthetic 2048×2048×2048 square matrix, while this workload's real GEMMs (Llama-3.1-8B: prefill
+   `M×4096×14336` tall-skinny, decode pure GEMV with `M=1`) never take that shape — so the 78
+   GFLOPs/s "ceiling" isn't just measured on the wrong chip, it's also measured on the wrong problem
+   shape. Since no reliable external compute-peak constant exists for this workload on any given
+   machine, `generate_kpi_report.py` now computes an **empirical compute peak** (this run's own best
+   observed prefill GFLOPs/s) consistently for NPU, iGPU, and NVIDIA alike, and reports a new
+   **"Compute Util. %"** column against that self-referential peak instead of the Nova Lake
+   constants (kept on the chart only as clearly-labeled context, not used in any percentage math).
 
 
