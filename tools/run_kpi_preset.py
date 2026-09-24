@@ -7,11 +7,15 @@ Preset 3: Code-analysis prompts only, NPU                   - Workflow KPI + HW 
 Preset 4: Code-analysis prompts only, iGPU                  - Workflow KPI + HW KPI
 Preset 5: SWE Agent agentic workflow (data/configs/vendors_default/agentic), NPU  - Workflow KPI + HW KPI
 Preset 6: SWE Agent agentic workflow (data/configs/vendors_default/agentic), iGPU - Workflow KPI + HW KPI
+Preset 7: Data Agent agentic workflow (same config as 5, -q ext), NPU  - Workflow KPI + HW KPI
+Preset 8: Data Agent agentic workflow (same config as 6, -q ext), iGPU - Workflow KPI + HW KPI
 
 All presets run against the mlperf 2.0 install (see DEFAULT_MLPERF_DIR) and need network access
 on first run to fetch models/prompts (not cached locally) - see docs/run_benchmark_prompt.md,
 including the corporate proxy prerequisite (tools/set_proxy_env.ps1). Presets 5/6 additionally run
-Python via the agentic 'execute' tool.
+Python via the agentic 'execute' tool. Presets 7/8 reuse the SAME agentic config as 5/6 (it already
+bundles both the SWE Agent "base" and Data Agent "extended" scenario/asset entries) and select the
+Data Agent scenario via mlperf-windows.exe's `-q ext` flag.
 
 Usage:
     .venv\\Scripts\\python.exe tools\\run_kpi_preset.py --preset 4
@@ -41,6 +45,18 @@ PRESETS = {
         "config": str(REPO_ROOT / "data" / "configs" / "vendors_default" / "agentic" / "Llama3.1" / "Intel_NativeOpenVINO_GPU.json"),
         "download_behaviour": "normal",
         "default_extra_args": ["--python-path", "system"],
+    },
+    7: {
+        "name": "preset7_dataagent_npu",
+        "config": str(REPO_ROOT / "data" / "configs" / "vendors_default" / "agentic" / "Llama3.1" / "Intel_NativeOpenVINO_NPU.json"),
+        "download_behaviour": "normal",
+        "default_extra_args": ["--python-path", "system", "-q", "ext"],
+    },
+    8: {
+        "name": "preset8_dataagent_gpu",
+        "config": str(REPO_ROOT / "data" / "configs" / "vendors_default" / "agentic" / "Llama3.1" / "Intel_NativeOpenVINO_GPU.json"),
+        "download_behaviour": "normal",
+        "default_extra_args": ["--python-path", "system", "-q", "ext"],
     },
 }
 

@@ -52,6 +52,8 @@ on the machine (e.g. an OVMS install) has set a stray `PYTHONHOME` env var - cle
 | 4 | Code-analysis prompts only | iGPU | `data/configs/kpi_presets/Llama3.1_NativeOpenVINO_GPU_SWEAgent.json` |
 | 5 | SWE Agent agentic workflow (multi-turn, uses the `execute` tool + `tools_sandbox.zip`) | NPU | `data/configs/vendors_default/agentic/Llama3.1/Intel_NativeOpenVINO_NPU.json` |
 | 6 | SWE Agent agentic workflow | iGPU | `data/configs/vendors_default/agentic/Llama3.1/Intel_NativeOpenVINO_GPU.json` |
+| 7 | Data Agent agentic workflow (same config as 5, run with `-q ext`) | NPU | `data/configs/vendors_default/agentic/Llama3.1/Intel_NativeOpenVINO_NPU.json` |
+| 8 | Data Agent agentic workflow (same config as 6, run with `-q ext`) | iGPU | `data/configs/vendors_default/agentic/Llama3.1/Intel_NativeOpenVINO_GPU.json` |
 
 All presets run against a single **mlperf 2.0** install (`C:\Applications\mlperf_client\mlperf_v2p0`,
 default for `--mlperf-dir`) - only v2.0 supports the `IsAgentic` scenario field the real SWE Agent
@@ -67,13 +69,22 @@ conversation (`swe_warmup.md` → `swe_system.md`/`swe_user_0.md` → `swe_agent
 → ... ) where the model actually invokes the CLI's `execute` tool against a `tools_sandbox.zip`
 sandbox, with `Iterations: 3`.
 
+Presets 7/8 run the **actual** "Data Analyst Agent" scenario
+(`data/prompts/llama_3_1_8b_instruct/data_agent/da-agent-scenario.json`): a similar multi-turn
+agentic conversation (`da_warmup.md` → `da_system.md`/`da_user_0.md` → `da_agent_0.md` → ... →
+`da_user_3.md` → `da_agent_3.md`) using the same tools sandbox. The `Intel_NativeOpenVINO_{NPU,GPU}.json`
+config files used by presets 5/6 already bundle both scenarios (`InputFilePath.base` = SWE Agent,
+`InputFilePath.extended` = Data Agent) - presets 7/8 reuse the exact same config files as 5/6 and
+select the Data Agent scenario by passing `-q ext` (`--prompts ext`, an `mlperf-windows.exe` flag)
+instead of running the default base/SWE Agent scenario.
+
 ### All presets: network + proxy prerequisites
 
 - **Network access** on every preset — none of the models/prompts are pre-cached in the v2.0
   install (it's a fresh download-on-demand layout, unlike the old v1.5 install). `run_kpi_preset.py`
   passes `-b normal` for all presets so missing files get downloaded and cached under the v2.0
-  install for subsequent runs (the Llama3.1 NPU/GPU model is shared across presets 1/3/5 and 2/4/6
-  respectively, so it's only downloaded once per device type).
+  install for subsequent runs (the Llama3.1 NPU/GPU model is shared across presets 1/3/5/7 and
+  2/4/6/8 respectively, so it's only downloaded once per device type).
 - **Corporate proxy** — on an Intel corporate network, `client.mlcommons-storage.org` is only
   reachable through the proxy, not via a direct connection. `mlperf-windows.exe` needs both the
   `HTTP(S)_PROXY` env vars *and* the machine-wide WinHTTP proxy set (it doesn't reliably use just
@@ -87,11 +98,11 @@ sandbox, with `Iterations: 3`.
   Without this, downloads fail with `could not connect to the download server - check your
   internet connection` even though the host is actually reachable through the proxy.
 
-### Preset 5/6 additional prerequisites
+### Preset 5/6/7/8 additional prerequisites
 
 - **Python for the agentic `execute` tool** — this mlperf build has no bundled portable Python, so
-  `run_kpi_preset.py` bakes in `--python-path system` for presets 5/6 (uses the machine's
-  installed Python). Override by passing your own `--python-path <dir>` after `--preset 5`/`6`.
+  `run_kpi_preset.py` bakes in `--python-path system` for presets 5/6/7/8 (uses the machine's
+  installed Python). Override by passing your own `--python-path <dir>` after `--preset 5`/`6`/`7`/`8`.
 - Expect a notably longer run time than presets 3/4 (3 iterations, multi-turn, tool-execution
   overhead).
 
@@ -104,6 +115,8 @@ sandbox, with `Iterations: 3`.
 .venv\Scripts\python.exe tools\run_kpi_preset.py --preset 4
 .venv\Scripts\python.exe tools\run_kpi_preset.py --preset 5
 .venv\Scripts\python.exe tools\run_kpi_preset.py --preset 6
+.venv\Scripts\python.exe tools\run_kpi_preset.py --preset 7
+.venv\Scripts\python.exe tools\run_kpi_preset.py --preset 8
 ```
 
 Override the mlperf installation directory if it's not at the default path:
