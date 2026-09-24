@@ -57,9 +57,22 @@ where `fixed_overhead_s` is whatever's left over (process startup, model load, s
 workflow-level analog of stage_overhead_s, also assumed constant.
 
 If `hw_samples.csv` is present, RAPL power (`rapl_cpu_w`/`rapl_igpu_w`/`rapl_npu_w`/`rapl_soc_w`)
-is averaged over each stage's `[start_epoch, end_epoch]` window for optional energy/Tokens-per-
-Joule projection (best-effort — silently omitted if pandas isn't installed or the columns are
-absent/zero, never a hard requirement for the wall-time projection).
+is averaged over each stage's window for optional energy/Tokens-per-Joule projection (best-effort
+— silently omitted if pandas isn't installed or the columns are absent/zero, never a hard
+requirement for the wall-time projection). **The lookup window uses `start_iso`/`end_iso` (naive
+local-time strings), NOT `start_epoch`/`end_epoch`** — this matters and is not an arbitrary choice:
+`hw_samples.csv`'s `timestamp` column is naive local time written by the sampler subprocess, while
+`start_epoch`/`end_epoch` are true UTC Unix epoch from `time.time()` in the orchestrator process.
+Converting the CSV's naive-local strings to Unix epoch (e.g. via pandas `datetime64->int64`)
+silently produces a wrong, timezone-offset-shifted value with **no error** — every stage window
+then matches zero rows, and Tokens/Joule always comes back `None` with no indication why. This
+exact bug was hit and fixed during development (see `tools/roofline_projection/baseline_extractor.py`
+`_load_power_lookup`'s docstring) by switching to the same naive-datetime-comparison approach
+already proven correct in `tools/KPI-hub/plot_utilization_interactive.py::load_phases()`.
+
+TTFT and per-token decode latency (ITL) are also captured per stage for direct reporting
+(`ttft_ms = prefill_s*1000 + itl_ms`, `itl_ms = avg_itl_ms` straight from the log) — these mirror
+the same definitions established in `docs/AGENTIC_WORKFLOW_CHARACTERIZATION.md` §8.
 
 ## 3. Step 2 — Hardware spec + capability ratios (`hw_spec.py`)
 
@@ -128,6 +141,11 @@ tool_target  = tool_exec_gap_s / cpu_eff
 overhead_target = stage_overhead_s          # unchanged - not resource-bound
 
 projected_stage_wall = prefill_target + decode_target + tool_target + overhead_target
+
+# TTFT/ITL (ms): ITL scales with the same per-token memory speedup that drives decode_target,
+# since decode_target IS itl_ms/1000*output_tokens / mem_eff.
+itl_target_ms    = itl_ms / mem_eff
+ttft_target_ms   = prefill_target * 1000 + itl_target_ms
 ```
 
 Rolled up:
@@ -139,12 +157,31 @@ Total projected wall = Σ(projected stage buckets) + fixed_overhead_s   (fixed_o
 Speedup             = Total baseline wall / Total projected wall
 Wall time reduction = (Total baseline wall - Total projected wall) / Total baseline wall × 100%
 Tokens/s            = total_output_tokens / Total wall (baseline and projected)
-Tokens/Joule         = total_output_tokens / Σ(stage power_w × stage wall_s)   (only if RAPL power was measured)
+Avg TTFT / Avg ITL  = mean(ttft_ms) / mean(itl_ms) across every stage that actually decoded output
 ```
 
 `device_type` (NPU vs GPU) is read straight from `experiment.json` and determines which
 accelerator capability (`npu_capability` vs `igpu_capability`) governs that run's prefill scaling
 — matching which device actually ran the workload.
+
+### Power / energy (Tokens/Joule)
+
+Only computed if at least one stage has measured RAPL power (`hw_samples.csv`'s
+`rapl_cpu_w`/`rapl_igpu_w`/`rapl_npu_w`/`rapl_soc_w`, averaged per stage - see §2):
+
+```
+ratio(domain) = target.<domain>_capability / baseline.<domain>_capability     # cpu/igpu/npu
+ratio("soc")  = 1.0   # uncore/SoC rail assumed roughly fixed regardless of core/EU/MAC count
+
+projected_power_w[domain] = baseline_power_w[domain] × ratio(domain) ^ power_scaling_exponent
+    # power_scaling_exponent: 1.0 = linear (dynamic power ∝ resource count × freq, the common
+    # simplifying assumption at iso process-node). Default 1.0.
+
+Total baseline energy_j  = Σ(stage)  Σ(domain, baseline_power_w[domain])  × stage.baseline_wall_s
+Total projected energy_j = Σ(stage)  Σ(domain, projected_power_w[domain]) × stage.projected_wall_s
+
+Tokens/Joule = total_output_tokens / Total energy_j   (baseline and projected)
+```
 
 ## 5. Step 4 — Outputs (`report.py`, `what_if_calculator.py`)
 
@@ -157,11 +194,13 @@ accelerator capability (`npu_capability` vs `igpu_capability`) governs that run'
   (`_JS_ENGINE` in `what_if_calculator.py` — kept in sync with `hw_spec.py`/`scaling_engine.py` by
   convention, no shared code since this must run with no server/build step). Dropdowns for CPU
   cores/frequency, iGPU XeCores/frequency, NPU MACs/frequency, and memory channels/width/transfer
-  rate recompute the projected wall time, speedup, tokens/s live on every change; a "quick preset"
-  dropdown loads any `SystemSpec` JSON from `data/configs/roofline_targets/`. A "Generate a
-  Persisted Report" section lets you take the current selection back to the CLI (copy a ready-to-
-  run command, or download a `--target-spec`-compatible JSON) since this page has no
-  filesystem/server access to write a report itself.
+  rate, plus sliders for efficiency retention / tool-exec parallel fraction / power scaling
+  exponent, recompute the projected wall time, speedup, tokens/s, avg TTFT/ITL, and Tokens/Joule
+  (when RAPL power data exists) live on every change; a "quick preset" dropdown loads any
+  `SystemSpec` JSON from `data/configs/roofline_targets/`. A "Generate a Persisted Report" section
+  lets you take the current selection back to the CLI (copy a ready-to-run command, or download a
+  `--target-spec`-compatible JSON) since this page has no filesystem/server access to write a
+  report itself.
 
   **Only one accelerator group is ever "hot" per run.** `computeCapability()` picks either
   `npuCapability` or `igpuCapability` based on the baseline run's own `device_type` (NPU vs
@@ -213,6 +252,9 @@ inference stages across 3 SWE-Agent iterations) from the built-in default baseli
 | Speedup | — | **2.78x** |
 | Wall time reduction | — | **64.0%** |
 | Tokens/s | 11.2 | 31.1 |
+| Avg TTFT | 5888 ms | 1460 ms |
+| Avg ITL | 56.5 ms | 15.5 ms |
+| Tokens/Joule | 0.36 | 0.48 |
 
 Per-resource effective speedups actually applied: compute (NPU) 4.04x, memory 3.66x, CPU/tool-exec
 (Amdahl, p=0.5) 1.57x — note none of these equal the raw 4x/4.13x/4x hardware ratios, because the
@@ -229,11 +271,18 @@ The same projection against the **iGPU** baseline (`kpi_runs/preset6_roofline_20
 | Speedup | — | **3.12x** |
 | Wall time reduction | — | **68.0%** |
 | Tokens/s | 13.3 | 41.5 |
+| Tokens/Joule | 0.25 | 0.31 |
 
 Here `compute_capability()` resolves to `igpu_capability` instead (this run's `device_type` is
 `GPU`, not `NPU`) — verified in the what-if calculator: the NPU MACs/frequency dropdowns render
 greyed out/disabled ("not used - this run used GPU") while iGPU XeCores/frequency are the live
 ones (raising XeCores 96→512 alone moved this run's projected wall time 689.8s→512.8s).
+
+Also validated (no code changes needed) against the Data Agent scenario, both device types:
+`kpi_runs/preset7_dataagent_npu_20260923_220921/` (788.7s → 367.4s, 2.15x, 53.4% reduction,
+Tokens/J 0.34→0.38) and `kpi_runs/preset8_dataagent_gpu_20260923_225621/` (910.2s → 303.8s, 3.00x,
+66.6% reduction, Tokens/J 0.36→0.42) — confirming the pipeline generalizes across both agent
+scenarios (SWE Agent / Data Agent) and both accelerator types without any scenario-specific code.
 
 ## 8. Known limitations / assumptions (be explicit about these when presenting results)
 
@@ -252,8 +301,13 @@ ones (raising XeCores 96→512 alone moved this run's projected wall time 689.8s
    measured per-tool — `git apply`/`pytest`/file IO have different real parallelizability. Treat
    the CPU-scaling column as directional, and adjust `--tool-parallel-fraction` if you have better
    data for your actual tool mix.
-5. **Power/energy projection (Tokens/Joule) is best-effort and often unavailable** — requires RAPL
-   power columns actually populated in `hw_samples.csv` for the relevant domain (cpu/igpu/npu),
-   and assumes power scales with the same capability ratio as compute (dynamic power ∝ resource
-   count × frequency, `power_scaling_exponent` default 1.0/linear) while the "soc"/uncore rail is
-   assumed roughly fixed regardless of core/EU/MAC count.
+5. **Power/energy projection (Tokens/Joule) requires RAPL power columns actually populated in
+   `hw_samples.csv`** for the relevant domain (cpu/igpu/npu/soc) — silently omitted (shown as
+   `N/A`) if `hw_samples.csv` is missing, pandas isn't installed, or every column reads zero for
+   that run. Assumes power scales with the same capability ratio as compute (dynamic power ∝
+   resource count × frequency, `power_scaling_exponent` default 1.0/linear) while the "soc"/uncore
+   rail is assumed roughly fixed regardless of core/EU/MAC count. Verified working (non-null,
+   physically plausible values) on all 4 validated runs once the lookup used naive `start_iso`/
+   `end_iso` matching instead of an epoch/timezone-mismatched conversion (see §2) — if you see
+   `N/A` on a run with `--power` known to have been enabled during collection, suspect this same
+   class of alignment bug before assuming the hardware simply didn't report power for that domain.

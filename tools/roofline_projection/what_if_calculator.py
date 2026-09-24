@@ -111,8 +111,27 @@ function projectStage(stage, deviceType, baselineSpec, targetSpec, assumptions) 
     const overheadT = stage.stage_overhead_s;
     const projectedWall = prefillT + decodeT + overheadT + toolT;
     const baselineWall = stage.prefill_s + stage.decode_s + stage.stage_overhead_s + stage.tool_exec_gap_s;
+
+    // TTFT/ITL (ms): ITL scales with the same per-token memory speedup that drives decodeT.
+    const projectedItlMs = stage.itl_ms / memEff;
+    const projectedTtftMs = prefillT * 1000.0 + projectedItlMs;
+
+    // Best-effort power/energy projection (only if RAPL power was measured for this stage).
+    const projectedPowerW = {};
+    for (const [domain, watts] of Object.entries(stage.avg_power_w || {})) {
+        let ratio;
+        if (domain === "cpu") ratio = rawSpeedup(cpuCapability(targetSpec), cpuCapability(baselineSpec));
+        else if (domain === "igpu") ratio = rawSpeedup(igpuCapability(targetSpec), igpuCapability(baselineSpec));
+        else if (domain === "npu") ratio = rawSpeedup(npuCapability(targetSpec), npuCapability(baselineSpec));
+        else ratio = 1.0; // "soc"/uncore rail: assumed roughly fixed regardless of core/EU/MAC count
+        projectedPowerW[domain] = watts * Math.pow(ratio, assumptions.power_scaling_exponent);
+    }
+
     return { name: stage.name, baselineWall, projectedWall, computeEff, memEff, cpuEff,
-             prefillT, decodeT, toolT, overheadT, output_tokens: stage.output_tokens };
+             prefillT, decodeT, toolT, overheadT, output_tokens: stage.output_tokens,
+             baselineTtftMs: stage.ttft_ms, projectedTtftMs,
+             baselineItlMs: stage.itl_ms, projectedItlMs,
+             baselinePowerW: stage.avg_power_w || {}, projectedPowerW };
 }
 
 function projectAll(profile, baselineSpec, targetSpec, assumptions) {
@@ -120,12 +139,34 @@ function projectAll(profile, baselineSpec, targetSpec, assumptions) {
     const baselineWall = stages.reduce((a, s) => a + s.baselineWall, 0) + profile.fixed_overhead_s;
     const projectedWall = stages.reduce((a, s) => a + s.projectedWall, 0) + profile.fixed_overhead_s;
     const totalTokens = stages.reduce((a, s) => a + s.output_tokens, 0);
+
+    const decoded = stages.filter(s => s.baselineItlMs > 0);
+    const avg = (arr, fn) => arr.length ? arr.reduce((a, s) => a + fn(s), 0) / arr.length : null;
+
+    // Tokens/Joule: only computable if at least one stage has measured RAPL power.
+    const hasPower = stages.some(s => Object.keys(s.baselinePowerW).length > 0);
+    let baselineEnergyJ = null, projectedEnergyJ = null, baselineTokPerJ = null, projectedTokPerJ = null;
+    if (hasPower) {
+        baselineEnergyJ = 0; projectedEnergyJ = 0;
+        for (const s of stages) {
+            const totalPowerB = Object.values(s.baselinePowerW).reduce((a, w) => a + w, 0);
+            const totalPowerP = Object.values(s.projectedPowerW).reduce((a, w) => a + w, 0);
+            baselineEnergyJ += totalPowerB * s.baselineWall;
+            projectedEnergyJ += totalPowerP * s.projectedWall;
+        }
+        baselineTokPerJ = baselineEnergyJ ? totalTokens / baselineEnergyJ : null;
+        projectedTokPerJ = projectedEnergyJ ? totalTokens / projectedEnergyJ : null;
+    }
+
     return {
         stages, baselineWall, projectedWall, totalTokens,
         baselineTokS: baselineWall ? totalTokens / baselineWall : 0,
         projectedTokS: projectedWall ? totalTokens / projectedWall : 0,
         speedup: projectedWall ? baselineWall / projectedWall : 1.0,
         reductionPct: baselineWall ? (baselineWall - projectedWall) / baselineWall * 100.0 : 0.0,
+        avgBaselineTtftMs: avg(decoded, s => s.baselineTtftMs), avgProjectedTtftMs: avg(decoded, s => s.projectedTtftMs),
+        avgBaselineItlMs: avg(decoded, s => s.baselineItlMs), avgProjectedItlMs: avg(decoded, s => s.projectedItlMs),
+        baselineEnergyJ, projectedEnergyJ, baselineTokPerJ, projectedTokPerJ,
     };
 }
 """
@@ -225,6 +266,8 @@ def build_what_if_html(
 <input type="range" id="effRetention" min="0" max="1" step="0.05" value="{default_assumptions.efficiency_retention}"></div>
 <div><label>Tool-exec parallel fraction: <span id="parFracVal"></span></label>
 <input type="range" id="parFrac" min="0" max="1" step="0.05" value="{default_assumptions.tool_parallel_fraction}"></div>
+<div><label>Power scaling exponent: <span id="powerExpVal"></span></label>
+<input type="range" id="powerExp" min="0" max="2" step="0.1" value="{default_assumptions.power_scaling_exponent}"></div>
 </div>
 <div class="note">Target memory bandwidth (derived): <b id="memBwOut"></b> GB/s &nbsp;|&nbsp; Baseline: {baseline_spec.mem_bw_peak_gbs:.1f} GB/s</div>
 </div>
@@ -237,13 +280,18 @@ def build_what_if_html(
     <div class="card"><div class="label">Speedup</div><div class="value green" id="speedupOut"></div></div>
     <div class="card"><div class="label">Wall time reduction</div><div class="value green" id="reductionOut"></div></div>
     <div class="card"><div class="label">Tokens/s (baseline &rarr; projected)</div><div class="value" id="tokSOut"></div></div>
+    <div class="card"><div class="label">Avg TTFT (baseline &rarr; projected)</div><div class="value" id="ttftOut"></div></div>
+    <div class="card"><div class="label">Avg ITL (baseline &rarr; projected)</div><div class="value" id="itlOut"></div></div>
+    <div class="card"><div class="label">Tokens/Joule (baseline &rarr; projected)</div><div class="value" id="tokJOut"></div></div>
 </div>
 <table><thead><tr><th>Stage</th><th style="text-align:right">Baseline (s)</th><th style="text-align:right">Projected (s)</th>
-<th style="text-align:right">Speedup</th><th style="text-align:right">Compute&nbsp;x</th><th style="text-align:right">Memory&nbsp;x</th><th style="text-align:right">CPU&nbsp;x</th></tr></thead>
+<th style="text-align:right">Speedup</th><th style="text-align:right">Compute&nbsp;x</th><th style="text-align:right">Memory&nbsp;x</th><th style="text-align:right">CPU&nbsp;x</th>
+<th style="text-align:right">TTFT (ms)</th><th style="text-align:right">ITL (ms)</th></tr></thead>
 <tbody id="stageTableBody"></tbody></table>
 <p class="note">Bottom-up macro-component projection: prefill scales with accelerator compute capability
 (MACs/XeCores &times; frequency), decode scales with memory bandwidth, tool execution scales via Amdahl's law
-with CPU cores/frequency, fixed overhead is unchanged. See docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md.</p>
+with CPU cores/frequency, fixed overhead is unchanged. Tokens/Joule only populates if this run has measured
+RAPL power (hw_samples.csv). See docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md.</p>
 </div>
 
 <div class="section">
@@ -318,9 +366,11 @@ function recompute() {{
     const assumptions = {{
         efficiency_retention: parseFloat(document.getElementById('effRetention').value),
         tool_parallel_fraction: parseFloat(document.getElementById('parFrac').value),
+        power_scaling_exponent: parseFloat(document.getElementById('powerExp').value),
     }};
     document.getElementById('effRetentionVal').textContent = assumptions.efficiency_retention.toFixed(2);
     document.getElementById('parFracVal').textContent = assumptions.tool_parallel_fraction.toFixed(2);
+    document.getElementById('powerExpVal').textContent = assumptions.power_scaling_exponent.toFixed(1);
     document.getElementById('memBwOut').textContent = memBwPeakGbs(target).toFixed(1);
 
     const r = projectAll(PROFILE, BASELINE_SPEC, target, assumptions);
@@ -329,13 +379,21 @@ function recompute() {{
     document.getElementById('speedupOut').textContent = r.speedup.toFixed(2) + 'x';
     document.getElementById('reductionOut').textContent = r.reductionPct.toFixed(1) + '%';
     document.getElementById('tokSOut').textContent = r.baselineTokS.toFixed(1) + ' \u2192 ' + r.projectedTokS.toFixed(1);
+    document.getElementById('ttftOut').textContent = r.avgBaselineTtftMs !== null
+        ? r.avgBaselineTtftMs.toFixed(0) + ' \u2192 ' + r.avgProjectedTtftMs.toFixed(0) + ' ms' : 'n/a';
+    document.getElementById('itlOut').textContent = r.avgBaselineItlMs !== null
+        ? r.avgBaselineItlMs.toFixed(1) + ' \u2192 ' + r.avgProjectedItlMs.toFixed(1) + ' ms' : 'n/a';
+    document.getElementById('tokJOut').textContent = r.baselineTokPerJ !== null
+        ? r.baselineTokPerJ.toFixed(2) + ' \u2192 ' + r.projectedTokPerJ.toFixed(2) : 'n/a (no RAPL power data)';
 
     const tbody = document.getElementById('stageTableBody');
     tbody.innerHTML = r.stages.map(s => `<tr><td>${{s.name}}</td>
         <td class="num">${{s.baselineWall.toFixed(2)}}</td><td class="num">${{s.projectedWall.toFixed(2)}}</td>
         <td class="num">${{(s.baselineWall / (s.projectedWall || 1)).toFixed(2)}}x</td>
         <td class="num">${{s.computeEff.toFixed(2)}}x</td><td class="num">${{s.memEff.toFixed(2)}}x</td>
-        <td class="num">${{s.cpuEff.toFixed(2)}}x</td></tr>`).join('');
+        <td class="num">${{s.cpuEff.toFixed(2)}}x</td>
+        <td class="num">${{s.baselineTtftMs.toFixed(0)}} \u2192 ${{s.projectedTtftMs.toFixed(0)}}</td>
+        <td class="num">${{s.baselineItlMs.toFixed(1)}} \u2192 ${{s.projectedItlMs.toFixed(1)}}</td></tr>`).join('');
 
     document.getElementById('cliPreview').textContent = buildCliCommand(target, assumptions);
 }}
@@ -351,7 +409,8 @@ function buildCliCommand(target, assumptions) {{
         `--igpu-xecores ${{target.igpu_xecores}} --igpu-freq-ghz ${{target.igpu_freq_ghz}} ` +
         `--npu-macs ${{target.npu_macs}} --npu-freq-ghz ${{target.npu_freq_ghz}} ` +
         `--mem-channels ${{target.mem_channels}} --mem-width-bits ${{target.mem_width_bits}} --mem-freq-mts ${{target.mem_freq_mts}} ` +
-        `--efficiency-retention ${{assumptions.efficiency_retention}} --tool-parallel-fraction ${{assumptions.tool_parallel_fraction}} --what-if`;
+        `--efficiency-retention ${{assumptions.efficiency_retention}} --tool-parallel-fraction ${{assumptions.tool_parallel_fraction}} ` +
+        `--power-scaling-exponent ${{assumptions.power_scaling_exponent}} --what-if`;
 }}
 
 function downloadTargetSpecJson() {{
@@ -374,6 +433,7 @@ function copyCliCommand() {{
     const assumptions = {{
         efficiency_retention: parseFloat(document.getElementById('effRetention').value),
         tool_parallel_fraction: parseFloat(document.getElementById('parFrac').value),
+        power_scaling_exponent: parseFloat(document.getElementById('powerExp').value),
     }};
     const cmd = buildCliCommand(target, assumptions);
     const done = (ok) => {{

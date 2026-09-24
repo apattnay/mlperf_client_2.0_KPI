@@ -59,6 +59,10 @@ class ProjectedStage:
     baseline: Dict[str, float]
     projected: Dict[str, float]
     speedups: Dict[str, float]
+    baseline_ttft_ms: float
+    projected_ttft_ms: float
+    baseline_itl_ms: float
+    projected_itl_ms: float
     tool_calls: Dict[str, int]
     baseline_power_w: Dict[str, float]
     projected_power_w: Dict[str, float]
@@ -83,6 +87,10 @@ class ProjectionResult:
     projected_energy_j: Optional[float]
     baseline_tok_per_j: Optional[float]
     projected_tok_per_j: Optional[float]
+    avg_baseline_ttft_ms: Optional[float]
+    avg_projected_ttft_ms: Optional[float]
+    avg_baseline_itl_ms: Optional[float]
+    avg_projected_itl_ms: Optional[float]
 
     @property
     def wall_time_speedup_x(self) -> float:
@@ -115,6 +123,10 @@ class ProjectionResult:
             "projected_energy_j": self.projected_energy_j,
             "baseline_tok_per_j": self.baseline_tok_per_j,
             "projected_tok_per_j": self.projected_tok_per_j,
+            "avg_baseline_ttft_ms": self.avg_baseline_ttft_ms,
+            "avg_projected_ttft_ms": self.avg_projected_ttft_ms,
+            "avg_baseline_itl_ms": self.avg_baseline_itl_ms,
+            "avg_projected_itl_ms": self.avg_projected_itl_ms,
             "wall_time_speedup_x": self.wall_time_speedup_x,
             "wall_time_reduction_pct": self.wall_time_reduction_pct,
         }
@@ -150,6 +162,12 @@ def _project_stage(
     projected_wall_s = prefill_target + decode_target + overhead_target + tool_gap_target
     baseline_wall_s = stage.prefill_s + stage.decode_s + stage.stage_overhead_s + stage.tool_exec_gap_s
 
+    # ---- TTFT/ITL (ms): same per-token decode speedup (mem_eff) drives ITL directly, since
+    # decode_target IS itl_ms/1000*output_tokens / mem_eff - i.e. per-token latency scales
+    # identically to the aggregate decode bucket it's derived from ----
+    projected_itl_ms = stage.itl_ms / mem_eff
+    projected_ttft_ms = prefill_target * 1000.0 + projected_itl_ms
+
     # ---- best-effort power/energy projection (only if RAPL power was measured for this stage) ----
     projected_power_w = {}
     for domain, watts in stage.avg_power_w.items():
@@ -179,6 +197,10 @@ def _project_stage(
             "stage_overhead_s": overhead_target, "tool_exec_gap_s": tool_gap_target,
         },
         speedups={"compute": compute_eff, "memory": mem_eff, "cpu_tool_exec": cpu_eff},
+        baseline_ttft_ms=stage.ttft_ms,
+        projected_ttft_ms=projected_ttft_ms,
+        baseline_itl_ms=stage.itl_ms,
+        projected_itl_ms=projected_itl_ms,
         tool_calls=stage.tool_calls,
         baseline_power_w=stage.avg_power_w,
         projected_power_w=projected_power_w,
@@ -221,6 +243,14 @@ def project(
         baseline_tok_per_j = total_output_tokens / baseline_energy_j if baseline_energy_j else None
         projected_tok_per_j = total_output_tokens / projected_energy_j if projected_energy_j else None
 
+    # Aggregate TTFT/ITL: mean across stages that actually decoded output (itl_ms > 0) - excludes
+    # any degenerate stage with zero output tokens, which would otherwise have itl_ms/ttft_ms == 0.
+    decoded = [s for s in projected_stages if s.baseline_itl_ms > 0]
+    avg_baseline_ttft_ms = sum(s.baseline_ttft_ms for s in decoded) / len(decoded) if decoded else None
+    avg_projected_ttft_ms = sum(s.projected_ttft_ms for s in decoded) / len(decoded) if decoded else None
+    avg_baseline_itl_ms = sum(s.baseline_itl_ms for s in decoded) / len(decoded) if decoded else None
+    avg_projected_itl_ms = sum(s.projected_itl_ms for s in decoded) / len(decoded) if decoded else None
+
     return ProjectionResult(
         baseline_spec=baseline_spec,
         target_spec=target_spec,
@@ -239,4 +269,8 @@ def project(
         projected_energy_j=projected_energy_j,
         baseline_tok_per_j=baseline_tok_per_j,
         projected_tok_per_j=projected_tok_per_j,
+        avg_baseline_ttft_ms=avg_baseline_ttft_ms,
+        avg_projected_ttft_ms=avg_projected_ttft_ms,
+        avg_baseline_itl_ms=avg_baseline_itl_ms,
+        avg_projected_itl_ms=avg_projected_itl_ms,
     )

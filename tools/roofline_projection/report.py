@@ -110,12 +110,22 @@ def build_report_html(result: ProjectionResult) -> str:
         <div class="card"><div class="label">Tokens/Joule (baseline)</div><div class="value">{result.baseline_tok_per_j:.2f}</div></div>
         <div class="card"><div class="label">Tokens/Joule (projected)</div><div class="value green">{result.projected_tok_per_j:.2f}</div></div>"""
 
+    latency_cards = ""
+    if result.avg_baseline_ttft_ms is not None:
+        latency_cards = f"""
+        <div class="card"><div class="label">Avg TTFT (baseline)</div><div class="value">{result.avg_baseline_ttft_ms:.0f} ms</div></div>
+        <div class="card"><div class="label">Avg TTFT (projected)</div><div class="value green">{result.avg_projected_ttft_ms:.0f} ms</div></div>
+        <div class="card"><div class="label">Avg ITL (baseline)</div><div class="value">{result.avg_baseline_itl_ms:.1f} ms</div></div>
+        <div class="card"><div class="label">Avg ITL (projected)</div><div class="value green">{result.avg_projected_itl_ms:.1f} ms</div></div>"""
+
     stage_rows = "".join(
         f"<tr><td>{html.escape(s.name)}</td>"
         f"<td class='num'>{_fmt_s(s.baseline_wall_s)}</td><td class='num'>{_fmt_s(s.projected_wall_s)}</td>"
         f"<td class='num'>{(s.baseline_wall_s/s.projected_wall_s if s.projected_wall_s else 1.0):.2f}x</td>"
         f"<td class='num'>{s.speedups['compute']:.2f}x</td><td class='num'>{s.speedups['memory']:.2f}x</td>"
-        f"<td class='num'>{s.speedups['cpu_tool_exec']:.2f}x</td></tr>"
+        f"<td class='num'>{s.speedups['cpu_tool_exec']:.2f}x</td>"
+        f"<td class='num'>{s.baseline_ttft_ms:.0f} &rarr; {s.projected_ttft_ms:.0f}</td>"
+        f"<td class='num'>{s.baseline_itl_ms:.1f} &rarr; {s.projected_itl_ms:.1f}</td></tr>"
         for s in result.stages
     )
 
@@ -143,6 +153,7 @@ def build_report_html(result: ProjectionResult) -> str:
     <div class="card"><div class="label">Wall time reduction</div><div class="value green">{result.wall_time_reduction_pct:.1f}%</div></div>
     <div class="card"><div class="label">Tokens/s (baseline)</div><div class="value">{result.baseline_tok_s:.1f}</div></div>
     <div class="card"><div class="label">Tokens/s (projected)</div><div class="value green">{result.projected_tok_s:.1f}</div></div>
+    {latency_cards}
     {power_cards}
 </div>
 <p class="note">Assumptions: efficiency retention={result.assumptions.efficiency_retention:.2f}, tool-exec parallel
@@ -160,11 +171,14 @@ See docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md for the full equations.</p>
 <h2>Per-Stage Macro-Component Breakdown (Baseline vs. Projected)</h2>
 {_stage_chart_html(result)}
 <table><tr><th>Stage</th><th style="text-align:right">Baseline (s)</th><th style="text-align:right">Projected (s)</th>
-<th style="text-align:right">Speedup</th><th style="text-align:right">Compute&nbsp;x</th><th style="text-align:right">Memory&nbsp;x</th><th style="text-align:right">CPU&nbsp;x</th></tr>
+<th style="text-align:right">Speedup</th><th style="text-align:right">Compute&nbsp;x</th><th style="text-align:right">Memory&nbsp;x</th><th style="text-align:right">CPU&nbsp;x</th>
+<th style="text-align:right">TTFT (ms)</th><th style="text-align:right">ITL (ms)</th></tr>
 {stage_rows}</table>
 <p class="note">Compute/Memory/CPU columns are the per-stage EFFECTIVE speedups actually applied (after damping by
 efficiency retention) to prefill (compute-bound), decode (memory-bound), and tool-execution (CPU-bound, Amdahl's
-law) time respectively. Stage overhead (fixed bookkeeping) is not scaled.</p>
+law) time respectively. Stage overhead (fixed bookkeeping) is not scaled. TTFT/ITL columns show baseline &rarr;
+projected values in milliseconds (ITL = per-token decode latency, scales with the same memory-bandwidth ratio as
+the decode bucket it's derived from).</p>
 </div>
 
 <div style="color:var(--text2); font-size:0.75rem; text-align:center; margin-top:20px;">

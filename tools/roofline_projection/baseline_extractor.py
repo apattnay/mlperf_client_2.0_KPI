@@ -62,6 +62,8 @@ class StageMacroProfile:
     decode_s: float
     stage_overhead_s: float
     tool_exec_gap_s: float
+    itl_ms: float               # per-token decode latency (avg_itl_ms, straight from the log)
+    ttft_ms: float              # prefill_s*1000 + itl_ms - matches the log's own TTFT definition
     tool_calls: Dict[str, int] = field(default_factory=dict)
     avg_power_w: Dict[str, float] = field(default_factory=dict)
 
@@ -106,7 +108,16 @@ def _load_power_lookup(run_dir: Path):
 
     try:
         df = pd.read_csv(csv_path)
-        df["_epoch"] = pd.to_datetime(df["timestamp"]).astype("int64") / 1e9
+        # Naive-datetime comparison (NOT epoch/Unix-timestamp conversion) - matches the proven
+        # approach in tools/KPI-hub/plot_utilization_interactive.py::load_phases(). hw_samples.csv's
+        # "timestamp" column is naive LOCAL time (whatever machine/timezone ran the sampler);
+        # workflow_kpi.json's start_epoch/end_epoch are true UTC Unix epoch from time.time() in a
+        # different process. Converting the CSV's naive-local strings to Unix epoch (e.g. via
+        # pandas datetime64->int64) silently produces a wrong, TZ-offset-shifted value with no
+        # error - every stage window then matches zero rows. start_iso/end_iso are naive strings
+        # written by the SAME process/clock convention as the CSV, so comparing them directly
+        # (no epoch conversion at all) is the only alignment that's actually correct.
+        df["_dt"] = pd.to_datetime(df["timestamp"])
     except Exception:
         return empty
 
@@ -117,8 +128,9 @@ def _load_power_lookup(run_dir: Path):
     if not present:
         return empty
 
-    def lookup(start_epoch: float, end_epoch: float) -> Dict[str, float]:
-        window = df[(df["_epoch"] >= start_epoch) & (df["_epoch"] <= end_epoch)]
+    def lookup(start_iso: str, end_iso: str) -> Dict[str, float]:
+        start_dt, end_dt = pd.Timestamp(start_iso), pd.Timestamp(end_iso)
+        window = df[(df["_dt"] >= start_dt) & (df["_dt"] <= end_dt)]
         if window.empty:
             return {}
         out = {}
@@ -171,8 +183,8 @@ def extract_baseline(run_dir: str) -> BaselineProfile:
             tool_exec_gap_s = max(next_start - this_end, 0.0)
 
         avg_power_w = {}
-        if s.get("start_epoch") and s.get("end_epoch"):
-            avg_power_w = power_lookup(s["start_epoch"], s["end_epoch"])
+        if s.get("start_iso") and s.get("end_iso"):
+            avg_power_w = power_lookup(s["start_iso"], s["end_iso"])
 
         stages.append(StageMacroProfile(
             name=name,
@@ -184,6 +196,8 @@ def extract_baseline(run_dir: str) -> BaselineProfile:
             decode_s=decode_s,
             stage_overhead_s=stage_overhead_s,
             tool_exec_gap_s=tool_exec_gap_s,
+            itl_ms=avg_itl_ms,
+            ttft_ms=prefill_s * 1000.0 + avg_itl_ms,
             tool_calls=s.get("tool_calls", {}) or {},
             avg_power_w=avg_power_w,
         ))
