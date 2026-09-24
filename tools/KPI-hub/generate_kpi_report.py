@@ -614,25 +614,41 @@ def _build_roofline_html(wkpi, exp_meta, hw_info=None):
         return ""
 
     # ---- Memory + compute roofs ----
+    # Empirical, self-referential compute peak: derived from THIS run's own best prefill
+    # throughput on THIS actual chip, running THIS model's real GEMM shapes. Used as the basis
+    # for any "Compute Utilization %" figure (see below) since no vendor/reference constant in
+    # this codebase has been verified to apply to the exact silicon/workload combination here -
+    # see docs/KPI_HUB_INTEGRATION_NOTES.md and AGENTIC_WORKFLOW_CHARACTERIZATION.md section 10/11
+    # for the full investigation (wrong reference chip, wrong GEMM shape/dimensions, and in one
+    # case an unverified precision assumption).
+    prefill_gflops = [p["gflops_s"] for p in points if p["phase"] == "prefill"]
+    empirical_compute_peak = max(prefill_gflops) if prefill_gflops else 0.0
+
     mem_bw_detected = False
     if is_nvidia:
         mem_bw_gbs = 672.0  # GDDR7, matches _build_efficiency_html's NVIDIA constant
-        compute_roofs = [("NVIDIA FP16 Tensor Peak (theoretical)", 123400.0, True)]
+        compute_roofs = [
+            ("NVIDIA Empirically Observed Peak (this run)", empirical_compute_peak, False),
+            ("NVIDIA FP16 Tensor Peak (vendor spec, reference only)", 123400.0, True),
+        ]
         device_label = "NVIDIA GPU"
     elif is_npu:
         mem_bw_gbs, mem_bw_detected = _dram_bw_gbs(hw_info)
-        # No vendor-published NPU FLOPS spec is detectable from this benchmark's HW probing, so
-        # the compute roof is derived empirically from this run's own best prefill throughput
-        # (prefill is deep in the compute-bound region, making it a reasonable practical ceiling).
-        prefill_gflops = [p["gflops_s"] for p in points if p["phase"] == "prefill"]
-        empirical_peak = max(prefill_gflops) if prefill_gflops else 0.0
-        compute_roofs = [("NPU Empirically Observed Peak (this run)", empirical_peak, False)]
+        # No vendor-published NPU FLOPS spec is detectable from this benchmark's HW probing at
+        # all, so the empirical peak is the only roof available.
+        compute_roofs = [("NPU Empirically Observed Peak (this run)", empirical_compute_peak, False)]
         device_label = "NPU"
     else:
         mem_bw_gbs, mem_bw_detected = _dram_bw_gbs(hw_info)
+        # The 4096/78 GFLOPs/s constants below were measured on Intel's internal Nova Lake
+        # (128-EU Xe2) reference platform via a 2048^3 square micro-benchmark - a different chip
+        # AND a different GEMM shape than this machine's iGPU running real Llama-3.1-8B prefill
+        # (tall-skinny, K/N=4096/14336). Kept only as visual reference context on the chart, not
+        # as the basis for the Compute Utilization % figure.
         compute_roofs = [
-            ("iGPU Theoretical Peak (FP16 FMA)", 4096.0, True),
-            ("iGPU Measured INT4 GEMM Ceiling (different reference chip)", 78.0, False),
+            ("iGPU Empirically Observed Peak (this run)", empirical_compute_peak, False),
+            ("Nova Lake reference iGPU, FP16 (different chip+shape, context only)", 4096.0, True),
+            ("Nova Lake reference iGPU, measured INT4 GEMM (different chip+shape, context only)", 78.0, True),
         ]
         device_label = "iGPU"
 
@@ -685,7 +701,8 @@ def _build_roofline_html(wkpi, exp_meta, hw_info=None):
 
     rows_html = "".join(
         f'<tr><td>{html.escape(p["stage"])}</td><td>{p["phase"]}</td>'
-        f'<td class="num">{p["ai_flops_per_byte"]:.2f}</td><td class="num">{p["gflops_s"]:.1f}</td></tr>'
+        f'<td class="num">{p["ai_flops_per_byte"]:.2f}</td><td class="num">{p["gflops_s"]:.1f}</td>'
+        f'<td class="num">{(p["gflops_s"]/empirical_compute_peak*100 if p["phase"]=="prefill" and empirical_compute_peak else 0):.1f}%</td></tr>'
         for p in sorted(points, key=lambda p: (p["stage"], p["phase"]))
     )
     note = (
@@ -695,15 +712,18 @@ def _build_roofline_html(wkpi, exp_meta, hw_info=None):
         f'a small constant intensity ({2/bytes_per_weight:.1f} FLOPs/Byte) regardless of context length, '
         f'the classic memory-bandwidth-bound signature. Points near/above a roof are running near that '
         f'ceiling for this device. Memory roof ({mem_bw_gbs:.1f} GB/s) is '
-        + ('measured from this machine\'s actual memory configuration (channels × width × clock).'
+        + ('measured from this machine\'s actual memory configuration (channels × width × clock). '
            if mem_bw_detected else
-           'a fallback assumption - this machine\'s memory config could not be detected.')
+           'a fallback assumption - this machine\'s memory config could not be detected. ')
+        + 'Compute Utilization % (prefill only) is measured against this run\'s own best observed '
+          'throughput, not a vendor spec - no verified compute peak exists in this codebase for the '
+          'exact chip + real Llama GEMM shapes in use here (see docs/KPI_HUB_INTEGRATION_NOTES.md).'
     )
 
     return f"""<div class="section"><h2>{device_label} Roofline Projection</h2>
 <p style="color:var(--text2);font-size:0.8rem;">{note}</p>
 {chart_html}
-<table><tr><th>Stage</th><th>Phase</th><th style="text-align:right">AI (FLOPs/Byte)</th><th style="text-align:right">GFLOPs/s</th></tr>
+<table><tr><th>Stage</th><th>Phase</th><th style="text-align:right">AI (FLOPs/Byte)</th><th style="text-align:right">GFLOPs/s</th><th style="text-align:right">Compute Util. %</th></tr>
 {rows_html}</table></div>"""
 
 

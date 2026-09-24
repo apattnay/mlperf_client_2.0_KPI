@@ -288,16 +288,16 @@ Collected at sampler shutdown by scanning running processes.
 
 ---
 
-## 10. Hardware Platform Reference
+## 10. Hardware Platform Reference [This is a Phantom HW, Just for Example, Dont use it for calulation]
 
 | Component | Spec | Peak Throughput |
 |-----------|------|-----------------|
-| CPU | 8 P-cores (Coyote Cove) + 16 E-cores (Arctic Wolf) | ~120 GOPS INT8 |
-| iGPU | 128 XVE (EUs) @ 2.0 GHz, USM shared DDR5 | ~4.1 TFLOPS FP16 (theoretical); measured on 16 EUs below |
-| NPU | Intel NPU, dedicated silicon | 35 TOPS INT8 |
-| dGPU | NVIDIA RTX 5070, 12 GB GDDR7 | ~504 TOPS INT4 |
-| DDR5 | 2ch × 64-bit @ 6400 MT/s (2×48 GB = 96 GB) | 102.4 GB/s theoretical, ~89 GB/s measured peak (shared CPU+iGPU+NPU) |
-| PCIe | Gen5 x16 (dGPU) | ~63 GB/s per direction, ~126 GB/s bidirectional |
+| CPU | 8 P-cores (Coyote Cove) + 16 E-cores (Arctic Wolf) | ~120 GOPS INT8 | [Phantom KPI, not to refer]
+| iGPU | 128 XVE (EUs) @ 2.0 GHz, USM shared DDR5 | ~4.1 TFLOPS FP16 (theoretical); measured on 16 EUs below |  [Phantom KPI, not to refer]
+| NPU | Intel NPU, dedicated silicon | 35 TOPS INT8 |  [Phantom KPI, not to refer]
+| dGPU | NVIDIA RTX 5070, 12 GB GDDR7 | ~504 TOPS INT4 |  [Phantom KPI, not to refer]
+| DDR5 | 2ch × 64-bit @ 6400 MT/s (2×48 GB = 96 GB) | 102.4 GB/s theoretical, ~89 GB/s measured peak (shared CPU+iGPU+NPU) |  [Phantom KPI, not to refer]
+| PCIe | Gen5 x16 (dGPU) | ~63 GB/s per direction, ~126 GB/s bidirectional |  [Phantom KPI, not to refer]
 
 ### iGPU Measured GEMM Throughput (2048×2048, 16 EUs, no-copy)
 
