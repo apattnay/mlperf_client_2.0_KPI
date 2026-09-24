@@ -50,11 +50,21 @@ prefill_s          = prefill_ms_est / 1000                         # already der
 decode_s           = avg_itl_ms / 1000 * output_tokens              # per-token decode latency × tokens generated
 stage_overhead_s   = max(wall_time_s - prefill_s - decode_s, 0)     # residual bookkeeping inside the stage
 tool_exec_gap_s    = max(next_stage.start_epoch - this_stage.end_epoch, 0)   # harness runs a tool here (NPU/iGPU idle)
+                     # for the LAST stage, "next_stage.start_epoch" is workflow timeline.end_epoch,
+                     # not 0 - a final verification/tool call after the last LLM turn is still
+                     # CPU-bound tool-exec time, not workflow-level fixed overhead (see below)
 ```
 
 By construction: `sum(all four buckets across all stages) + fixed_overhead_s == workflow_wall_time_s`,
-where `fixed_overhead_s` is whatever's left over (process startup, model load, shutdown) — the
-workflow-level analog of stage_overhead_s, also assumed constant.
+where `fixed_overhead_s` is whatever's left over — with the last-stage fix above, this is now (for
+all 4 validated runs) essentially just the gap BEFORE the first stage starts (process startup,
+model load), not a mix of that plus an unaccounted-for tail after the last stage.
+
+> **2026-09-24 fix**: an earlier version always set `tool_exec_gap_s = 0` for a run's last stage
+> (it only looked at the *next* stage's start, and there is none), so any real tool-call time after
+> the final LLM turn silently fell into `fixed_overhead_s`, which never scales with target hardware
+> — understating projected speedup for workloads whose last action is a heavy CPU-bound tool call.
+> Fixed by using the workflow's own `timeline.end_epoch` as the "next start" for the last stage.
 
 If `hw_samples.csv` is present, RAPL power (`rapl_cpu_w`/`rapl_igpu_w`/`rapl_npu_w`/`rapl_soc_w`)
 is averaged over each stage's window for optional energy/Tokens-per-Joule projection (best-effort
@@ -169,9 +179,11 @@ Avg TTFT / Avg ITL  = output-token-weighted mean(ttft_ms) / mean(itl_ms) across 
                       user actually experienced across the session)
 ```
 
-`device_type` (NPU vs GPU) is read straight from `experiment.json` and determines which
-accelerator capability (`npu_capability` vs `igpu_capability`) governs that run's prefill scaling
-— matching which device actually ran the workload.
+`device_type` (NPU / GPU-iGPU / CPU) is read straight from `experiment.json` and determines which
+accelerator capability (`npu_capability`, `igpu_capability`, or `cpu_capability`) governs that run's
+prefill scaling — matching which device actually ran the workload. An unrecognized `device_type`
+raises rather than silently defaulting (an earlier version defaulted anything that wasn't `"NPU"`
+to `igpu_capability`, which would have silently mis-scaled prefill for a hypothetical CPU-only run).
 
 ### Power / energy (Tokens/Joule)
 
@@ -257,10 +269,10 @@ inference stages across 3 SWE-Agent iterations) from the built-in default baseli
 
 | | Baseline | Projected |
 |---|---|---|
-| Wall time | 492.5s | 168.8s |
-| Speedup | — | **2.92x** |
-| Wall time reduction | — | **65.7%** |
-| Tokens/s | 11.2 | 32.6 |
+| Wall time | 492.5s | 168.0s |
+| Speedup | — | **2.93x** |
+| Wall time reduction | — | **65.9%** |
+| Tokens/s | 11.2 | 32.7 |
 | Tokens/Joule | 0.36 | 0.51 |
 
 Per-resource effective speedups actually applied: compute (NPU) 4.04x, memory 3.66x, CPU/tool-exec
@@ -282,10 +294,10 @@ The same projection against the **iGPU** baseline (`kpi_runs/preset6_roofline_20
 
 | | Baseline | Projected |
 |---|---|---|
-| Wall time | 689.8s | 213.1s |
-| Speedup | — | **3.24x** |
-| Wall time reduction | — | **69.1%** |
-| Tokens/s | 13.3 | 43.0 |
+| Wall time | 689.8s | 212.6s |
+| Speedup | — | **3.25x** |
+| Wall time reduction | — | **69.2%** |
+| Tokens/s | 13.3 | 43.1 |
 | Tokens/Joule | 0.25 | 0.32 |
 
 Here `compute_capability()` resolves to `igpu_capability` instead (this run's `device_type` is
@@ -294,9 +306,9 @@ greyed out/disabled ("not used - this run used GPU") while iGPU XeCores/frequenc
 ones.
 
 Also validated (no code changes needed) against the Data Agent scenario, both device types:
-`kpi_runs/preset7_dataagent_npu_20260923_220921/` (788.7s → 344.2s, 2.29x, 56.4% reduction,
-Tokens/J 0.34→0.42) and `kpi_runs/preset8_dataagent_gpu_20260923_225621/` (910.2s → 289.5s, 3.14x,
-68.2% reduction, Tokens/J 0.36→0.45) — confirming the pipeline generalizes across both agent
+`kpi_runs/preset7_dataagent_npu_20260923_220921/` (788.7s → 343.2s, 2.30x, 56.5% reduction,
+Tokens/J 0.34→0.41) and `kpi_runs/preset8_dataagent_gpu_20260923_225621/` (910.2s → 288.6s, 3.15x,
+68.3% reduction, Tokens/J 0.36→0.45) — confirming the pipeline generalizes across both agent
 scenarios (SWE Agent / Data Agent) and both accelerator types without any scenario-specific code.
 
 ## 8. Known limitations / assumptions (be explicit about these when presenting results)
@@ -326,19 +338,16 @@ scenarios (SWE Agent / Data Agent) and both accelerator types without any scenar
    `end_iso` matching instead of an epoch/timezone-mismatched conversion (see §2) — if you see
    `N/A` on a run with `--power` known to have been enabled during collection, suspect this same
    class of alignment bug before assuming the hardware simply didn't report power for that domain.
-6. **The trailing gap after a run's LAST stage falls into `fixed_overhead_s` (unscaled), not
-   `tool_exec_gap_s` (Amdahl-scaled).** `tool_exec_gap_s` is only computed as the time until the
-   *next* stage starts, so the last stage always gets `0`; any real tool-call/verification time
-   after the final LLM turn (e.g. a final `pytest` run in a SWE-Agent episode) is indistinguishable
-   from genuine fixed cost (process shutdown, log flush) in the current per-stage timeline and is
-   conservatively treated as constant. This is small in the 4 validated runs (~1-2s), but would
-   understate the projected speedup for any workload whose *last* action is a heavy CPU-bound tool
-   call — worth a closer look if `fixed_overhead_s` is unexpectedly large relative to the run's
-   stage count.
-7. **`compute_capability()` only distinguishes `NPU` from everything else** (i.e. any
-   `device_type` that isn't literally `"NPU"` — including a hypothetical future `"CPU"` — is routed
-   to `igpu_capability`). Harmless today since every current preset's `device_type` is `NPU` or
-   `GPU`, but would silently mis-scale prefill for a CPU-only run if one is ever added.
+6. ~~The trailing gap after a run's LAST stage falls into `fixed_overhead_s` (unscaled), not
+   `tool_exec_gap_s` (Amdahl-scaled).~~ **Fixed 2026-09-24**: the last stage's `tool_exec_gap_s` is
+   now computed against the workflow's `timeline.end_epoch`, not hardcoded to `0` — any real
+   tool-call/verification time after the final LLM turn is now Amdahl-scaled like every other
+   inter-stage gap, and `fixed_overhead_s` now represents only the gap *before* the first stage
+   (process startup/model load). See `baseline_extractor.py::extract_baseline`.
+7. ~~`compute_capability()` only distinguishes `NPU` from everything else.~~ **Fixed 2026-09-24**:
+   `compute_capability()` now explicitly handles `NPU` / `GPU`&`IGPU` / `CPU` and raises a clear
+   error on anything else, instead of silently routing an unrecognized `device_type` (e.g. a
+   hypothetical `CPU` baseline) to `igpu_capability`. See `hw_spec.py::SystemSpec.compute_capability`.
 8. **`efficiency_retention` and Amdahl's law compound multiplicatively for tool-exec.** The
    CPU/tool-exec speedup is Amdahl-damped *and then* further discounted by `efficiency_retention` —
    two independent "be conservative" knobs stack, so tool-exec ends up more heavily discounted than

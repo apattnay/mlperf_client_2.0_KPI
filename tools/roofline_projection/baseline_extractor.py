@@ -9,8 +9,11 @@ to project independently:
   decode_s           - memory-bandwidth-bound (autoregressive generation), scales with mem BW
   stage_overhead_s   - residual bookkeeping/logging inside the stage (assumed fixed)
   tool_exec_gap_s    - wall-clock time the harness spends running a tool call after this stage
-                       (git apply, pytest, file IO, ...) - CPU-bound, scales via Amdahl's law
-  fixed_overhead_s   - workflow-level constant (process startup, model load, shutdown, ...)
+                       (git apply, pytest, file IO, ...) - CPU-bound, scales via Amdahl's law.
+                       For the LAST stage this is the gap up to workflow end (timeline.end_epoch),
+                       not 0 - any final verification/tool call belongs here, not in fixed_overhead_s.
+  fixed_overhead_s   - workflow-level constant (process startup, model load, shutdown, ...); by
+                       construction this ends up being ~ the gap BEFORE the first stage starts
 
   Total baseline wall time = sum(prefill_s + decode_s + stage_overhead_s + tool_exec_gap_s)
                               over all stages + fixed_overhead_s
@@ -162,6 +165,8 @@ def extract_baseline(run_dir: str) -> BaselineProfile:
 
     power_lookup = _load_power_lookup(run_path)
 
+    workflow_end_epoch = (wkpi.get("timeline") or {}).get("end_epoch")
+
     raw_stages = {
         name: s for name, s in wkpi.get("stages", {}).items() if name != "task_agent"
     }
@@ -176,11 +181,14 @@ def extract_baseline(run_dir: str) -> BaselineProfile:
         decode_s = avg_itl_ms / 1000.0 * output_tokens
         stage_overhead_s = max(wall_time_s - prefill_s - decode_s, 0.0)
 
-        tool_exec_gap_s = 0.0
+        this_end = s.get("end_epoch", 0)
         if i + 1 < len(ordered):
             next_start = ordered[i + 1][1].get("start_epoch", 0)
-            this_end = s.get("end_epoch", 0)
-            tool_exec_gap_s = max(next_start - this_end, 0.0)
+        else:
+            # Last stage: gap to workflow end (e.g. a final test/verification tool call) is still
+            # CPU-bound tool-exec time, not workflow-level fixed overhead - see module docstring.
+            next_start = workflow_end_epoch or this_end
+        tool_exec_gap_s = max(next_start - this_end, 0.0)
 
         avg_power_w = {}
         if s.get("start_iso") and s.get("end_iso"):

@@ -79,7 +79,11 @@ function cpuCapability(spec) { return spec.cpu_cores * spec.cpu_freq_ghz; }
 function igpuCapability(spec) { return spec.igpu_xecores * spec.igpu_freq_ghz; }
 function npuCapability(spec) { return spec.npu_macs * spec.npu_freq_ghz; }
 function computeCapability(spec, deviceType) {
-    return deviceType === "NPU" ? npuCapability(spec) : igpuCapability(spec);
+    const dt = (deviceType || "").toUpperCase();
+    if (dt === "NPU") return npuCapability(spec);
+    if (dt === "GPU" || dt === "IGPU") return igpuCapability(spec);
+    if (dt === "CPU") return cpuCapability(spec);
+    throw new Error(`computeCapability: unrecognized device_type ${JSON.stringify(deviceType)}`);
 }
 function rawSpeedup(target, baseline) { return baseline ? (target / baseline) : 1.0; }
 function amdahlSpeedup(coresRatio, freqRatio, parallelFraction) {
@@ -355,10 +359,12 @@ function applyPresetToDropdowns(spec) {{
 // effect on any output number for this run, so grey it out + disable it instead of leaving it
 // silently inert (that ambiguity is exactly what caused user confusion before this was added).
 function markActiveAccelGroup() {{
-    const npuActive = PROFILE.device_type === "NPU";
+    const dt = (PROFILE.device_type || "").toUpperCase();
+    const npuActive = dt === "NPU";
+    const igpuActive = dt === "GPU" || dt === "IGPU";
     const groups = [
         {{ id: 'npuGroup', badgeId: 'npuGroupBadge', active: npuActive, inputs: ['npuMacs', 'npuFreq'] }},
-        {{ id: 'igpuGroup', badgeId: 'igpuGroupBadge', active: !npuActive, inputs: ['igpuXecores', 'igpuFreq'] }},
+        {{ id: 'igpuGroup', badgeId: 'igpuGroupBadge', active: igpuActive, inputs: ['igpuXecores', 'igpuFreq'] }},
     ];
     for (const g of groups) {{
         document.getElementById(g.id).classList.toggle('is-inactive', !g.active);

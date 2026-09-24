@@ -58,11 +58,23 @@ class SystemSpec:
         return self.mem_channels * (self.mem_width_bits / 8.0) * self.mem_freq_mts / 1000.0
 
     def compute_capability(self, device_type: str) -> float:
-        """Pick the accelerator capability relevant to a stage's device_type (NPU vs GPU/iGPU)."""
+        """Pick the accelerator capability relevant to a stage's device_type (NPU / GPU-iGPU / CPU).
+
+        Raises on an unrecognized device_type instead of silently guessing - an earlier version
+        defaulted anything that wasn't "NPU" to igpu_capability, which would have silently
+        mis-scaled prefill for a CPU-only run (device_type="CPU") had one ever been added.
+        """
         dt = (device_type or "").upper()
         if dt == "NPU":
             return self.npu_capability
-        return self.igpu_capability
+        if dt in ("GPU", "IGPU"):
+            return self.igpu_capability
+        if dt == "CPU":
+            return self.cpu_capability
+        raise ValueError(
+            f"SystemSpec.compute_capability: unrecognized device_type {device_type!r} "
+            "(expected NPU, GPU/iGPU, or CPU)"
+        )
 
     def to_dict(self) -> dict:
         return asdict(self)
