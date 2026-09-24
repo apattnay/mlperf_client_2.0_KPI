@@ -83,10 +83,13 @@ function computeCapability(spec, deviceType) {
 }
 function rawSpeedup(target, baseline) { return baseline ? (target / baseline) : 1.0; }
 function amdahlSpeedup(coresRatio, freqRatio, parallelFraction) {
+    // freq benefits BOTH serial and parallel portions (any core runs faster); only the parallel
+    // portion additionally benefits from extra cores. Must match hw_spec.py::amdahl_speedup.
     const perCore = Math.max(freqRatio, 1e-9);
+    const cr = Math.max(coresRatio, 1e-9);
     const serial = 1.0 - parallelFraction;
-    const denom = serial + parallelFraction / (coresRatio * perCore);
-    return denom <= 0 ? coresRatio * perCore : 1.0 / denom;
+    const denom = serial + parallelFraction / cr;
+    return denom <= 0 ? cr * perCore : perCore / denom;
 }
 function effectiveSpeedup(raw, retention) {
     retention = Math.min(Math.max(retention, 0.0), 1.0);
@@ -141,7 +144,14 @@ function projectAll(profile, baselineSpec, targetSpec, assumptions) {
     const totalTokens = stages.reduce((a, s) => a + s.output_tokens, 0);
 
     const decoded = stages.filter(s => s.baselineItlMs > 0);
-    const avg = (arr, fn) => arr.length ? arr.reduce((a, s) => a + fn(s), 0) / arr.length : null;
+    // Output-token-weighted mean (not a plain per-stage average) - matches scaling_engine.py::
+    // project()'s _weighted_avg, so a 1000-token turn counts more than a 44-token warmup call.
+    const weightTotal = decoded.reduce((a, s) => a + s.output_tokens, 0);
+    const avg = (fn) => {
+        if (!decoded.length) return null;
+        if (!weightTotal) return decoded.reduce((a, s) => a + fn(s), 0) / decoded.length;
+        return decoded.reduce((a, s) => a + fn(s) * s.output_tokens, 0) / weightTotal;
+    };
 
     // Tokens/Joule: only computable if at least one stage has measured RAPL power.
     const hasPower = stages.some(s => Object.keys(s.baselinePowerW).length > 0);
@@ -164,8 +174,8 @@ function projectAll(profile, baselineSpec, targetSpec, assumptions) {
         projectedTokS: projectedWall ? totalTokens / projectedWall : 0,
         speedup: projectedWall ? baselineWall / projectedWall : 1.0,
         reductionPct: baselineWall ? (baselineWall - projectedWall) / baselineWall * 100.0 : 0.0,
-        avgBaselineTtftMs: avg(decoded, s => s.baselineTtftMs), avgProjectedTtftMs: avg(decoded, s => s.projectedTtftMs),
-        avgBaselineItlMs: avg(decoded, s => s.baselineItlMs), avgProjectedItlMs: avg(decoded, s => s.projectedItlMs),
+        avgBaselineTtftMs: avg(s => s.baselineTtftMs), avgProjectedTtftMs: avg(s => s.projectedTtftMs),
+        avgBaselineItlMs: avg(s => s.baselineItlMs), avgProjectedItlMs: avg(s => s.projectedItlMs),
         baselineEnergyJ, projectedEnergyJ, baselineTokPerJ, projectedTokPerJ,
     };
 }

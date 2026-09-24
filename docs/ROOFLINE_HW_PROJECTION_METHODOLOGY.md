@@ -120,9 +120,15 @@ effective_speedup(raw, retention)          = 1 + (raw - 1) × retention
     # realized. Lower values model real-world losses at scale (NUMA, contention, driver
     # overhead) that keep bigger systems from scaling perfectly linearly. Default: 0.85.
 
-amdahl_speedup(cores_ratio, freq_ratio, p) = 1 / ((1 - p) + p / (cores_ratio × freq_ratio))
+amdahl_speedup(cores_ratio, freq_ratio, p) = freq_ratio / ((1 - p) + p / cores_ratio)
     # Amdahl's law for CPU-bound tool execution. p = assumed parallel fraction of that time
     # (default 0.5 - process spawn/disk IO/etc. don't scale with core count, only some work does).
+    # freq_ratio multiplies the WHOLE expression, not just the parallel term: a faster clock
+    # speeds up every instruction regardless of how many cores it runs on, so the serial fraction
+    # benefits from freq_ratio exactly as much as the parallel fraction does - only extra CORES are
+    # gated by p. (A fixed 2026-09-24 bug: an earlier version divided only the parallel term by
+    # freq_ratio, which implied a 100%-serial component, p=0, gets ZERO benefit from a faster clock
+    # - clearly wrong, since serial code still runs faster on a faster core. Corrected here.)
 ```
 
 Applied per stage:
@@ -157,7 +163,10 @@ Total projected wall = Σ(projected stage buckets) + fixed_overhead_s   (fixed_o
 Speedup             = Total baseline wall / Total projected wall
 Wall time reduction = (Total baseline wall - Total projected wall) / Total baseline wall × 100%
 Tokens/s            = total_output_tokens / Total wall (baseline and projected)
-Avg TTFT / Avg ITL  = mean(ttft_ms) / mean(itl_ms) across every stage that actually decoded output
+Avg TTFT / Avg ITL  = output-token-weighted mean(ttft_ms) / mean(itl_ms) across every stage that
+                      actually decoded output (weighted so a 1000-token turn counts more than a
+                      44-token warmup call - a plain per-stage average would misrepresent what a
+                      user actually experienced across the session)
 ```
 
 `device_type` (NPU vs GPU) is read straight from `experiment.json` and determines which
@@ -248,40 +257,46 @@ inference stages across 3 SWE-Agent iterations) from the built-in default baseli
 
 | | Baseline | Projected |
 |---|---|---|
-| Wall time | 492.5s | 177.1s |
-| Speedup | — | **2.78x** |
-| Wall time reduction | — | **64.0%** |
-| Tokens/s | 11.2 | 31.1 |
-| Avg TTFT | 5888 ms | 1460 ms |
-| Avg ITL | 56.5 ms | 15.5 ms |
-| Tokens/Joule | 0.36 | 0.48 |
+| Wall time | 492.5s | 168.8s |
+| Speedup | — | **2.92x** |
+| Wall time reduction | — | **65.7%** |
+| Tokens/s | 11.2 | 32.6 |
+| Tokens/Joule | 0.36 | 0.51 |
 
 Per-resource effective speedups actually applied: compute (NPU) 4.04x, memory 3.66x, CPU/tool-exec
-(Amdahl, p=0.5) 1.57x — note none of these equal the raw 4x/4.13x/4x hardware ratios, because the
+(Amdahl, p=0.5) **1.85x** — note none of these equal the raw 4x/4.13x/4x hardware ratios, because the
 0.85 efficiency-retention damping and (for CPU) Amdahl's law both intentionally pull the realized
 speedup below the ideal. Reproducible via both the CLI (`tools/run_roofline_projection.py`) and
 the generated `what_if_calculator.html` (verified to produce identical numbers).
+
+> **2026-09-24 correction**: this table now reflects a fixed `amdahl_speedup` (see §4 equation box)
+> — an earlier version divided only the parallel term by `freq_ratio`, giving a 100%-serial tool-exec
+> fraction zero benefit from clock-frequency increases. The fix raises the realized CPU/tool-exec
+> speedup (1.57x → 1.85x here), which is why wall-time speedup/reduction/Tokens-per-s are all
+> slightly higher than an earlier version of this doc reported. The `Avg TTFT`/`Avg ITL` rows were
+> also dropped from this static table because their definition changed to an output-token-weighted
+> mean (see §4) — use the CLI or the what-if calculator for current per-run TTFT/ITL numbers.
 
 The same projection against the **iGPU** baseline (`kpi_runs/preset6_roofline_20260923_141035/`,
 `device_type=GPU`, 689.8s baseline) onto the same target spec:
 
 | | Baseline | Projected |
 |---|---|---|
-| Wall time | 689.8s | 220.9s |
-| Speedup | — | **3.12x** |
-| Wall time reduction | — | **68.0%** |
-| Tokens/s | 13.3 | 41.5 |
-| Tokens/Joule | 0.25 | 0.31 |
+| Wall time | 689.8s | 213.1s |
+| Speedup | — | **3.24x** |
+| Wall time reduction | — | **69.1%** |
+| Tokens/s | 13.3 | 43.0 |
+| Tokens/Joule | 0.25 | 0.32 |
 
 Here `compute_capability()` resolves to `igpu_capability` instead (this run's `device_type` is
 `GPU`, not `NPU`) — verified in the what-if calculator: the NPU MACs/frequency dropdowns render
 greyed out/disabled ("not used - this run used GPU") while iGPU XeCores/frequency are the live
-ones (raising XeCores 96→512 alone moved this run's projected wall time 689.8s→512.8s).
+ones.
 
 Also validated (no code changes needed) against the Data Agent scenario, both device types:
-`kpi_runs/preset7_dataagent_npu_20260923_220921/` (788.7s → 367.4s, 2.15x, 53.4% reduction,
-Tokens/J 0.34→0.38) and `kpi_runs/preset8_dataagent_gpu_20260923_225621/` (910.2s → 303.8s, 3.00x,
-66.6% reduction, Tokens/J 0.36→0.42) — confirming the pipeline generalizes across both agent
+`kpi_runs/preset7_dataagent_npu_20260923_220921/` (788.7s → 344.2s, 2.29x, 56.4% reduction,
+Tokens/J 0.34→0.42) and `kpi_runs/preset8_dataagent_gpu_20260923_225621/` (910.2s → 289.5s, 3.14x,
+68.2% reduction, Tokens/J 0.36→0.45) — confirming the pipeline generalizes across both agent
 scenarios (SWE Agent / Data Agent) and both accelerator types without any scenario-specific code.
 
 ## 8. Known limitations / assumptions (be explicit about these when presenting results)
@@ -311,3 +326,22 @@ scenarios (SWE Agent / Data Agent) and both accelerator types without any scenar
    `end_iso` matching instead of an epoch/timezone-mismatched conversion (see §2) — if you see
    `N/A` on a run with `--power` known to have been enabled during collection, suspect this same
    class of alignment bug before assuming the hardware simply didn't report power for that domain.
+6. **The trailing gap after a run's LAST stage falls into `fixed_overhead_s` (unscaled), not
+   `tool_exec_gap_s` (Amdahl-scaled).** `tool_exec_gap_s` is only computed as the time until the
+   *next* stage starts, so the last stage always gets `0`; any real tool-call/verification time
+   after the final LLM turn (e.g. a final `pytest` run in a SWE-Agent episode) is indistinguishable
+   from genuine fixed cost (process shutdown, log flush) in the current per-stage timeline and is
+   conservatively treated as constant. This is small in the 4 validated runs (~1-2s), but would
+   understate the projected speedup for any workload whose *last* action is a heavy CPU-bound tool
+   call — worth a closer look if `fixed_overhead_s` is unexpectedly large relative to the run's
+   stage count.
+7. **`compute_capability()` only distinguishes `NPU` from everything else** (i.e. any
+   `device_type` that isn't literally `"NPU"` — including a hypothetical future `"CPU"` — is routed
+   to `igpu_capability`). Harmless today since every current preset's `device_type` is `NPU` or
+   `GPU`, but would silently mis-scale prefill for a CPU-only run if one is ever added.
+8. **`efficiency_retention` and Amdahl's law compound multiplicatively for tool-exec.** The
+   CPU/tool-exec speedup is Amdahl-damped *and then* further discounted by `efficiency_retention` —
+   two independent "be conservative" knobs stack, so tool-exec ends up more heavily discounted than
+   compute/memory for the same `efficiency_retention` value. This is intentional (tool-exec
+   involves OS scheduling/process-spawn overhead that compute/memory scaling doesn't), but keep it
+   in mind when tuning both sliders in the what-if calculator — their effects are not independent.

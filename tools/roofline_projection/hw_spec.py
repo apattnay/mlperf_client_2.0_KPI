@@ -92,15 +92,25 @@ def amdahl_speedup(cores_ratio: float, freq_ratio: float, parallel_fraction: flo
     """Amdahl's law speedup for a CPU-bound component (e.g. tool execution: git apply, pytest, ...).
 
     `parallel_fraction` (0-1) is the fraction of that component's time assumed to scale with
-    extra cores; the rest is treated as effectively serial and only benefits from clock speed.
-    Per-core throughput scales linearly with frequency in this simplified model.
+    extra cores; the rest is treated as effectively serial. Clock frequency speeds up BOTH the
+    serial and the parallel portions equally (every instruction, on any core, runs faster at a
+    higher clock) - only the *parallel* portion additionally benefits from extra cores. So the
+    frequency ratio must multiply the whole expression, not just divide the parallel term:
+
+        speedup = freq_ratio / (serial_fraction + parallel_fraction / cores_ratio)
+
+    (An earlier version folded freq_ratio only into the parallel term's denominator - i.e.
+    `1 / (serial_fraction + parallel_fraction / (cores_ratio * freq_ratio))` - which implies a
+    100%-serial (parallel_fraction=0) component gets ZERO benefit from a faster clock. That's
+    wrong: serial code still runs on a core, and a faster core still finishes it faster.)
     """
     per_core_speedup = max(freq_ratio, 1e-9)
+    cores_ratio = max(cores_ratio, 1e-9)
     serial_fraction = 1.0 - parallel_fraction
-    denom = serial_fraction + parallel_fraction / (cores_ratio * per_core_speedup)
+    denom = serial_fraction + parallel_fraction / cores_ratio
     if denom <= 0:
         return cores_ratio * per_core_speedup
-    return 1.0 / denom
+    return per_core_speedup / denom
 
 
 def effective_speedup(raw: float, efficiency_retention: float) -> float:

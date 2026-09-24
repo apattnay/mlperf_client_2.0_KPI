@@ -243,13 +243,25 @@ def project(
         baseline_tok_per_j = total_output_tokens / baseline_energy_j if baseline_energy_j else None
         projected_tok_per_j = total_output_tokens / projected_energy_j if projected_energy_j else None
 
-    # Aggregate TTFT/ITL: mean across stages that actually decoded output (itl_ms > 0) - excludes
-    # any degenerate stage with zero output tokens, which would otherwise have itl_ms/ttft_ms == 0.
+    # Aggregate TTFT/ITL: output-token-weighted mean across stages that actually decoded output
+    # (itl_ms > 0) - excludes any degenerate stage with zero output tokens, which would otherwise
+    # have itl_ms/ttft_ms == 0. Weighted (not a plain per-stage average) so that a 1000-token SWE
+    # turn counts proportionally more than a 44-token warmup call - a straight per-stage mean would
+    # give both equal weight and misrepresent what a user actually experienced across the session.
     decoded = [s for s in projected_stages if s.baseline_itl_ms > 0]
-    avg_baseline_ttft_ms = sum(s.baseline_ttft_ms for s in decoded) / len(decoded) if decoded else None
-    avg_projected_ttft_ms = sum(s.projected_ttft_ms for s in decoded) / len(decoded) if decoded else None
-    avg_baseline_itl_ms = sum(s.baseline_itl_ms for s in decoded) / len(decoded) if decoded else None
-    avg_projected_itl_ms = sum(s.projected_itl_ms for s in decoded) / len(decoded) if decoded else None
+    weight_total = sum(s.output_tokens for s in decoded)
+
+    def _weighted_avg(values: List[float]) -> Optional[float]:
+        if not decoded:
+            return None
+        if not weight_total:
+            return sum(values) / len(decoded)
+        return sum(v * s.output_tokens for v, s in zip(values, decoded)) / weight_total
+
+    avg_baseline_ttft_ms = _weighted_avg([s.baseline_ttft_ms for s in decoded])
+    avg_projected_ttft_ms = _weighted_avg([s.projected_ttft_ms for s in decoded])
+    avg_baseline_itl_ms = _weighted_avg([s.baseline_itl_ms for s in decoded])
+    avg_projected_itl_ms = _weighted_avg([s.projected_itl_ms for s in decoded])
 
     return ProjectionResult(
         baseline_spec=baseline_spec,
