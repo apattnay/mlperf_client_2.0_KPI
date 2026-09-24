@@ -1,0 +1,17 @@
+{
+  "name": "current_baseline_TEMPLATE (EDIT ME before use)",
+  "notes": "Fill in the REAL specs of the machine that produced your kpi_runs/<experiment> baseline before running tools/run_roofline_projection.py --baseline-spec against this file. cpu_cores/cpu_freq_ghz, igpu_xecores/igpu_freq_ghz and npu_macs/npu_freq_ghz are NOT auto-detectable from the benchmark tooling (see docs/KPI_HUB_INTEGRATION_NOTES.md) - you must supply them from the chip's datasheet/spec sheet. mem_channels/mem_width_bits/mem_freq_mts CAN be auto-detected per-machine (see tools/KPI-hub/generate_kpi_report.py::_collect_sut_info, dram_bw_gbs/dram_channels in a kpi_report.html's SUT Info section) - the defaults below (8 channels x 16-bit x 8533 MT/s = 136.5 GB/s) match one specific machine already validated in this repo (see docs/AGENTIC_WORKFLOW_CHARACTERIZATION.md section 10) - replace with your own machine's detected values.",
+
+  "cpu_cores": 8,
+  "cpu_freq_ghz": 4.0,
+
+  "igpu_xecores": 96,
+  "igpu_freq_ghz": 2.0,
+
+  "npu_macs": 2048,
+  "npu_freq_ghz": 1.4,
+
+  "mem_channels": 8,
+  "mem_width_bits": 16,
+  "mem_freq_mts": 8533
+}

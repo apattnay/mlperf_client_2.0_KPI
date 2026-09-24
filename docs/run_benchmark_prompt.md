@@ -141,3 +141,7 @@ Override the mlperf installation directory if it's not at the default path:
 - Disk/time budget: mlperf-windows.exe 2.0.0 itself is ~190MB; each device-type's Llama-3.1-8B
   model is ~4GB (downloaded once, cached thereafter); presets 1/2 (full prompt set, 3 iterations)
   take tens of minutes, presets 5/6 (agentic, tool-execution) take roughly 10-15 minutes each.
+- After a run, project its wall time / throughput onto a hypothetical heavier-duty machine (more
+  CPU cores / iGPU XeCores / NPU MACs / memory bandwidth) with
+  `tools\run_roofline_projection.py --run kpi_runs\<experiment> --what-if` - see
+  [docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md](ROOFLINE_HW_PROJECTION_METHODOLOGY.md).

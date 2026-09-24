@@ -1,0 +1,17 @@
+{
+  "name": "example_heavy_duty_workstation (ILLUSTRATIVE ONLY - not a verified vendor spec, replace with real numbers)",
+  "notes": "Illustrative 'heavy duty' target: ~4x CPU cores, ~4x iGPU XeCores, ~4x NPU MACs, ~4x memory bandwidth vs. a typical current-generation mobile/client SoC. Meant as a starting point for tools/run_roofline_projection.py --target-spec or a what-if calculator quick-pick preset - edit freely to match a real target platform's datasheet.",
+
+  "cpu_cores": 32,
+  "cpu_freq_ghz": 5.0,
+
+  "igpu_xecores": 384,
+  "igpu_freq_ghz": 2.4,
+
+  "npu_macs": 8192,
+  "npu_freq_ghz": 1.6,
+
+  "mem_channels": 8,
+  "mem_width_bits": 64,
+  "mem_freq_mts": 8800
+}

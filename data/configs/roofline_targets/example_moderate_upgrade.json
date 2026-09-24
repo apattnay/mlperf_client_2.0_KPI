@@ -1,0 +1,17 @@
+{
+  "name": "example_moderate_upgrade (ILLUSTRATIVE ONLY - not a verified vendor spec)",
+  "notes": "Illustrative modest next-gen refresh: ~1.5-2x each resource vs. a typical current-generation mobile/client SoC baseline. Edit freely to match a real target platform's datasheet.",
+
+  "cpu_cores": 12,
+  "cpu_freq_ghz": 4.6,
+
+  "igpu_xecores": 160,
+  "igpu_freq_ghz": 2.2,
+
+  "npu_macs": 4096,
+  "npu_freq_ghz": 1.5,
+
+  "mem_channels": 8,
+  "mem_width_bits": 32,
+  "mem_freq_mts": 8533
+}
