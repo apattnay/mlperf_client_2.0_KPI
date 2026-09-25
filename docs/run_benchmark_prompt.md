@@ -17,21 +17,25 @@ cd mlperf_client_2.0_KPI
 # 1. Python env for KPI-hub instrumentation (creates .venv + installs deps)
 .\tools\setup_kpi_hub_env.ps1
 
-# 2. mlperf-windows.exe 2.0.0 (NOT part of this repo - downloads ~190MB from the official
+# 2. Activate the venv. Re-run this once per NEW terminal session (activation doesn't
+#    persist across sessions); lets you use `python` instead of `.venv\Scripts\python.exe`.
+.\.venv\Scripts\Activate.ps1
+
+# 3. mlperf-windows.exe 2.0.0 (NOT part of this repo - downloads ~190MB from the official
 #    MLCommons GitHub release). Idempotent - safe to re-run, skips if already installed.
 .\tools\setup_mlperf_v2.ps1
 
-# 3. On an Intel corporate network only: proxy is required to reach the model/prompt CDN.
+# 4. On an Intel corporate network only: proxy is required to reach the model/prompt CDN.
 #    Re-run this once per NEW terminal session (env vars don't persist across sessions).
 . .\tools\set_proxy_env.ps1
 
-# 4. Run any preset - first run per device type downloads its model fresh (~4GB, a few
+# 5. Run any preset - first run per device type downloads its model fresh (~4GB, a few
 #    minutes); subsequent runs on the same device type reuse the cached model.
-.venv\Scripts\python.exe tools\run_kpi_preset.py --preset 1
+python tools\run_kpi_preset.py --preset 1
 ```
 
-If step 4 fails with `could not connect to the download server`, you skipped/need step 3.
-If `.venv\Scripts\python.exe` crashes with `Failed to import encodings module`, some other tool
+If step 5 fails with `could not connect to the download server`, you skipped/need step 4.
+If the venv's python crashes with `Failed to import encodings module`, some other tool
 on the machine (e.g. an OVMS install) has set a stray `PYTHONHOME` env var - clear it first:
 `Remove-Item Env:PYTHONHOME -ErrorAction SilentlyContinue`.
 
