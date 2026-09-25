@@ -1,0 +1,93 @@
+{
+  "model": "Llama-3.1-8B-Instruct_ov-int4-GRw",
+  "backend": "NativeOpenVINO",
+  "stages": {
+    "01_unknown": {
+      "input_tokens": 40,
+      "output_tokens": 2,
+      "total_tokens": 42,
+      "wall_time_s": 0.179,
+      "output_tokens_per_s": 11.217,
+      "ttft_s": 0.1145,
+      "start_epoch": 1790366573.218,
+      "end_epoch": 1790366573.397,
+      "start_iso": "2026-09-25T13:02:53.218",
+      "end_iso": "2026-09-25T13:02:53.397",
+      "avg_itl_ms": 63.835,
+      "prefill_ms_est": 50.7,
+      "itl_stddev_ms": 0.0,
+      "is_cold": true,
+      "history_tokens": 0,
+      "turn_new_tokens": 40
+    },
+    "02_unknown": {
+      "input_tokens": 129,
+      "output_tokens": 64,
+      "total_tokens": 193,
+      "wall_time_s": 2.639,
+      "output_tokens_per_s": 24.251,
+      "ttft_s": 0.3091,
+      "start_epoch": 1790366578.402,
+      "end_epoch": 1790366581.041,
+      "start_iso": "2026-09-25T13:02:58.402",
+      "end_iso": "2026-09-25T13:03:01.041",
+      "avg_itl_ms": 36.985,
+      "prefill_ms_est": 272.1,
+      "itl_stddev_ms": 4.23,
+      "is_cold": true,
+      "history_tokens": 0,
+      "turn_new_tokens": 129
+    },
+    "03_unknown": {
+      "input_tokens": 817,
+      "output_tokens": 64,
+      "total_tokens": 881,
+      "wall_time_s": 3.215,
+      "output_tokens_per_s": 19.918,
+      "ttft_s": 0.8764,
+      "start_epoch": 1790366586.05,
+      "end_epoch": 1790366589.265,
+      "start_iso": "2026-09-25T13:03:06.050",
+      "end_iso": "2026-09-25T13:03:09.265",
+      "avg_itl_ms": 37.092,
+      "prefill_ms_est": 839.3,
+      "itl_stddev_ms": 3.493,
+      "is_cold": false,
+      "history_tokens": 571,
+      "turn_new_tokens": 117
+    },
+    "04_unknown": {
+      "input_tokens": 1505,
+      "output_tokens": 64,
+      "total_tokens": 1569,
+      "wall_time_s": 4.006,
+      "output_tokens_per_s": 15.984,
+      "ttft_s": 1.4037,
+      "start_epoch": 1790366594.267,
+      "end_epoch": 1790366598.273,
+      "start_iso": "2026-09-25T13:03:14.267",
+      "end_iso": "2026-09-25T13:03:18.273",
+      "avg_itl_ms": 41.277,
+      "prefill_ms_est": 1362.4,
+      "itl_stddev_ms": 4.719,
+      "is_cold": false,
+      "history_tokens": 571,
+      "turn_new_tokens": 117
+    }
+  },
+  "totals": {
+    "input_tokens": 2491,
+    "output_tokens": 194,
+    "total_tokens": 2685,
+    "output_tokens_per_s": 4.82
+  },
+  "workflow_wall_time_s": 40.22,
+  "workflow_start_iso": "2026-09-25T13:02:39.366",
+  "workflow_end_iso": "2026-09-25T13:03:19.582",
+  "timeline": {
+    "workflow_name": "kv_cache_growth_gpu",
+    "start_epoch": 1790366559.3668802,
+    "end_epoch": 1790366599.5821033,
+    "phases": []
+  }
+}

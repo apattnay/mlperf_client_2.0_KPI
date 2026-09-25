@@ -403,6 +403,23 @@ here so they aren't silently rediscovered:
   independent of which accelerator ran the LLM inference. A strong, independent consistency check
   that both this preset and the underlying `tool_exec_gap_s` concept behave as physically expected.
 
+> **These 8 runs' raw output (`kpi_runs/{prefill_sweep,thin_serving,kv_cache_growth,
+> tool_exec_only}_{npu,gpu}_20260925_*/`) are committed to this repo as evidence** - `workflow_kpi.json`,
+> `hw_samples.csv`, `experiment.json`, `kpi_report.html`, `dashboard.html` per run (`kpi_runs/` is
+> gitignored by default; these 8 were force-added as a deliberate, one-time exception since they
+> back the specific numbers quoted above). **They are from ONE specific development machine, NOT a
+> universal reference baseline**: NPU = "Intel(R) AI Boost", iGPU = "Intel(R) Graphics [PF] GPU"
+> (driver 32.0.101.8949), 16 logical CPU cores, ~63 GB RAM, Windows 11 Enterprise (the harness's
+> own `SysInfo_CPUModel` reports a non-identifying placeholder, `"Genuine Intel(R) 0000"` - not a
+> real model string, don't read anything into it). Re-running these presets on a *different*
+> machine will produce *different* absolute numbers (different SoC, different achieved
+> GFLOPs/s/GB/s) - only the *shapes of the curves* (prefill rising-then-dropping vs. context
+> length, tool_exec_gap_s being NPU/GPU-independent, etc.) are expected to generalize, not the
+> specific values quoted in this section. Every failed/intermediate debugging attempt from this
+> session (`kv_cache_growth_npu_20260925_115819`/`_120159`, `tool_exec_only_npu_20260925_121800`
+> through `_124535`, `thin_serving_npu_20260925_104241`) was deliberately left uncommitted/
+> gitignored - only the final, successful run per preset×device is kept as evidence.
+
 Usage:
 
 ```powershell

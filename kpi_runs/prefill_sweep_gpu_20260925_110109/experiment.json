@@ -1,0 +1,10 @@
+{
+  "backend": "NativeOpenVINO",
+  "device_type": "GPU",
+  "model": "Llama-3.1-8B-Instruct_ov-int4-GRw",
+  "kpi_mode": "full",
+  "workflow_exit_code": 0,
+  "workflow_duration_s": 156.54,
+  "model_weight_mb": 3984,
+  "model_weight_path": "C:\\Applications\\mlperf_client\\mlperf_v2p0\\dependencies\\llm\\llama3\\models\\NativeOpenVINO\\Llama-3.1-8B-Instruct_ov-int4-GRw"
+}

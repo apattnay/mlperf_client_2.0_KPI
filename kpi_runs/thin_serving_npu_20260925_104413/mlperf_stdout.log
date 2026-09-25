@@ -1,0 +1,236 @@
+The default logger configuration file is used.
+Starting...
+
+Application Version: 2.0.0.c8d2dc0 MLCommons Standard Build
+
+Using scenarios from C:\mlperf_client_2.0_KPI\data\configs\kpi_presets\roofline_calibration\thin_serving_NPU.json
+
+Configuring scenarios...
+
+
+Configuration NOT tested by MLCommons
+
+Temp path is not set in the config; using default system temp path: C:\Users\ADMINI~1\AppData\Local\Temp\MLPerf\2.0.0.c8d2dc0
+
+Starting to run scenario Llama3, model Llama 3.1 8B Instruct
+
+
+Checking disk space before downloading...
+
+Disk space check passed.
+
+
+
+Downloading necessary files...
+
+
+Download openvino_model.xml (Task 1/24) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download IHV-OV-tokenizers.zip (Task 2/24) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_model.bin (Task 3/24) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download thin_serving.json (Task 4/24) finished in 00:00:00.002 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download generation-greedy-results.json (Task 5/24) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino.dll (Task 6/24) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_auto_batch_plugin.dll (Task 7/24) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_hetero_plugin.dll (Task 8/24) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_auto_plugin.dll (Task 9/24) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_intel_gpu_plugin.dll (Task 10/24) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_c.dll (Task 11/24) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_genai.dll (Task 12/24) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_intel_cpu_plugin.dll (Task 13/24) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_pytorch_frontend.dll (Task 14/24) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_intel_npu_plugin.dll (Task 15/24) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_ir_frontend.dll (Task 16/24) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_onnx_frontend.dll (Task 17/24) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_paddle_frontend.dll (Task 18/24) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_tokenizers.dll (Task 19/24) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_tensorflow_frontend.dll (Task 20/24) finished in 00:00:00.001 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download openvino_tensorflow_lite_frontend.dll (Task 21/24) finished in 00:00:00.000 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download plugins.xml (Task 22/24) finished in 00:00:00.000 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download tbb12.dll (Task 23/24) finished in 00:00:00.000 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Download tbbmalloc.dll (Task 24/24) finished in 00:00:00.000 seconds
+
+
+Overall Progress: [All files were already downloaded]
+
+
+Unpacking downloaded files...
+
+Preparing for inferences execution...
+
+
+Verifying files...
+
+Following files used for scenario Llama3 (model llama_3_1_8b_instruct) cannot be verified, using at your risk:
+
+[thin_serving.json: e15c227ab3e59f5784aebd18050360f64ba9dd175533c52c9dc3ef8c428fb1f9]
+
+Data verification failed, skipping...
+
+
+
+
+Running benchmarks for EPs NativeOpenVINO{"device_id":0,"device_name":"Intel(R) AI Boost","device_type":"NPU"} on model "Llama-3.1-8B-Instruct_ov-int4-CHw" (https://client.mlcommons-storage.org/deps/2.0/scenario_files/models/llama3/8b-instruct/NativeOpenVINO/NPU/openvino_model.xml -> data\Llama3/373195660866641561\openvino_model.xml), added 1 task(s)
+
+
+
+Preparing to run the benchmark for the EP NativeOpenVINO{"device_id":0,"device_name":"Intel(R) AI Boost","device_type":"NPU"}
+
+power_begin - start llama3 llama_3_1_8b_instruct NativeOpenVINO {"device_id":0,"device_name":"Intel(R) AI Boost","device_type":"NPU"}
+
+Model Llama 3.1 8B Instruct (llama_3_1_8b_instruct), scenario Llama3, model path Result: https://client.mlcommons-storage.org/deps/2.0/scenario_files/models/llama3/8b-instruct/NativeOpenVINO/NPU/openvino_model.xml
+
+power_end - end llama3 llama_3_1_8b_instruct NativeOpenVINO {"device_id":0,"device_name":"Intel(R) AI Boost","device_type":"NPU"}
+
+NativeOpenVINO on NPU for Llama 3.1 8B Instruct (Task 1/1) finished in 00:02:15 seconds
+
+
+Overall Progress: [============] 100% (1/1 benchmark(s) completed)
+
+
+
+
+Finished running scenario Llama3, model Llama 3.1 8B Instruct in 136.144863 seconds
+
+
+Benchmark Results 09-25-2026 10:46:36:
+
+== Application Version: 2.0.0.c8d2dc0 MLCommons Standard Build ==
+== Configuration NOT tested by MLCommons ==
+
+Model Variants:
+
+1. Llama-3.1-8B-Instruct_ov-int4-CHw (https://client.mlcommons-storage.org/deps/2.0/scenario_files/models/llama3/8b-instruct/NativeOpenVINO/NPU/openvino_model.xml)
+
+Shared Information:
+
+    Assets:
+    Input Files:
+        thin_serving.json
+    Iterations: 20
+    WarmUp Iterations: 1
+
+Execution Summary:
+
+Model: Llama-3.1-8B-Instruct_ov-int4-CHw (#1):
+    NPU:
+        NativeOpenVINO {"device_id":0,"device_name":"Intel(R) AI Boost","device_type":"NPU"}:
+            Roofline Calib Thin Serving:	Avg Time to First Token: 0.067 s, Avg 2nd+ Token Generation Rate: 22.94 tokens/s, Avg Input Tokens: 44, Avg Generated Tokens: 2
+
+
+
+

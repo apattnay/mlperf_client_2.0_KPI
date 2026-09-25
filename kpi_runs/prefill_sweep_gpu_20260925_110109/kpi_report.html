@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multi-Agent KPI Report — 2026-09-25 11:04:00</title>
+<style>
+:root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --text2: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --red: #f85149; --yellow: #d29922;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+       background: var(--bg); color: var(--text); padding: 24px; line-height: 1.5; }
+h1 { font-size: 1.6rem; margin-bottom: 4px; }
+h2 { font-size: 1.15rem; color: var(--accent); margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.header { margin-bottom: 24px; }
+.header .subtitle { color: var(--text2); font-size: 0.9rem; }
+.header .meta { display: flex; gap: 24px; margin-top: 8px; flex-wrap: wrap; }
+.header .meta-item { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; }
+.header .meta-label { color: var(--text2); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
+.header .meta-value { font-size: 1.3rem; font-weight: 600; }
+.header .meta-value.green { color: var(--green); }
+.section { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+th { text-align: left; color: var(--text2); font-weight: 500; padding: 8px 10px; border-bottom: 2px solid var(--border); }
+td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: 'SF Mono', Consolas, monospace; }
+tr:hover td { background: rgba(88,166,255,0.06); }
+code { background: rgba(110,118,129,0.2); padding: 2px 6px; border-radius: 4px; font-size: 0.85em; }
+
+/* Gantt chart */
+.gantt-chart { margin: 8px 0; }
+.gantt-row { display: flex; align-items: center; margin-bottom: 6px; }
+.gantt-label { width: 200px; flex-shrink: 0; font-size: 0.82rem; padding-right: 12px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gantt-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.gantt-track { flex: 1; height: 28px; background: rgba(48,54,61,0.5); border-radius: 4px; position: relative; overflow: hidden; }
+.gantt-bar { position: absolute; top: 2px; height: 24px; border-radius: 3px; opacity: 0.85; display: flex; align-items: center;
+              justify-content: center; cursor: default; transition: opacity 0.15s; min-width: 2px; }
+.gantt-bar:hover { opacity: 1; box-shadow: 0 0 8px rgba(88,166,255,0.3); }
+.gantt-bar-text { color: #fff; font-size: 0.7rem; font-weight: 600; text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+                   white-space: nowrap; overflow: hidden; padding: 0 4px; }
+.gantt-hw { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); font-size: 0.6rem;
+             background: rgba(0,0,0,0.45); color: #ddd; padding: 1px 5px; border-radius: 3px;
+             white-space: nowrap; line-height: 1.2; pointer-events: none; }
+.gantt-bg-bar { opacity: 0.45; border: 1px dashed rgba(255,255,255,0.3); }
+.gantt-bg-bar:hover { opacity: 0.7; }
+.rag-marker { position: absolute; top: 2px; height: 12px; background: #FF9800; border-radius: 2px;
+               opacity: 0.9; min-width: 4px; cursor: default; }
+.rag-marker:hover { opacity: 1; box-shadow: 0 0 6px rgba(255,152,0,0.5); }
+.tool-badge { display: inline-block; font-size: 0.68rem; padding: 1px 6px; margin: 1px 2px; border-radius: 3px;
+               background: rgba(88,166,255,0.15); color: #79b8ff; white-space: nowrap; }
+.tool-badge-exec { background: rgba(63,185,80,0.18); color: #56d364; }
+.phase-badge { display: inline-block; font-size: 0.65rem; padding: 1px 6px; margin-left: 4px; border-radius: 3px;
+               white-space: nowrap; vertical-align: middle; }
+.phase-badge-cold { background: rgba(121,192,255,0.15); color: #79c0ff; }
+.phase-badge-warm { background: rgba(255,152,56,0.15); color: #ff9838; }
+.timeline-axis { display: flex; justify-content: space-between; color: var(--text2); font-size: 0.78rem;
+                  margin-bottom: 4px; padding: 0 200px 0 0; margin-left: 200px; }
+.timeline-legend { color: var(--text2); font-size: 0.78rem; margin-top: 8px; }
+.no-data { color: var(--text2); font-style: italic; }
+
+/* Device cards */
+.device-grid { display: flex; gap: 14px; flex-wrap: wrap; }
+.device-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px;
+                min-width: 180px; flex: 1; }
+.device-icon { font-size: 1.5rem; margin-bottom: 4px; }
+.device-role { font-weight: 600; font-size: 0.9rem; }
+.device-target { color: var(--text2); font-size: 0.8rem; margin-top: 2px; }
+
+/* Responsive */
+@media (max-width: 800px) {
+    .gantt-label { width: 120px; font-size: 0.72rem; }
+    .timeline-axis { margin-left: 120px; padding: 0 0; }
+    .header .meta { gap: 10px; }
+    .device-grid { flex-direction: column; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Multi-Agent KPI Report</h1>
+    <div class="subtitle">Generated 2026-09-25 11:04:00 &nbsp;|&nbsp; Source: <code>prefill_sweep_gpu_20260925_110109</code></div>
+    <div class="meta">
+        <div class="meta-item">
+            <div class="meta-label">Model</div>
+            <div class="meta-value">Llama-3.1-8B-Instruct_ov-int4-GRw</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Backend</div>
+            <div class="meta-value">NativeOpenVINO</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Wall Time</div>
+            <div class="meta-value">156.5s</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Output Tokens</div>
+            <div class="meta-value green">512</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Throughput</div>
+            <div class="meta-value green">3.27 tok/s</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Run Window</div>
+            <div class="meta-value" style="font-size:1rem">11:01:12 → 11:03:48</div>
+        </div>
+    </div>
+</div>
+
+
+
+
+        <div class="section">
+            <h2>Workflow Timeline</h2>
+            <div class="timeline-axis">
+                <span>11:01:26</span>
+                <span>← 157s total →</span>
+                <span>11:03:47</span>
+            </div>
+            <div class="gantt-chart">
+                
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    01_roofline_calib_prefill_x128
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:0.0%;width:0.95%;background:#64B5F6"
+                         title="01_roofline_calib_prefill_x128: 11:01:26 - 11:01:27 (1.336s, 32 tokens, 23.954 tok/s)">
+                        <span class="gantt-bar-text">1.336s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    02_roofline_calib_prefill_x128
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:4.5%;width:0.86%;background:#64B5F6"
+                         title="02_roofline_calib_prefill_x128: 11:01:32 - 11:01:33 (1.208s, 32 tokens, 26.525 tok/s)">
+                        <span class="gantt-bar-text">1.208s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    03_roofline_calib_prefill_x128
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:8.9%;width:0.84%;background:#64B5F6"
+                         title="03_roofline_calib_prefill_x128: 11:01:38 - 11:01:39 (1.19s, 32 tokens, 26.913 tok/s)">
+                        <span class="gantt-bar-text">1.19s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    04_roofline_calib_prefill_x128
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:13.29%;width:0.84%;background:#64B5F6"
+                         title="04_roofline_calib_prefill_x128: 11:01:44 - 11:01:46 (1.181s, 32 tokens, 27.107 tok/s)">
+                        <span class="gantt-bar-text">1.181s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    05_roofline_calib_prefill_x512
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:21.23%;width:1.1%;background:#64B5F6"
+                         title="05_roofline_calib_prefill_x512: 11:01:56 - 11:01:57 (1.552s, 32 tokens, 20.644 tok/s)">
+                        <span class="gantt-bar-text">1.552s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    06_roofline_calib_prefill_x512
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:25.88%;width:0.92%;background:#64B5F6"
+                         title="06_roofline_calib_prefill_x512: 11:02:02 - 11:02:03 (1.302s, 32 tokens, 24.6 tok/s)">
+                        <span class="gantt-bar-text">1.302s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    07_roofline_calib_prefill_x512
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:30.35%;width:0.95%;background:#64B5F6"
+                         title="07_roofline_calib_prefill_x512: 11:02:08 - 11:02:10 (1.337s, 32 tokens, 23.955 tok/s)">
+                        <span class="gantt-bar-text">1.337s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    08_roofline_calib_prefill_x512
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:34.84%;width:0.91%;background:#64B5F6"
+                         title="08_roofline_calib_prefill_x512: 11:02:15 - 11:02:16 (1.291s, 32 tokens, 24.8 tok/s)">
+                        <span class="gantt-bar-text">1.291s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    09_roofline_calib_prefill_x2048
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:42.52%;width:1.55%;background:#64B5F6"
+                         title="09_roofline_calib_prefill_x2048: 11:02:26 - 11:02:28 (2.183s, 32 tokens, 14.673 tok/s)">
+                        <span class="gantt-bar-text">2.183s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    10_roofline_calib_prefill_x2048
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:47.6%;width:1.42%;background:#64B5F6"
+                         title="10_roofline_calib_prefill_x2048: 11:02:33 - 11:02:35 (2.001s, 32 tokens, 16.023 tok/s)">
+                        <span class="gantt-bar-text">2.001s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    11_roofline_calib_prefill_x2048
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:52.57%;width:1.4%;background:#64B5F6"
+                         title="11_roofline_calib_prefill_x2048: 11:02:40 - 11:02:42 (1.981s, 32 tokens, 16.184 tok/s)">
+                        <span class="gantt-bar-text">1.981s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    12_roofline_calib_prefill_x2048
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:57.53%;width:1.43%;background:#64B5F6"
+                         title="12_roofline_calib_prefill_x2048: 11:02:47 - 11:02:49 (2.018s, 32 tokens, 15.873 tok/s)">
+                        <span class="gantt-bar-text">2.018s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    13_roofline_calib_prefill_x8192
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:65.92%;width:5.48%;background:#64B5F6"
+                         title="13_roofline_calib_prefill_x8192: 11:02:59 - 11:03:06 (7.738s, 32 tokens, 4.137 tok/s)">
+                        <span class="gantt-bar-text">7.738s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    14_roofline_calib_prefill_x8192
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:74.95%;width:6.21%;background:#64B5F6"
+                         title="14_roofline_calib_prefill_x8192: 11:03:11 - 11:03:20 (8.776s, 32 tokens, 3.651 tok/s)">
+                        <span class="gantt-bar-text">8.776s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    15_roofline_calib_prefill_x8192
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:84.71%;width:6.26%;background:#64B5F6"
+                         title="15_roofline_calib_prefill_x8192: 11:03:25 - 11:03:34 (8.834s, 32 tokens, 3.627 tok/s)">
+                        <span class="gantt-bar-text">8.834s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    16_roofline_calib_prefill_x8192
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:94.51%;width:5.49%;background:#64B5F6"
+                         title="16_roofline_calib_prefill_x8192: 11:03:39 - 11:03:47 (7.751s, 32 tokens, 4.131 tok/s)">
+                        <span class="gantt-bar-text">7.751s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+                
+            </div>
+            <div class="timeline-legend">
+                <em>Hover bars for detail. Concurrent bars (summary_agent_1/2) show parallel execution.</em>
+                <br><em style="font-size:0.72rem">HW badges show responsible hardware. ★ rag_query marks NPU embedding + HNSW vector search events.</em>
+            </div>
+        </div>
+
+<div class="section">
+    <h2>Per-Agent KPIs</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Agent</th>
+                <th style="text-align:right">Start</th>
+                <th style="text-align:right">End</th>
+                <th style="text-align:right">In Tok</th>
+                <th style="text-align:right">Out Tok</th>
+                <th style="text-align:right">Total</th>
+                <th style="text-align:right">Time (s)</th>
+                <th style="text-align:right">Tok/s</th>
+                <th style="text-align:right">TTFT (s)</th>
+                <th style="text-align:right">Prefill (ms)</th>
+                <th style="text-align:right">Avg ITL (ms)</th>
+                <th style="text-align:right">p50/p99 ITL (ms)</th>
+                
+            </tr>
+        </thead>
+        <tbody>
+            
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 01_roofline_calib_prefill_x128</td>
+                <td class="num">11:01:26</td>
+                <td class="num">11:01:27</td>
+                <td class="num">169</td>
+                <td class="num">32</td>
+                <td class="num">201</td>
+                <td class="num">1.3</td>
+                <td class="num">23.954</td>
+                <td class="num">0.2174</td>
+                <td class="num">181</td>
+                <td class="num">36.081 ±11.179</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 02_roofline_calib_prefill_x128</td>
+                <td class="num">11:01:32</td>
+                <td class="num">11:01:33</td>
+                <td class="num">169</td>
+                <td class="num">32</td>
+                <td class="num">201</td>
+                <td class="num">1.2</td>
+                <td class="num">26.525</td>
+                <td class="num">0.0891</td>
+                <td class="num">53</td>
+                <td class="num">36.044 ±3.321</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 03_roofline_calib_prefill_x128</td>
+                <td class="num">11:01:38</td>
+                <td class="num">11:01:39</td>
+                <td class="num">169</td>
+                <td class="num">32</td>
+                <td class="num">201</td>
+                <td class="num">1.2</td>
+                <td class="num">26.913</td>
+                <td class="num">0.0858</td>
+                <td class="num">50</td>
+                <td class="num">35.589 ±2.748</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 04_roofline_calib_prefill_x128</td>
+                <td class="num">11:01:44</td>
+                <td class="num">11:01:46</td>
+                <td class="num">169</td>
+                <td class="num">32</td>
+                <td class="num">201</td>
+                <td class="num">1.2</td>
+                <td class="num">27.107</td>
+                <td class="num">0.0788</td>
+                <td class="num">43</td>
+                <td class="num">35.541 ±2.673</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 05_roofline_calib_prefill_x512</td>
+                <td class="num">11:01:56</td>
+                <td class="num">11:01:57</td>
+                <td class="num">514</td>
+                <td class="num">32</td>
+                <td class="num">546</td>
+                <td class="num">1.6</td>
+                <td class="num">20.644</td>
+                <td class="num">0.4062</td>
+                <td class="num">369</td>
+                <td class="num">36.902 ±14.057</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 06_roofline_calib_prefill_x512</td>
+                <td class="num">11:02:02</td>
+                <td class="num">11:02:03</td>
+                <td class="num">514</td>
+                <td class="num">32</td>
+                <td class="num">546</td>
+                <td class="num">1.3</td>
+                <td class="num">24.6</td>
+                <td class="num">0.2015</td>
+                <td class="num">166</td>
+                <td class="num">35.463 ±2.104</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 07_roofline_calib_prefill_x512</td>
+                <td class="num">11:02:08</td>
+                <td class="num">11:02:10</td>
+                <td class="num">514</td>
+                <td class="num">32</td>
+                <td class="num">546</td>
+                <td class="num">1.3</td>
+                <td class="num">23.955</td>
+                <td class="num">0.2041</td>
+                <td class="num">168</td>
+                <td class="num">36.509 ±7.765</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 08_roofline_calib_prefill_x512</td>
+                <td class="num">11:02:15</td>
+                <td class="num">11:02:16</td>
+                <td class="num">514</td>
+                <td class="num">32</td>
+                <td class="num">546</td>
+                <td class="num">1.3</td>
+                <td class="num">24.8</td>
+                <td class="num">0.1957</td>
+                <td class="num">160</td>
+                <td class="num">35.311 ±1.916</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 09_roofline_calib_prefill_x2048</td>
+                <td class="num">11:02:26</td>
+                <td class="num">11:02:28</td>
+                <td class="num">1,894</td>
+                <td class="num">32</td>
+                <td class="num">1,926</td>
+                <td class="num">2.2</td>
+                <td class="num">14.673</td>
+                <td class="num">0.9897</td>
+                <td class="num">951</td>
+                <td class="num">38.429 ±12.224</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 10_roofline_calib_prefill_x2048</td>
+                <td class="num">11:02:33</td>
+                <td class="num">11:02:35</td>
+                <td class="num">1,894</td>
+                <td class="num">32</td>
+                <td class="num">1,926</td>
+                <td class="num">2.0</td>
+                <td class="num">16.023</td>
+                <td class="num">0.8201</td>
+                <td class="num">782</td>
+                <td class="num">37.968 ±3.103</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 11_roofline_calib_prefill_x2048</td>
+                <td class="num">11:02:40</td>
+                <td class="num">11:02:42</td>
+                <td class="num">1,894</td>
+                <td class="num">32</td>
+                <td class="num">1,926</td>
+                <td class="num">2.0</td>
+                <td class="num">16.184</td>
+                <td class="num">0.814</td>
+                <td class="num">776</td>
+                <td class="num">37.526 ±1.719</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 12_roofline_calib_prefill_x2048</td>
+                <td class="num">11:02:47</td>
+                <td class="num">11:02:49</td>
+                <td class="num">1,894</td>
+                <td class="num">32</td>
+                <td class="num">1,926</td>
+                <td class="num">2.0</td>
+                <td class="num">15.873</td>
+                <td class="num">0.8333</td>
+                <td class="num">795</td>
+                <td class="num">38.155 ±3.677</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 13_roofline_calib_prefill_x8192</td>
+                <td class="num">11:02:59</td>
+                <td class="num">11:03:06</td>
+                <td class="num">7,414</td>
+                <td class="num">32</td>
+                <td class="num">7,446</td>
+                <td class="num">7.7</td>
+                <td class="num">4.137</td>
+                <td class="num">6.5334</td>
+                <td class="num">6,495</td>
+                <td class="num">38.763 ±9.762</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 14_roofline_calib_prefill_x8192</td>
+                <td class="num">11:03:11</td>
+                <td class="num">11:03:20</td>
+                <td class="num">7,414</td>
+                <td class="num">32</td>
+                <td class="num">7,446</td>
+                <td class="num">8.8</td>
+                <td class="num">3.651</td>
+                <td class="num">7.3126</td>
+                <td class="num">7,266</td>
+                <td class="num">46.828 ±22.259</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 15_roofline_calib_prefill_x8192</td>
+                <td class="num">11:03:25</td>
+                <td class="num">11:03:34</td>
+                <td class="num">7,414</td>
+                <td class="num">32</td>
+                <td class="num">7,446</td>
+                <td class="num">8.8</td>
+                <td class="num">3.627</td>
+                <td class="num">7.203</td>
+                <td class="num">7,151</td>
+                <td class="num">52.249 ±35.338</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 16_roofline_calib_prefill_x8192</td>
+                <td class="num">11:03:39</td>
+                <td class="num">11:03:47</td>
+                <td class="num">7,414</td>
+                <td class="num">32</td>
+                <td class="num">7,446</td>
+                <td class="num">7.8</td>
+                <td class="num">4.131</td>
+                <td class="num">6.5651</td>
+                <td class="num">6,527</td>
+                <td class="num">38.095 ±2.943</td>
+                <td class="num" title="p50 / p99">- / -</td>
+            </tr>
+            <tr style="font-weight:600; border-top: 2px solid var(--border);">
+                <td>TOTAL</td>
+                <td></td><td></td>
+                <td class="num">39,964</td>
+                <td class="num">512</td>
+                <td class="num">40,476</td>
+                <td class="num">156.5</td>
+                <td class="num">3.27</td>
+                <td></td><td></td><td></td><td></td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+
+
+<div class="section"><h2>GPU Efficiency Analysis</h2><p style="color:var(--text2);font-size:0.8rem;">LLM decode is memory-bandwidth-bound: each token reads the full model weight from DRAM. Compute demand is theoretical (2×params); measured GEMM ceiling was recorded on a different reference iGPU (128 EU), not this machine's - treat as directional only. Memory BW utilization is the meaningful efficiency metric for decode.</p><table><tr><th>Metric</th><th>Value</th></tr><tr><td>End-to-End Throughput</td><td class="num">3.3 tok/s</td></tr><tr><td>Decode Throughput (sum-of-agents)</td><td class="num">26.8 tok/s</td></tr><tr><td>Model Weight</td><td class="num">3,984 MB</td></tr><tr><td>Est. Parameters</td><td class="num">~8.4B</td></tr><tr><td>FLOPs/Token (2×params est.)</td><td class="num">16.7 GFLOPs</td></tr><tr><td>Theoretical Compute Demand</td><td class="num">0.447 TFLOPS</td></tr><tr><td>Measured GPU INT4 GEMM Ceiling (different reference chip)</td><td class="num">0.078 TOPS</td></tr><tr><td>GPU Theoretical Peak (FP16 FMA)</td><td class="num">4.10 TFLOPS</td></tr><tr><td>DRAM BW Achieved</td><td class="num">104.1 GB/s</td></tr><tr><td>DRAM BW Peak (measured)</td><td class="num">136.5 GB/s</td></tr><tr><td>Memory BW Utilization</td><td class="num">76.3%</td></tr></table></div>
+
+<div class="section"><h2>iGPU Roofline Projection</h2>
+<p style="color:var(--text2);font-size:0.8rem;">Params estimated at ~8.4B from model weight size (0.5 bytes/weight). Prefill (▲) reuses weights across the whole prompt in one batched pass - high arithmetic intensity, typically compute-bound. Decode (●) re-reads the full weight per token (batch=1) - a small constant intensity (4.0 FLOPs/Byte) regardless of context length, the classic memory-bandwidth-bound signature. Points near/above a roof are running near that ceiling for this device. Memory roof (136.5 GB/s) is measured from this machine's actual memory configuration (channels × width × clock). Compute Utilization % (prefill only) is measured against this run's own best observed throughput, not a vendor spec - no verified compute peak exists in this codebase for the exact chip + real Llama GEMM shapes in use here (see docs/KPI_HUB_INTEGRATION_NOTES.md).</p>
+<div style="height:480px; width:100%;">                        <script>window.PlotlyConfig = {MathJaxConfig: 'local'};</script>
+        <script charset="utf-8" src="https://cdn.plot.ly/plotly-4.1.1.min.js" integrity="sha256-O24V1F27f8pb0glCkelh3cVHLNiHAJ5gCaVtq2aNch8=" crossorigin="anonymous"></script>                <div id="be0ca312-6146-4183-b629-743ad68740fd" class="plotly-graph-div" style="height:100%; width:100%;"></div>            <script>                window.PLOTLYENV=window.PLOTLYENV || {};                                if (document.getElementById("be0ca312-6146-4183-b629-743ad68740fd")) {                    Plotly.newPlot(                        "be0ca312-6146-4183-b629-743ad68740fd",                        [{"line":{"dash":"solid","width":2},"mode":"lines","name":"iGPU Empirically Observed Peak (this run)","x":[0.5,477.7991702804356,59312.0],"y":[68.25,65219.58674327946,65219.58674327946],"type":"scatter"},{"line":{"dash":"dot","width":2},"mode":"lines","name":"Nova Lake reference iGPU, FP16 (different chip+shape, context only)","x":[0.5,30.007326007326007,59312.0],"y":[68.25,4096.0,4096.0],"type":"scatter"},{"line":{"dash":"dot","width":2},"mode":"lines","name":"Nova Lake reference iGPU, measured INT4 GEMM (different chip+shape, context only)","x":[0.5,0.5714285714285714,59312.0],"y":[68.25,78.0,78.0],"type":"scatter"},{"hovertemplate":"%{text}\u003cbr\u003eAI=%{x:.2f} FLOPs\u002fB\u003cbr\u003e%{y:.1f} GFLOPs\u002fs\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#58a6ff","size":10,"symbol":"triangle-up"},"mode":"markers","name":"Prefill","text":["01_roofline_calib_prefill_x128 (?)","02_roofline_calib_prefill_x128 (?)","03_roofline_calib_prefill_x128 (?)","04_roofline_calib_prefill_x128 (?)","05_roofline_calib_prefill_x512 (?)","06_roofline_calib_prefill_x512 (?)","07_roofline_calib_prefill_x512 (?)","08_roofline_calib_prefill_x512 (?)","09_roofline_calib_prefill_x2048 (?)","10_roofline_calib_prefill_x2048 (?)","11_roofline_calib_prefill_x2048 (?)","12_roofline_calib_prefill_x2048 (?)","13_roofline_calib_prefill_x8192 (?)","14_roofline_calib_prefill_x8192 (?)","15_roofline_calib_prefill_x8192 (?)","16_roofline_calib_prefill_x8192 (?)"],"x":[676.0,676.0,676.0,676.0,2056.0,2056.0,2056.0,2056.0,7576.0,7576.0,7576.0,7576.0,29656.0,29656.0,29656.0,29656.0],"y":[15576.437429586322,53182.82685468927,56255.14155346614,65219.58674327946,23257.500860828597,51740.934144,51246.987278663495,53547.350797406485,33269.15054723432,40466.61925020331,40758.45835876885,39804.98417253679,19075.652743248855,17050.94198936167,17325.157228044976,18980.961284863493],"type":"scatter"},{"hovertemplate":"%{text}\u003cbr\u003eAI=%{x:.2f} FLOPs\u002fB\u003cbr\u003e%{y:.1f} GFLOPs\u002fs\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#ff9838","size":10,"symbol":"circle"},"mode":"markers","name":"Decode","text":["01_roofline_calib_prefill_x128 (?)","02_roofline_calib_prefill_x128 (?)","03_roofline_calib_prefill_x128 (?)","04_roofline_calib_prefill_x128 (?)","05_roofline_calib_prefill_x512 (?)","06_roofline_calib_prefill_x512 (?)","07_roofline_calib_prefill_x512 (?)","08_roofline_calib_prefill_x512 (?)","09_roofline_calib_prefill_x2048 (?)","10_roofline_calib_prefill_x2048 (?)","11_roofline_calib_prefill_x2048 (?)","12_roofline_calib_prefill_x2048 (?)","13_roofline_calib_prefill_x8192 (?)","14_roofline_calib_prefill_x8192 (?)","15_roofline_calib_prefill_x8192 (?)","16_roofline_calib_prefill_x8192 (?)"],"x":[4.0,4.0,4.0,4.0,4.0,4.0,4.0,4.0,4.0,4.0,4.0,4.0,4.0,4.0,4.0,4.0],"y":[463.1276055541698,463.6030167572967,469.53011143892786,470.16423668439273,452.8238885697252,471.1983514085103,457.6982972965571,473.22667542692085,434.83065226781855,440.1102806573958,445.2941197036721,437.95327312278863,431.0839495395094,356.84007721875804,319.81678378533564,438.64305383908663],"type":"scatter"}],                        {"template":{"data":{"barpolar":[{"marker":{"line":{"color":"rgb(17,17,17)","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"barpolar"}],"bar":[{"error_x":{"color":"#f2f5fa"},"error_y":{"color":"#f2f5fa"},"marker":{"line":{"color":"rgb(17,17,17)","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"bar"}],"carpet":[{"aaxis":{"endlinecolor":"#A2B1C6","gridcolor":"#506784","linecolor":"#506784","minorgridcolor":"#506784","startlinecolor":"#A2B1C6"},"baxis":{"endlinecolor":"#A2B1C6","gridcolor":"#506784","linecolor":"#506784","minorgridcolor":"#506784","startlinecolor":"#A2B1C6"},"type":"carpet"}],"choropleth":[{"colorbar":{"outlinewidth":0,"ticks":""},"type":"choropleth"}],"contourcarpet":[{"colorbar":{"outlinewidth":0,"ticks":""},"type":"contourcarpet"}],"contour":[{"colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"type":"contour"}],"heatmap":[{"colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"type":"heatmap"}],"histogram2dcontour":[{"colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"type":"histogram2dcontour"}],"histogram2d":[{"colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"type":"histogram2d"}],"histogram":[{"marker":{"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"histogram"}],"mesh3d":[{"colorbar":{"outlinewidth":0,"ticks":""},"type":"mesh3d"}],"parcoords":[{"line":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"parcoords"}],"pie":[{"automargin":true,"type":"pie"}],"scatter3d":[{"line":{"colorbar":{"outlinewidth":0,"ticks":""}},"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scatter3d"}],"scattercarpet":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scattercarpet"}],"scattergeo":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scattergeo"}],"scattergl":[{"marker":{"line":{"color":"#283442"}},"type":"scattergl"}],"scattermap":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scattermap"}],"scatterpolargl":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scatterpolargl"}],"scatterpolar":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scatterpolar"}],"scatter":[{"marker":{"line":{"color":"#283442"}},"type":"scatter"}],"scatterternary":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scatterternary"}],"surface":[{"colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"type":"surface"}],"table":[{"cells":{"fill":{"color":"#506784"},"line":{"color":"rgb(17,17,17)"}},"header":{"fill":{"color":"#2a3f5f"},"line":{"color":"rgb(17,17,17)"}},"type":"table"}]},"layout":{"annotationdefaults":{"arrowcolor":"#f2f5fa","arrowhead":0,"arrowwidth":1},"autotypenumbers":"strict","coloraxis":{"colorbar":{"outlinewidth":0,"ticks":""}},"colorscale":{"diverging":[[0,"#8e0152"],[0.1,"#c51b7d"],[0.2,"#de77ae"],[0.3,"#f1b6da"],[0.4,"#fde0ef"],[0.5,"#f7f7f7"],[0.6,"#e6f5d0"],[0.7,"#b8e186"],[0.8,"#7fbc41"],[0.9,"#4d9221"],[1,"#276419"]],"sequential":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"sequentialminus":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]},"colorway":["#636efa","#EF553B","#00cc96","#ab63fa","#FFA15A","#19d3f3","#FF6692","#B6E880","#FF97FF","#FECB52"],"font":{"color":"#f2f5fa"},"geo":{"bgcolor":"rgb(17,17,17)","lakecolor":"rgb(17,17,17)","landcolor":"rgb(17,17,17)","showlakes":true,"showland":true,"subunitcolor":"#506784"},"hoverlabel":{"align":"left"},"hovermode":"closest","paper_bgcolor":"rgb(17,17,17)","plot_bgcolor":"rgb(17,17,17)","polar":{"angularaxis":{"gridcolor":"#506784","linecolor":"#506784","ticks":""},"bgcolor":"rgb(17,17,17)","radialaxis":{"gridcolor":"#506784","linecolor":"#506784","ticks":""}},"scene":{"xaxis":{"backgroundcolor":"rgb(17,17,17)","gridcolor":"#506784","gridwidth":2,"linecolor":"#506784","showbackground":true,"ticks":"","zerolinecolor":"#C8D4E3"},"yaxis":{"backgroundcolor":"rgb(17,17,17)","gridcolor":"#506784","gridwidth":2,"linecolor":"#506784","showbackground":true,"ticks":"","zerolinecolor":"#C8D4E3"},"zaxis":{"backgroundcolor":"rgb(17,17,17)","gridcolor":"#506784","gridwidth":2,"linecolor":"#506784","showbackground":true,"ticks":"","zerolinecolor":"#C8D4E3"}},"shapedefaults":{"line":{"color":"#f2f5fa"}},"sliderdefaults":{"bgcolor":"#C8D4E3","bordercolor":"rgb(17,17,17)","borderwidth":1,"tickwidth":0},"ternary":{"aaxis":{"gridcolor":"#506784","linecolor":"#506784","ticks":""},"baxis":{"gridcolor":"#506784","linecolor":"#506784","ticks":""},"bgcolor":"rgb(17,17,17)","caxis":{"gridcolor":"#506784","linecolor":"#506784","ticks":""}},"title":{"x":0.05},"updatemenudefaults":{"bgcolor":"#506784","borderwidth":0},"xaxis":{"automargin":true,"gridcolor":"#283442","linecolor":"#506784","ticks":"","title":{"standoff":15},"zerolinecolor":"#283442","zerolinewidth":2},"yaxis":{"automargin":true,"gridcolor":"#283442","linecolor":"#506784","ticks":"","title":{"standoff":15},"zerolinecolor":"#283442","zerolinewidth":2}}},"xaxis":{"type":"log","title":{"text":"Arithmetic Intensity (FLOPs\u002fByte)"}},"yaxis":{"type":"log","title":{"text":"Achieved Performance (GFLOPs\u002fs)"}},"margin":{"l":60,"r":20,"t":20,"b":50},"legend":{"orientation":"h","yanchor":"bottom","y":1.02},"height":480,"paper_bgcolor":"rgba(0,0,0,0)","plot_bgcolor":"rgba(22,27,34,1)"},                        {"responsive": true}                    )                };            </script>        </div>
+<table><tr><th>Stage</th><th>Phase</th><th style="text-align:right">AI (FLOPs/Byte)</th><th style="text-align:right">GFLOPs/s</th><th style="text-align:right">Compute Util. %</th></tr>
+<tr><td>01_roofline_calib_prefill_x128</td><td>decode</td><td class="num">4.00</td><td class="num">463.1</td><td class="num">0.0%</td></tr><tr><td>01_roofline_calib_prefill_x128</td><td>prefill</td><td class="num">676.00</td><td class="num">15576.4</td><td class="num">23.9%</td></tr><tr><td>02_roofline_calib_prefill_x128</td><td>decode</td><td class="num">4.00</td><td class="num">463.6</td><td class="num">0.0%</td></tr><tr><td>02_roofline_calib_prefill_x128</td><td>prefill</td><td class="num">676.00</td><td class="num">53182.8</td><td class="num">81.5%</td></tr><tr><td>03_roofline_calib_prefill_x128</td><td>decode</td><td class="num">4.00</td><td class="num">469.5</td><td class="num">0.0%</td></tr><tr><td>03_roofline_calib_prefill_x128</td><td>prefill</td><td class="num">676.00</td><td class="num">56255.1</td><td class="num">86.3%</td></tr><tr><td>04_roofline_calib_prefill_x128</td><td>decode</td><td class="num">4.00</td><td class="num">470.2</td><td class="num">0.0%</td></tr><tr><td>04_roofline_calib_prefill_x128</td><td>prefill</td><td class="num">676.00</td><td class="num">65219.6</td><td class="num">100.0%</td></tr><tr><td>05_roofline_calib_prefill_x512</td><td>decode</td><td class="num">4.00</td><td class="num">452.8</td><td class="num">0.0%</td></tr><tr><td>05_roofline_calib_prefill_x512</td><td>prefill</td><td class="num">2056.00</td><td class="num">23257.5</td><td class="num">35.7%</td></tr><tr><td>06_roofline_calib_prefill_x512</td><td>decode</td><td class="num">4.00</td><td class="num">471.2</td><td class="num">0.0%</td></tr><tr><td>06_roofline_calib_prefill_x512</td><td>prefill</td><td class="num">2056.00</td><td class="num">51740.9</td><td class="num">79.3%</td></tr><tr><td>07_roofline_calib_prefill_x512</td><td>decode</td><td class="num">4.00</td><td class="num">457.7</td><td class="num">0.0%</td></tr><tr><td>07_roofline_calib_prefill_x512</td><td>prefill</td><td class="num">2056.00</td><td class="num">51247.0</td><td class="num">78.6%</td></tr><tr><td>08_roofline_calib_prefill_x512</td><td>decode</td><td class="num">4.00</td><td class="num">473.2</td><td class="num">0.0%</td></tr><tr><td>08_roofline_calib_prefill_x512</td><td>prefill</td><td class="num">2056.00</td><td class="num">53547.4</td><td class="num">82.1%</td></tr><tr><td>09_roofline_calib_prefill_x2048</td><td>decode</td><td class="num">4.00</td><td class="num">434.8</td><td class="num">0.0%</td></tr><tr><td>09_roofline_calib_prefill_x2048</td><td>prefill</td><td class="num">7576.00</td><td class="num">33269.2</td><td class="num">51.0%</td></tr><tr><td>10_roofline_calib_prefill_x2048</td><td>decode</td><td class="num">4.00</td><td class="num">440.1</td><td class="num">0.0%</td></tr><tr><td>10_roofline_calib_prefill_x2048</td><td>prefill</td><td class="num">7576.00</td><td class="num">40466.6</td><td class="num">62.0%</td></tr><tr><td>11_roofline_calib_prefill_x2048</td><td>decode</td><td class="num">4.00</td><td class="num">445.3</td><td class="num">0.0%</td></tr><tr><td>11_roofline_calib_prefill_x2048</td><td>prefill</td><td class="num">7576.00</td><td class="num">40758.5</td><td class="num">62.5%</td></tr><tr><td>12_roofline_calib_prefill_x2048</td><td>decode</td><td class="num">4.00</td><td class="num">438.0</td><td class="num">0.0%</td></tr><tr><td>12_roofline_calib_prefill_x2048</td><td>prefill</td><td class="num">7576.00</td><td class="num">39805.0</td><td class="num">61.0%</td></tr><tr><td>13_roofline_calib_prefill_x8192</td><td>decode</td><td class="num">4.00</td><td class="num">431.1</td><td class="num">0.0%</td></tr><tr><td>13_roofline_calib_prefill_x8192</td><td>prefill</td><td class="num">29656.00</td><td class="num">19075.7</td><td class="num">29.2%</td></tr><tr><td>14_roofline_calib_prefill_x8192</td><td>decode</td><td class="num">4.00</td><td class="num">356.8</td><td class="num">0.0%</td></tr><tr><td>14_roofline_calib_prefill_x8192</td><td>prefill</td><td class="num">29656.00</td><td class="num">17050.9</td><td class="num">26.1%</td></tr><tr><td>15_roofline_calib_prefill_x8192</td><td>decode</td><td class="num">4.00</td><td class="num">319.8</td><td class="num">0.0%</td></tr><tr><td>15_roofline_calib_prefill_x8192</td><td>prefill</td><td class="num">29656.00</td><td class="num">17325.2</td><td class="num">26.6%</td></tr><tr><td>16_roofline_calib_prefill_x8192</td><td>decode</td><td class="num">4.00</td><td class="num">438.6</td><td class="num">0.0%</td></tr><tr><td>16_roofline_calib_prefill_x8192</td><td>prefill</td><td class="num">29656.00</td><td class="num">18981.0</td><td class="num">29.1%</td></tr></table></div>
+
+<div class="section"><h2>Model Weight</h2><table><tr><th>Property</th><th>Value</th></tr><tr><td>Total Size</td><td class="num">3,984 MB (3.89 GB)</td></tr><tr><td>Path</td><td><code>C:\Applications\mlperf_client\mlperf_v2p0\dependencies\llm\llama3\models\NativeOpenVINO\Llama-3.1-8B-Instruct_ov-int4-GRw</code></td></tr></table></div>
+
+
+
+
+
+<div class="section"><h2>System Under Test — Hardware</h2><table><tr><th style="width:200px">Component</th><th>Detail</th></tr><tr><td>Platform</td><td>-</td></tr><tr><td>OEM</td><td>-</td></tr><tr><td>CPU</td><td>-</td></tr><tr><td>Cores / Threads</td><td>- / -</td></tr><tr><td>Max Clock</td><td>- MHz</td></tr><tr><td>RAM</td><td>- GB</td></tr><tr><td>DRAM BW (measured config)</td><td>136.5 GB/s (8 ch)</td></tr><tr><td>Intel iGPU</td><td>Intel(R) Graphics [PF] GPU (96 EUs (10 threads/EU, SIMD16), 12 Xe Cores, 2300 MHz, DevID 0xD75F)</td></tr><tr><td>iGPU VRAM</td><td>4095 MB dedicated / 33.6 GB max (shared USM)</td></tr><tr><td>NVIDIA GPU</td><td>-</td></tr><tr><td>NVIDIA VRAM</td><td>-</td></tr><tr><td>NPU</td><td>Intel(R) NPU</td></tr><tr><td>Hostname</td><td>JF04WVAW0867-TA</td></tr><tr><td>OS</td><td>Windows 10.0.28000</td></tr></table></div><div class="section"><h2>System Under Test — Software / Middleware</h2><table><tr><th style="width:200px">Component</th><th>Version</th></tr><tr><td>Python</td><td><code>3.13.3</code></td></tr><tr><td>OVMS</td><td><code>2026.2.1.1122f03bf</code></td></tr><tr><td>OpenVINO Backend</td><td><code>2026.2.1-21919-ede283a88e3-releases/2026/2</code></td></tr><tr><td>OpenVINO (pip)</td><td><code>-</code></td></tr><tr><td>Agent Framework</td><td><code>-</code></td></tr><tr><td>Agent Framework Core</td><td><code>-</code></td></tr><tr><td>OpenAI SDK</td><td><code>-</code></td></tr><tr><td>MCP SDK</td><td><code>-</code></td></tr><tr><td>FastAPI</td><td><code>-</code></td></tr><tr><td>Plotly</td><td><code>7.1.0</code></td></tr><tr><td>NVIDIA Driver</td><td><code>-</code></td></tr><tr><td>Intel iGPU Driver</td><td><code>32.0.101.8949</code></td></tr><tr><td>NPU Driver</td><td><code>32.0.100.5488</code></td></tr></table></div>
+
+<div style="color:var(--text2); font-size:0.75rem; text-align:center; margin-top:20px;">
+    LiteAgent-Clash &mdash; Heterogeneous AI Workload Orchestration
+</div>
+
+</body>
+</html>
