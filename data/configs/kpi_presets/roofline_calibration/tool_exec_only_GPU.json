@@ -1,0 +1,46 @@
+{
+  "SystemConfig": {
+    "Comment": "Roofline calibration: tool_exec_only (GPU)",
+    "TempPath": "",
+    "EPDependenciesConfigPath": ""
+  },
+  "Scenarios": [
+    {
+      "Name": "Llama3",
+      "Models": [
+        {
+          "ModelName": "Llama-3.1-8B-Instruct_ov-int4-GRw",
+          "FilePath": "https://client.mlcommons-storage.org/deps/2.0/scenario_files/models/llama3/8b-instruct/NativeOpenVINO/GPU/openvino_model.xml",
+          "DataFilePath": "https://client.mlcommons-storage.org/deps/2.0/scenario_files/models/llama3/8b-instruct/NativeOpenVINO/GPU/openvino_model.bin",
+          "TokenizerPath": "https://client.mlcommons-storage.org/deps/2.0/scenario_files/models/llama3/8b-instruct/NativeOpenVINO/GPU/IHV-OV-tokenizers.zip"
+        }
+      ],
+      "InputFilePath": {
+        "base": [
+          "file://C:/mlperf_client_2.0_KPI/data/prompts/llama_3_1_8b_instruct/roofline_calibration/tool_exec_only/calib-tool-exec-prompts.json"
+        ]
+      },
+      "AssetsPath": [
+        "file://C:/mlperf_client_2.0_KPI/data/prompts/llama_3_1_8b_instruct/tools_sandbox/01_profile_csv.py",
+        "file://C:/mlperf_client_2.0_KPI/data/prompts/llama_3_1_8b_instruct/tools_sandbox/02_channel_mix.py",
+        "file://C:/mlperf_client_2.0_KPI/data/prompts/llama_3_1_8b_instruct/tools_sandbox/03_supplier_concentration.py",
+        "file://C:/mlperf_client_2.0_KPI/data/prompts/llama_3_1_8b_instruct/tools_sandbox/beverage_lib.py",
+        "file://C:/mlperf_client_2.0_KPI/data/prompts/llama_3_1_8b_instruct/tools_sandbox/Warehouse_and_Retail_Sales.csv"
+      ],
+      "ResultsVerificationFile": "https://client.mlcommons-storage.org/deps/2.0/scenario_files/llm/generation-greedy-results.json",
+      "DataVerificationFile": "",
+      "Iterations": 1,
+      "Delay": 5,
+      "ExecutionProviders": [
+        {
+          "Name": "NativeOpenVINO",
+          "Config": {
+            "device_type": "GPU"
+          }
+        }
+      ],
+      "IsAgentic": true,
+      "ToolsExecution": true
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "model_config": {
+    "context_length": 512,
+    "search": {
+      "method": "greedy",
+      "temperature": 0.6,
+      "top_k": 1,
+      "top_p": 0.9,
+      "stop_on_eos": true,
+      "max_length": 4
+    }
+  },
+  "apply_chat_template": true,
+  "prompts": [
+    {
+      "system": "Reply with exactly one word.",
+      "user": "Say OK."
+    }
+  ],
+  "category": "Roofline Calib Thin Serving"
+}

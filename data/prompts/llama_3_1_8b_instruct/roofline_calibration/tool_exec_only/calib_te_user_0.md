@@ -1,0 +1,1 @@
+Run `01_profile_csv.py` on `Warehouse_and_Retail_Sales.csv` and report only the exit status.

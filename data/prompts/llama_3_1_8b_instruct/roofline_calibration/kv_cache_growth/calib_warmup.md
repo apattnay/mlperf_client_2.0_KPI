@@ -1,0 +1,1 @@
+Warm-up: respond with a single short acknowledgement.

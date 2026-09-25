@@ -1,0 +1,1 @@
+Run `02_channel_mix.py` on `Warehouse_and_Retail_Sales.csv` and report only the exit status.

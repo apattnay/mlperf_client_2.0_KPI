@@ -1,0 +1,38 @@
+{
+  "SystemConfig": {
+    "Comment": "Roofline calibration: thin_serving (NPU)",
+    "TempPath": "",
+    "EPDependenciesConfigPath": ""
+  },
+  "Scenarios": [
+    {
+      "Name": "Llama3",
+      "Models": [
+        {
+          "ModelName": "Llama-3.1-8B-Instruct_ov-int4-CHw",
+          "FilePath": "https://client.mlcommons-storage.org/deps/2.0/scenario_files/models/llama3/8b-instruct/NativeOpenVINO/NPU/openvino_model.xml",
+          "DataFilePath": "https://client.mlcommons-storage.org/deps/2.0/scenario_files/models/llama3/8b-instruct/NativeOpenVINO/NPU/openvino_model.bin",
+          "TokenizerPath": "https://client.mlcommons-storage.org/deps/2.0/scenario_files/models/llama3/8b-instruct/NativeOpenVINO/NPU/IHV-OV-tokenizers.zip"
+        }
+      ],
+      "InputFilePath": {
+        "base": [
+          "file://C:/mlperf_client_2.0_KPI/data/prompts/llama_3_1_8b_instruct/roofline_calibration/thin_serving/thin_serving.json"
+        ]
+      },
+      "AssetsPath": [],
+      "ResultsVerificationFile": "https://client.mlcommons-storage.org/deps/2.0/scenario_files/llm/generation-greedy-results.json",
+      "DataVerificationFile": "",
+      "Iterations": 20,
+      "Delay": 5,
+      "ExecutionProviders": [
+        {
+          "Name": "NativeOpenVINO",
+          "Config": {
+            "device_type": "NPU"
+          }
+        }
+      ]
+    }
+  ]
+}

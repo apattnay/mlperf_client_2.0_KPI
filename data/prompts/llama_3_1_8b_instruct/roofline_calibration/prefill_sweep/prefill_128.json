@@ -1,0 +1,21 @@
+{
+  "model_config": {
+    "context_length": 4096,
+    "search": {
+      "method": "greedy",
+      "temperature": 0.6,
+      "top_k": 1,
+      "top_p": 0.9,
+      "stop_on_eos": true,
+      "max_length": 32
+    }
+  },
+  "apply_chat_template": true,
+  "prompts": [
+    {
+      "system": "You are a precise, terse code reviewer.",
+      "user": "The build pipeline recompiles the affected translation units before re-running the regression suite. Memory bandwidth utilization during the decode phase depends heavily on batch size and KV-cache depth. The scheduler partitions independent tasks across available worker threads to reduce end-to-end latency. Static analysis flags unchecked buffer accesses that could lead to out-of-bounds reads during parsing. The configuration loader validates every field against the JSON schema before the executor starts. Profiling shows the hot path spends most of its time waiting on memory rather than executing instructions. The test harness replays recorded fixtures to keep the benchmark deterministic across Summarize the above in exactly one sentence."
+    }
+  ],
+  "category": "Roofline Calib Prefill x128"
+}

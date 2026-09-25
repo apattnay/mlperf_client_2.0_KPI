@@ -313,6 +313,47 @@ different KV-cache/activation memory traffic characteristics than the simple "re
 once per token" model assumes. Treat this as an open question the two-method cross-check exists
 specifically to surface, not a bug to silently paper over - see limitation #14.
 
+### 4.3 Purpose-built calibration presets (`tools/roofline_calibration/`)
+
+§4.2's calibration mining works on *existing* runs, but those runs were designed for KPI
+characterization, not calibration - their shapes/repetition counts aren't optimized for isolating
+one macro-component cleanly. `tools/roofline_calibration/` is a **thin wrapper**, separate from
+`tools/run_kpi_preset.py` (which owns the fixed production SWE/Data Agent presets), that
+generates purpose-built presets - one per macro-component/knob:
+
+| Preset | Equation isolated | Confidence | Mechanism |
+|---|---|---|---|
+| `prefill_sweep` | `compute_efficiency_retention` (prefill) | high | Fixed short output, sweeping input context length (128/512/2048/8192 tokens) across 4 non-agentic stages |
+| `thin_serving` | `stage_overhead_s`/`fixed_overhead_s` (assumed constant) | high | Minimal round trips repeated many times, isolating fixed per-request software/IPC overhead |
+| `kv_cache_growth` | `memory_efficiency_retention` (decode/ITL vs. KV-cache depth) | draft | Agentic multi-turn conversation where each scripted `agent` turn adds a KNOWN, roughly-equal token increment to history |
+| `tool_exec_only` | `cpu_efficiency_retention` + `tool_parallel_fraction` (Amdahl) | draft | Agentic scenario prompting direct `tools_sandbox/` invocations with minimal reasoning in between |
+
+**"high" vs. "draft" confidence**: `prefill_sweep`/`thin_serving` reuse the same proven,
+non-agentic `Scenarios[].InputFilePath` pattern every existing preset in this repo already uses -
+schema-validated against `data/ConfigSchema.json`/`data/LLMInputSchema.json` and safe to run as-is.
+`kv_cache_growth`/`tool_exec_only` reuse the real agentic `prompt_files` + `{"system"/"user"/
+"agent"}` turn-chaining schema (verified against the actual
+`data/prompts/llama_3_1_8b_instruct/swe_agent/swe-agent-prompts.json` used by the production SWE
+Agent preset) but their *exact* runtime behavior - how much the model reasons before calling a
+tool, whether "agent" turns are truly just injected history vs. something more - was not
+independently verified against a live hardware run at authoring time. Run these as `--generate`
+first, inspect the config, then do a small `--run` before trusting numbers from them.
+
+Usage:
+
+```powershell
+# Generate only (no hardware/network required) - writes to data/configs/kpi_presets/roofline_calibration/
+# and data/prompts/llama_3_1_8b_instruct/roofline_calibration/
+.venv\Scripts\python.exe tools\roofline_calibration\run_calibration.py --preset prefill_sweep --device NPU
+
+# Generate AND run (requires a real installed mlperf_v2p0 + NPU/iGPU hardware + network access -
+# this step cannot be executed in this development environment, only on real target hardware)
+.venv\Scripts\python.exe tools\roofline_calibration\run_calibration.py --preset prefill_sweep --device NPU --run
+
+# Analyze a completed run (reuses calibration.py + baseline_extractor.py from §4.2)
+.venv\Scripts\python.exe tools\roofline_calibration\run_calibration.py --analyze kpi_runs\prefill_sweep_npu_<timestamp>
+```
+
 ## 5. Step 4 — Outputs (`report.py`, `what_if_calculator.py`)
 
 - **`roofline_projection_report.html` / `.json`** (`tools/run_roofline_projection.py`): a static
