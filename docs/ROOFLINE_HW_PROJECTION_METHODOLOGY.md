@@ -392,6 +392,17 @@ here so they aren't silently rediscovered:
   `baseline_extractor.py`'s ground-truth notes on this same distinction for the production
   SWE/Data Agent presets) - expected, not a bug.
 
+**All 4 presets were also run on iGPU** (`kpi_runs/*_gpu_20260925_*`) to complete full 8/8
+(4 presets × NPU/GPU) real-hardware coverage:
+
+- `kv_cache_growth` (GPU): decode achieved 65.4/113.0/112.6/101.2 GB/s (82.7% of theoretical peak
+  best-observed) - notably higher %-of-peak than the NPU run (63.5%), consistent with §4.1's
+  finding that NPU and iGPU achieve genuinely different fractions of theoretical memory bandwidth.
+- `tool_exec_only` (GPU): `tool_exec_gap_s` = 5.01s/5.97s/6.21s/1.87s - **nearly identical to the
+  NPU run's 5.01s/5.87s/6.15s/2.33s**, exactly as expected since tool execution is CPU-bound and
+  independent of which accelerator ran the LLM inference. A strong, independent consistency check
+  that both this preset and the underlying `tool_exec_gap_s` concept behave as physically expected.
+
 Usage:
 
 ```powershell
