@@ -12,6 +12,10 @@ from typing import List
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 PROMPTS_DIR = REPO_ROOT / "data" / "prompts" / "llama_3_1_8b_instruct" / "roofline_calibration"
 CONFIGS_DIR = REPO_ROOT / "data" / "configs" / "kpi_presets" / "roofline_calibration"
+# The tools_sandbox scripts only use stdlib (csv/argparse/pathlib) - no dependency reason to need
+# a specific interpreter, so use the project's own portable .venv rather than a machine-specific
+# system Python path (confirmed working via a live dry-run, but not guaranteed to exist elsewhere).
+_SANDBOX_PYTHON = (REPO_ROOT / ".venv" / "Scripts" / "python.exe").as_posix()
 
 _MODEL_URLS = {
     "NPU": {
@@ -128,9 +132,13 @@ def generate_thin_serving(device: str, iterations: int = 20) -> Path:
     return config_path
 
 
-def generate_kv_cache_growth(device: str, n_turns: int = 4, per_turn_tokens: int = 600) -> Path:
-    """Preset 2 (agentic, draft): each scripted 'agent' turn adds ~per_turn_tokens to history -
-    schema matches data/prompts/llama_3_1_8b_instruct/swe_agent/swe-agent-prompts.json exactly."""
+def generate_kv_cache_growth(device: str, n_turns: int = 3, per_turn_tokens: int = 600) -> Path:
+    """Preset 2 (agentic): each scripted 'agent' turn adds ~per_turn_tokens to history - schema
+    matches data/prompts/llama_3_1_8b_instruct/swe_agent/swe-agent-prompts.json exactly, INCLUDING
+    always ending on a trailing "agent" entry (not a dangling final "user") - a live dry-run
+    (2026-09-25) showed the real harness's task-pairing needs prompts[i+2] to exist for every
+    task, so an off-pattern trailing "user" with nothing after it collapsed the whole run to a
+    single no-op task (finished in <1s, 0 stages parsed) instead of n_turns measured turns."""
     d = PROMPTS_DIR / "kv_cache_growth"
     _write_text(d / "calib_warmup.md", "Warm-up: respond with a single short acknowledgement.")
     _write_text(d / "calib_system.md", "You are an assistant reviewing a series of short technical notes.")
@@ -143,10 +151,9 @@ def generate_kv_cache_growth(device: str, n_turns: int = 4, per_turn_tokens: int
             prompts_list.append({"system": "calib_system.md", "user": user_name})
         else:
             prompts_list.append({"user": user_name})
-        if turn < n_turns - 1:  # last turn has no scripted reply to inject before ending
-            agent_name = f"calib_agent_{turn}.md"
-            _write_text(d / agent_name, _filler_text(per_turn_tokens))
-            prompts_list.append({"agent": agent_name})
+        agent_name = f"calib_agent_{turn}.md"
+        _write_text(d / agent_name, _filler_text(per_turn_tokens))
+        prompts_list.append({"agent": agent_name})
 
     scenario = {
         "model_config": {"context_length": max(4096, per_turn_tokens * n_turns * 2), "search": {**_DEFAULT_SEARCH, "max_length": 64}},
@@ -166,10 +173,12 @@ def generate_kv_cache_growth(device: str, n_turns: int = 4, per_turn_tokens: int
 
 
 def generate_tool_exec_only(device: str) -> Path:
-    """Preset 4 (agentic, draft): prompts the model to invoke tools_sandbox/ scripts directly
-    with minimal reasoning in between - see presets.py's confidence="draft" caveat."""
+    """Preset 4 (agentic): prompts the model to invoke tools_sandbox/ scripts directly with
+    minimal reasoning in between. Always ends on a trailing "agent" entry, matching
+    swe-agent-prompts.json's exact pattern - see generate_kv_cache_growth's docstring for why
+    (a dangling final "user" with nothing after it collapses the whole run to a single no-op
+    task, confirmed via a live dry-run 2026-09-25)."""
     d = PROMPTS_DIR / "tool_exec_only"
-    sandbox_dir = REPO_ROOT / "data" / "prompts" / "llama_3_1_8b_instruct" / "tools_sandbox"
     sandbox_scripts = ["01_profile_csv.py", "02_channel_mix.py", "03_supplier_concentration.py"]
 
     _write_text(d / "calib_te_warmup.md", "Warm-up: respond with a single short acknowledgement.")
@@ -185,10 +194,28 @@ def generate_tool_exec_only(device: str) -> Path:
             prompts_list.append({"system": "calib_te_system.md", "user": user_name})
         else:
             prompts_list.append({"user": user_name})
-        if i < len(sandbox_scripts) - 1:
-            agent_name = f"calib_te_agent_{i}.md"
-            _write_text(d / agent_name, "Acknowledged, proceeding to the next script.")
-            prompts_list.append({"agent": agent_name})
+        agent_name = f"calib_te_agent_{i}.md"
+        # Real tool_use "execute" block. "execute_command" (SWE Agent's documented tool name per
+        # swe_system.md §5.4) was tried first and FAILED repeatedly on real hardware (2026-09-25:
+        # "One or more tool calls failed" / "There is empty output in the result", unchanged
+        # across multiple python-path/cwd fixes that should have mattered if those were the real
+        # cause) - none of the real committed swe_agent_N.md reply files actually invoke
+        # "execute_command" either (only "read"/"apply_patch"), so it's plausibly a
+        # prompt-documentation-only tool name the harness's real dispatch never implemented.
+        # "execute" (Data Agent's name, e.g. da_agent_0.md) is the one name confirmed dispatched
+        # (a live run returned a real {"exit_code","output"} error instead of the generic
+        # "tool calls failed" - proof the tool itself fired, the path below was just wrong then).
+        _write_text(d / agent_name,
+                    f"Running {script} now.\n\n```\n"
+                    f'{{\n "type":"tool_use",\n "id":"toolu_calib_{i}",\n "name":"execute",\n '
+                    # execute's cwd defaults to the mlperf install root - confirmed via a live
+                    # dry-run error message that assets actually land at
+                    # data/<ScenarioName>/tools_sandbox/ under it (ScenarioName="Llama3" here),
+                    # NOT flat and NOT under "tools_sandbox/" alone as two earlier guesses assumed.
+                    f'"input":{{"command":"{_SANDBOX_PYTHON} data/Llama3/tools_sandbox/{script} '
+                    f'--input data/Llama3/tools_sandbox/Warehouse_and_Retail_Sales.csv"}}\n}}'
+                    f"\n```\n")
+        prompts_list.append({"agent": agent_name})
 
     scenario = {
         "model_config": {"context_length": 8192, "search": {**_DEFAULT_SEARCH, "max_length": 256}},
@@ -200,7 +227,15 @@ def generate_tool_exec_only(device: str) -> Path:
     scenario_path = d / "calib-tool-exec-prompts.json"
     _write_json(scenario_path, scenario)
 
-    assets = [f"file://{(sandbox_dir / f).as_posix()}" for f in sandbox_scripts + ["beverage_lib.py", "Warehouse_and_Retail_Sales.csv"]]
+    # tools_sandbox.zip (not the individual flat files) - it extracts WITH a "tools_sandbox/"
+    # prefix (verified: unzip listing shows "tools_sandbox/01_profile_csv.py" etc.), matching the
+    # "tools_sandbox/<script>" paths used in both the tool_use commands above and the real
+    # production agentic configs' own AssetsPath. Referencing the individual files directly (an
+    # earlier version did) stages them FLAT with no "tools_sandbox/" folder, so the script path in
+    # the tool_use command above resolves to nothing - confirmed via a live dry-run (2026-09-25:
+    # "One or more tool calls failed" / "There is empty output in the result").
+    sandbox_zip = REPO_ROOT / "data" / "prompts" / "llama_3_1_8b_instruct" / "tools_sandbox.zip"
+    assets = [f"file://{sandbox_zip.as_posix()}"]
     config = _base_scenario(device, "tool_exec_only", {"base": [f"file://{scenario_path.as_posix()}"]},
                              iterations=1, assets_path=assets, is_agentic=True, tools_execution=True)
     config_path = CONFIGS_DIR / f"tool_exec_only_{device}.json"

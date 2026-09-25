@@ -21,11 +21,7 @@
         ]
       },
       "AssetsPath": [
-        "file://C:/mlperf_client_2.0_KPI/data/prompts/llama_3_1_8b_instruct/tools_sandbox/01_profile_csv.py",
-        "file://C:/mlperf_client_2.0_KPI/data/prompts/llama_3_1_8b_instruct/tools_sandbox/02_channel_mix.py",
-        "file://C:/mlperf_client_2.0_KPI/data/prompts/llama_3_1_8b_instruct/tools_sandbox/03_supplier_concentration.py",
-        "file://C:/mlperf_client_2.0_KPI/data/prompts/llama_3_1_8b_instruct/tools_sandbox/beverage_lib.py",
-        "file://C:/mlperf_client_2.0_KPI/data/prompts/llama_3_1_8b_instruct/tools_sandbox/Warehouse_and_Retail_Sales.csv"
+        "file://C:/mlperf_client_2.0_KPI/data/prompts/llama_3_1_8b_instruct/tools_sandbox.zip"
       ],
       "ResultsVerificationFile": "https://client.mlcommons-storage.org/deps/2.0/scenario_files/llm/generation-greedy-results.json",
       "DataVerificationFile": "",

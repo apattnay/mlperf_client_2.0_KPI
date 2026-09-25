@@ -323,21 +323,74 @@ generates purpose-built presets - one per macro-component/knob:
 
 | Preset | Equation isolated | Confidence | Mechanism |
 |---|---|---|---|
-| `prefill_sweep` | `compute_efficiency_retention` (prefill) | high | Fixed short output, sweeping input context length (128/512/2048/8192 tokens) across 4 non-agentic stages |
-| `thin_serving` | `stage_overhead_s`/`fixed_overhead_s` (assumed constant) | high | Minimal round trips repeated many times, isolating fixed per-request software/IPC overhead |
-| `kv_cache_growth` | `memory_efficiency_retention` (decode/ITL vs. KV-cache depth) | draft | Agentic multi-turn conversation where each scripted `agent` turn adds a KNOWN, roughly-equal token increment to history |
-| `tool_exec_only` | `cpu_efficiency_retention` + `tool_parallel_fraction` (Amdahl) | draft | Agentic scenario prompting direct `tools_sandbox/` invocations with minimal reasoning in between |
+| `prefill_sweep` | `compute_efficiency_retention` (prefill) | validated | Fixed short output, sweeping input context length (128/512/2048/8192 tokens) across 4 non-agentic stages |
+| `thin_serving` | `stage_overhead_s`/`fixed_overhead_s` (assumed constant) | validated | Minimal round trips repeated many times, isolating fixed per-request software/IPC overhead |
+| `kv_cache_growth` | `memory_efficiency_retention` (decode/ITL vs. KV-cache depth) | validated | Agentic multi-turn conversation where each scripted `agent` turn adds a KNOWN, roughly-equal token increment to history |
+| `tool_exec_only` | `cpu_efficiency_retention` + `tool_parallel_fraction` (Amdahl) | validated | Agentic scenario prompting direct `tools_sandbox/` invocations with minimal reasoning in between |
 
-**"high" vs. "draft" confidence**: `prefill_sweep`/`thin_serving` reuse the same proven,
-non-agentic `Scenarios[].InputFilePath` pattern every existing preset in this repo already uses -
-schema-validated against `data/ConfigSchema.json`/`data/LLMInputSchema.json` and safe to run as-is.
-`kv_cache_growth`/`tool_exec_only` reuse the real agentic `prompt_files` + `{"system"/"user"/
-"agent"}` turn-chaining schema (verified against the actual
-`data/prompts/llama_3_1_8b_instruct/swe_agent/swe-agent-prompts.json` used by the production SWE
-Agent preset) but their *exact* runtime behavior - how much the model reasons before calling a
-tool, whether "agent" turns are truly just injected history vs. something more - was not
-independently verified against a live hardware run at authoring time. Run these as `--generate`
-first, inspect the config, then do a small `--run` before trusting numbers from them.
+**All 4 presets were run for real on NPU hardware on 2026-09-25** (Intel(R) NPU + iGPU, both
+confirmed present via `Get-PnpDevice`, models already cached locally) - see results below. The two
+non-agentic presets worked on the first try; the two agentic ones needed real fixes, documented
+here so they aren't silently rediscovered:
+
+1. **Agentic scenarios need `--python-path system` even when no tool ever executes** -
+   `kv_cache_growth`'s first attempt exited 0 but parsed 0 stages (`Bundled Python not found` ->
+   `Inferences preparation failed, skipping...` in the install's `Logs/error.log`). Fixed in
+   `run_calibration.py`: auto-adds `--python-path system` for any `is_agentic` preset (same flag
+   `run_kpi_preset.py` already passes for the production SWE/Data Agent presets 5-8).
+2. **The scripted `prompts` array must have an ODD total count, ending on a trailing `agent`
+   entry** - `llama3 ERROR - Invalid number of prompts for agentic inference. Must be at least 3
+   and odd.` A draft version ended on a dangling final `user` turn (even count) to squeeze one
+   extra measured stage out of `kv_cache_growth`; that broke the harness's `prompts[i+2]`
+   task-pairing lookup entirely (collapsed the whole run to a single no-op task, <1s, 0 stages).
+   Fixed: always end on `agent`, matching `swe-agent-prompts.json`'s exact shape (odd count).
+3. **`"execute_command"` (SWE Agent's own *documented* tool name, per `swe_system.md` §5.4) is
+   never actually dispatched by the real harness** - confirmed by trying it and getting the
+   generic, detail-free `One or more tool calls failed` / `There is empty output in the result.`
+   repeatedly, unchanged across several unrelated fixes (python path, asset path) that should have
+   mattered if those were the real cause. None of the real committed `swe_agent_N.md` reply files
+   invoke `execute_command` either (only `read`/`apply_patch`) - it's plausibly prompt-level
+   documentation the model is taught to reference, that the C++ dispatch backend never
+   implemented under that name. `"execute"` (Data Agent's name, e.g. `da_agent_0.md`) is the one
+   name proven dispatched - switching to it turned the generic failure into a real, detailed
+   `{"exit_code":2,"output":"...: No such file or directory"}` error (proof the tool itself fired
+   correctly; the remaining problem was just the path, see next point).
+4. **`tools_sandbox` assets stage under `data/<ScenarioName>/tools_sandbox/`** (relative to the
+   mlperf install root, where `execute`'s `cwd` defaults to) - NOT flat, and NOT under
+   `tools_sandbox/` alone. Confirmed by recursively searching the install directory for the actual
+   staged file after the exit_code:2 error above. `Logs/results.json`'s own `"Assets File Names"`
+   list (which shows flat names with no path prefix) is misleading here - it's just a name
+   manifest, not the real staged path.
+5. **No benefit to a machine-specific system Python path for the `execute` command** - the
+   `tools_sandbox/*.py` scripts only use stdlib (`csv`/`argparse`/`pathlib`), so the project's own
+   `.venv\Scripts\python.exe` (resolved dynamically relative to the repo root, portable to any
+   machine that ran `setup_kpi_hub_env.ps1`) works identically to a hardcoded system install path
+   and is used instead.
+
+**Real results (NPU, `kpi_runs/*_npu_20260925_*`, analyzed via `--analyze`):**
+
+- `prefill_sweep`: prefill throughput *rises* 128->2048 tokens (~18k->26k GFLOPs/s, pipeline
+  warmup) then *drops sharply* at 8192 tokens (~12.5k GFLOPs/s) - real evidence prefill efficiency
+  is not flat across context lengths the way a single-point calibration would assume. Decode also
+  slows at long context (96->65 GB/s), suggesting KV-cache-depth affects decode bandwidth even
+  though the current model treats `memory_efficiency_retention` as context-length-independent.
+- `thin_serving`: telemetry-based mem-BW efficiency (7.3% of peak) was far below the per-token-
+  timing-derived calibration number (71.0%) for these very short (~2-output-token) stages - direct
+  confirmation of §4.2's "coarse ~1Hz sampler smooths over real peak/trough swings" caveat: the
+  sampler barely catches any samples during a sub-second active window.
+- `kv_cache_growth`: input tokens grew 40->129->817->1505 across turns (tracking the designed
+  ~600-token-per-turn scripted `agent` reply size); decode throughput stayed roughly flat-to-
+  slightly-varying (72-87 GB/s) across this modest range - consistent with `prefill_sweep`'s
+  finding that decode degradation only becomes pronounced at much larger contexts (~8k tokens),
+  not in the few-hundred-to-~1.5k range this run covered.
+- `tool_exec_only`: real `tool_exec_gap_s` values of 5.01s/5.87s/6.15s/2.33s per stage (three real
+  `tools_sandbox/*.py` invocations via the fixed `execute` tool_use path) - genuine CPU-bound
+  tool-execution time, the actual signal `cpu_efficiency_retention`/`tool_parallel_fraction` are
+  meant to model. Note `tool_calls` stays `{}` in `baseline_extractor.py`'s output for this run -
+  that field scrapes the *model's own* generated text (`results.json`'s `Output` array), which is
+  independent of the scripted `agent`-file tool dispatch that actually ran the script (see
+  `baseline_extractor.py`'s ground-truth notes on this same distinction for the production
+  SWE/Data Agent presets) - expected, not a bug.
 
 Usage:
 
@@ -346,8 +399,8 @@ Usage:
 # and data/prompts/llama_3_1_8b_instruct/roofline_calibration/
 .venv\Scripts\python.exe tools\roofline_calibration\run_calibration.py --preset prefill_sweep --device NPU
 
-# Generate AND run (requires a real installed mlperf_v2p0 + NPU/iGPU hardware + network access -
-# this step cannot be executed in this development environment, only on real target hardware)
+# Generate AND run (requires a real installed mlperf_v2p0 + NPU/iGPU hardware + network access,
+# plus - on an Intel corporate network - the proxy env vars: `. .\tools\set_proxy_env.ps1` first)
 .venv\Scripts\python.exe tools\roofline_calibration\run_calibration.py --preset prefill_sweep --device NPU --run
 
 # Analyze a completed run (reuses calibration.py + baseline_extractor.py from §4.2)

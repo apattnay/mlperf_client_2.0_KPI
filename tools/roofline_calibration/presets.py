@@ -2,9 +2,10 @@
 component scaling equations in scaling_engine.py, so its measured behavior can be cross-checked
 against that equation's assumption independent of the noisy, workload-mixed agentic timeline.
 
-See docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md Sec 4.3 for the full design rationale and the
-honesty caveats on presets 3/4 (agentic asset-chaining semantics not independently verified
-against a live hardware dry-run at authoring time).
+See docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md Sec 4.3 for the full design rationale, the real
+2026-09-25 NPU dry-run results, and the bugs found+fixed to get presets 3/4 working (odd-prompt-
+count requirement, --python-path system, "execute" vs "execute_command" tool dispatch, and the
+real tools_sandbox asset staging path).
 """
 from __future__ import annotations
 
@@ -17,7 +18,7 @@ class CalibrationPreset:
     equation: str            # which scaling_engine.py macro-component/knob this isolates
     is_agentic: bool
     description: str
-    confidence: str          # "high" (non-agentic, proven config pattern) or "draft" (agentic, needs a dry-run to confirm)
+    confidence: str          # "high" (non-agentic, proven config pattern) or "validated" (agentic, confirmed working on a real 2026-09-25 NPU dry-run after fixing --python-path/odd-prompt-count/tool-name/asset-path issues - see docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md §4.3)
 
 
 CALIBRATION_PRESETS = {
@@ -49,11 +50,13 @@ CALIBRATION_PRESETS = {
         is_agentic=True,
         description=(
             "Agentic multi-turn conversation (prompt_files scripted 'agent' replies, matching "
-            "swe-agent-prompts.json's own schema) where each scripted agent turn adds a KNOWN, "
-            "roughly-equal token increment to history - isolates how ITL degrades as KV-cache "
-            "depth grows in controlled steps, instead of the agentic workload's own uneven growth."
+            "swe-agent-prompts.json's own schema, including always ending on a trailing 'agent' "
+            "entry - an odd total prompt count, required by the harness) where each scripted "
+            "agent turn adds a KNOWN, roughly-equal token increment to history - isolates how ITL "
+            "changes as KV-cache depth grows in controlled steps, instead of the agentic "
+            "workload's own uneven growth."
         ),
-        confidence="draft",
+        confidence="validated",
     ),
     "tool_exec_only": CalibrationPreset(
         key="tool_exec_only",
@@ -61,10 +64,11 @@ CALIBRATION_PRESETS = {
         is_agentic=True,
         description=(
             "Agentic scenario prompting the model to invoke tools_sandbox/ scripts directly with "
-            "minimal reasoning text in between - intended to isolate tool_exec_gap_s (CPU-bound) "
-            "from real LLM decode time, though the actual reasoning-vs-tool-call split still "
-            "depends on the model's own live generation, not just the prompt design."
+            "minimal reasoning text in between, via scripted tool_use \"execute\" blocks (NOT "
+            "\"execute_command\" - that name is only ever documented, never actually dispatched by "
+            "the real harness) at the confirmed real staging path data/<ScenarioName>/"
+            "tools_sandbox/ - isolates tool_exec_gap_s (CPU-bound) from real LLM decode time."
         ),
-        confidence="draft",
+        confidence="validated",
     ),
 }

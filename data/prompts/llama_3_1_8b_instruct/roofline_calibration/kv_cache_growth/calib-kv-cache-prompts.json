@@ -1,6 +1,6 @@
 {
   "model_config": {
-    "context_length": 4800,
+    "context_length": 4096,
     "search": {
       "method": "greedy",
       "temperature": 0.6,
@@ -34,9 +34,6 @@
     },
     {
       "agent": "calib_agent_2.md"
-    },
-    {
-      "user": "calib_user_3.md"
     }
   ],
   "category": "Roofline Calib KV Cache Growth"

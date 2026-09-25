@@ -92,6 +92,12 @@ def main(argv=None) -> int:
     name = f"{args.preset}_{args.device.lower()}"
     cmd = [sys.executable, str(RUN_KPI_WORKFLOW), "--mlperf-dir", args.mlperf_dir,
            "--config", str(config_path), "--name", name, "--download-behaviour", "normal"]
+    if preset.is_agentic and "--python-path" not in extra_args:
+        # Agentic scenarios need this even when no tool actually executes ("Bundled Python not
+        # found" -> "Inferences preparation failed, skipping..." otherwise, exit code 0 but zero
+        # stages run - discovered via a live dry-run of kv_cache_growth) - same flag
+        # run_kpi_preset.py always passes for the production SWE/Data Agent presets (5-8).
+        cmd += ["--python-path", "system"]
     cmd += extra_args
     print("Command:", " ".join(cmd))
     return subprocess.run(cmd).returncode

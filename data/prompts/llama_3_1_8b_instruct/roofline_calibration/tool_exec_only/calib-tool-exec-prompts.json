@@ -31,6 +31,9 @@
     },
     {
       "user": "calib_te_user_2.md"
+    },
+    {
+      "agent": "calib_te_agent_2.md"
     }
   ],
   "category": "Roofline Calib Tool Exec Only"
