@@ -241,8 +241,25 @@ def extract_baseline(run_dir: str) -> BaselineProfile:
     for i, (name, s) in enumerate(ordered):
         wall_time_s = s.get("wall_time_s", 0.0)
         output_tokens = s.get("output_tokens", 0)
-        prefill_s = (s.get("prefill_ms_est") or 0.0) / 1000.0
-        avg_itl_ms = s.get("avg_itl_ms") or 0.0
+        prefill_ms_est = s.get("prefill_ms_est")
+        avg_itl_ms = s.get("avg_itl_ms")
+        if prefill_ms_est is None and avg_itl_ms is None:
+            # Older log format (e.g. "full" kpi_mode presets, pre-dating per-token profiling
+            # fields) has no prefill_ms_est/avg_itl_ms at all - without this, prefill_s/decode_s
+            # both silently collapse to 0 and the ENTIRE stage gets misclassified as fixed
+            # stage_overhead_s (never scales with target hardware). Derive equivalent values from
+            # ttft_s/wall_time_s/output_tokens using the same ttft = prefill + itl relationship
+            # the newer format itself uses (see ttft_ms field below) - same arithmetic, just
+            # solved for the two unknowns instead of read directly.
+            ttft_s = s.get("ttft_s")
+            if ttft_s is not None and output_tokens > 0 and wall_time_s > ttft_s:
+                avg_itl_ms = (wall_time_s - ttft_s) / output_tokens * 1000.0
+                prefill_ms_est = max(ttft_s * 1000.0 - avg_itl_ms, 0.0)
+            else:
+                avg_itl_ms = 0.0
+                prefill_ms_est = 0.0
+        prefill_s = (prefill_ms_est or 0.0) / 1000.0
+        avg_itl_ms = avg_itl_ms or 0.0
         decode_s = avg_itl_ms / 1000.0 * output_tokens
         # Measurement noise can occasionally make prefill_s+decode_s slightly exceed wall_time_s;
         # rescale both proportionally (rather than just clamping stage_overhead_s to 0) so the

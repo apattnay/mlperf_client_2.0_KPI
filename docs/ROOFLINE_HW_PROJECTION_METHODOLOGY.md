@@ -270,6 +270,49 @@ Total projected energy_j = Σ(stage)  Σ(domain, projected_power_w[domain]) × s
 Tokens/Joule = total_output_tokens / Total energy_j   (baseline and projected)
 ```
 
+### 4.2 Calibration cross-check (`calibration.py`, `tools/calibrate_roofline_baseline.py`)
+
+A second, independent estimate of achieved-vs-theoretical efficiency, mined from "clean repeated
+fixed-shape trial" runs (e.g. `kpi_mode=full` presets: many stages, similar input/output token
+shapes, no tool-call gaps) instead of `hw_samples.csv`'s ~1Hz OS-level telemetry:
+
+```
+prefill_gflops_s      = 2 × params × input_tokens / prefill_s / 1e9      (per stage)
+decode_achieved_gbs   = params × bytes_per_weight / itl_s / 1e9         (per stage - full weight
+                                                                          re-read once per token)
+best_*  = max(...) across all repeated trials in the run     (same "self-referential empirical
+                                                                peak" idea as generate_kpi_report.py's
+                                                                roofline chart, §7 doc reference)
+```
+
+This is diagnostic only (same caveat as §4.1 - never fed into the projection math), but it's a
+**second, methodologically-different** measurement of the same "how efficient is this baseline"
+question - derived from the model's own precise per-token timing across many repeated trials,
+not an external sampler's coarse average. Run via:
+
+```powershell
+.venv\Scripts\python.exe tools\calibrate_roofline_baseline.py `
+    --run kpi_runs\preset1_full_npu_20260917_211825 --run kpi_runs\preset2_full_gpu_20260917_213836
+```
+
+**Result on this repo's two `full`-mode calibration runs** (2026-09-25, default placeholder spec,
+`mem_bw_peak_gbs=136.5 GB/s`):
+
+| Run | device | best decode achieved (calibration) | telemetry achieved (§4.1) | delta |
+|---|---|---|---|---|
+| preset1_full_npu | NPU | 45.2 GB/s (33.1% of peak) | 69.1 GB/s (50.6% of peak) | **-34.5%** |
+| preset2_full_gpu | GPU | 58.3 GB/s (42.7% of peak) | 55.9 GB/s (41.0% of peak) | **+4.2%** |
+
+The GPU run's two independent methods agree closely (+4.2%). The NPU run's do **not**
+(-34.5%) - the per-token-timing-derived calibration number is substantially lower than the
+telemetry-averaged one. This was NOT expected to be a clean match and isn't fully explained yet:
+plausible contributing factors include quantization-metadata bytes (scales/zero-points) not
+counted by the `bytes_per_weight`-only formula above, the OS-level `dram_total_gbs` counter
+including non-model DRAM traffic the model-only formula doesn't, or the NPU driver path having
+different KV-cache/activation memory traffic characteristics than the simple "re-read weights
+once per token" model assumes. Treat this as an open question the two-method cross-check exists
+specifically to surface, not a bug to silently paper over - see limitation #14.
+
 ## 5. Step 4 — Outputs (`report.py`, `what_if_calculator.py`)
 
 - **`roofline_projection_report.html` / `.json`** (`tools/run_roofline_projection.py`): a static
@@ -478,3 +521,17 @@ scenarios (SWE Agent / Data Agent) and both accelerator types without any scenar
     telemetry or lacks power/utilization sampling entirely. Absence of these diagnostics doesn't
     affect the wall-time/speedup projection at all (they're purely informational), but means you
     can't cross-check the retention knobs against measured reality for those older runs.
+14. **The two independent efficiency-measurement methods (§4.1 telemetry vs §4.2 calibration)
+    don't agree on the NPU run tested (-34.5% delta)**, only on the GPU run (+4.2%) - see §4.2.
+    This is an open, unresolved discrepancy, not a bug that's been root-caused - a genuine
+    uncertainty in how well either method characterizes the NPU path's true achieved bandwidth.
+    Prefer the telemetry-based number (§4.1) as the primary diagnostic until this is resolved; use
+    the calibration number (§4.2) as a sanity-check flag, not a replacement.
+15. **`extract_baseline()` derives `prefill_ms_est`/`avg_itl_ms` from `ttft_s`/`wall_time_s`/
+    `output_tokens` for log formats that predate those fields** (e.g. `kpi_mode=full` presets) -
+    algebraically solving `ttft_s = prefill_s + itl_s` and `itl_s = (wall_time_s - ttft_s) /
+    output_tokens` for the two unknowns. **Fixed 2026-09-25**: before this, any such run silently
+    got `prefill_s = decode_s = 0` and its *entire* wall time was misclassified as fixed
+    `stage_overhead_s` (never scales with target hardware) - this affected `preset1_full_npu` and
+    `preset2_full_gpu` specifically. The derived values are algebraically exact given the same
+    `ttft = prefill + itl` convention the newer log format itself uses, not an approximation.
