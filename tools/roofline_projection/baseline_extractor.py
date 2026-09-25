@@ -184,15 +184,25 @@ def extract_baseline(run_dir: str) -> BaselineProfile:
         this_end = s.get("end_epoch", 0)
         if i + 1 < len(ordered):
             next_start = ordered[i + 1][1].get("start_epoch", 0)
+            next_start_iso = ordered[i + 1][1].get("start_iso")
         else:
             # Last stage: gap to workflow end (e.g. a final test/verification tool call) is still
             # CPU-bound tool-exec time, not workflow-level fixed overhead - see module docstring.
             next_start = workflow_end_epoch or this_end
+            next_start_iso = wkpi.get("workflow_end_iso")
         tool_exec_gap_s = max(next_start - this_end, 0.0)
 
         avg_power_w = {}
-        if s.get("start_iso") and s.get("end_iso"):
-            avg_power_w = power_lookup(s["start_iso"], s["end_iso"])
+        if s.get("start_iso"):
+            # Window spans the WHOLE bucket (prefill+decode+overhead+tool_exec_gap_s), i.e. up to
+            # the next stage's start (or workflow end for the last stage) - NOT just s["end_iso"].
+            # avg_power_w gets multiplied by that whole bucket's duration downstream (see
+            # scaling_engine.py's energy_j calc), so averaging only over the "active" sub-window
+            # and then applying it to the full bucket would misattribute the (typically lower)
+            # accelerator-idle tool-exec-gap power as if it were the (higher) active-generation
+            # power throughout the gap too - overstating energy for any stage with a real gap.
+            power_window_end_iso = next_start_iso or s.get("end_iso")
+            avg_power_w = power_lookup(s["start_iso"], power_window_end_iso)
 
         stages.append(StageMacroProfile(
             name=name,

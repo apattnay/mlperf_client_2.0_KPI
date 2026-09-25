@@ -67,9 +67,16 @@ model load), not a mix of that plus an unaccounted-for tail after the last stage
 > Fixed by using the workflow's own `timeline.end_epoch` as the "next start" for the last stage.
 
 If `hw_samples.csv` is present, RAPL power (`rapl_cpu_w`/`rapl_igpu_w`/`rapl_npu_w`/`rapl_soc_w`)
-is averaged over each stage's window for optional energy/Tokens-per-Joule projection (best-effort
-— silently omitted if pandas isn't installed or the columns are absent/zero, never a hard
-requirement for the wall-time projection). **The lookup window uses `start_iso`/`end_iso` (naive
+is averaged over each stage's **whole bucket window** (`start_iso` through the *next* stage's
+`start_iso`, or `workflow_end_iso` for the last stage — i.e. prefill+decode+overhead+tool_exec_gap,
+not just the stage's own active `start_iso`→`end_iso`) for optional energy/Tokens-per-Joule
+projection (best-effort — silently omitted if pandas isn't installed or the columns are
+absent/zero, never a hard requirement for the wall-time projection). The window is deliberately
+widened past `end_iso` because the averaged watts get multiplied by that same whole-bucket
+duration downstream (`scaling_engine.py`'s `energy_j` calc) — averaging only over the active
+sub-window and then applying it across the full bucket would misattribute the (typically higher)
+active-generation power to the (typically lower, accelerator-idle) tool-exec-gap time too,
+overstating energy for any stage with a real gap. **The lookup window uses `start_iso`/`end_iso` (naive
 local-time strings), NOT `start_epoch`/`end_epoch`** — this matters and is not an arbitrary choice:
 `hw_samples.csv`'s `timestamp` column is naive local time written by the sampler subprocess, while
 `start_epoch`/`end_epoch` are true UTC Unix epoch from `time.time()` in the orchestrator process.
@@ -273,7 +280,7 @@ inference stages across 3 SWE-Agent iterations) from the built-in default baseli
 | Speedup | — | **2.93x** |
 | Wall time reduction | — | **65.9%** |
 | Tokens/s | 11.2 | 32.7 |
-| Tokens/Joule | 0.36 | 0.51 |
+| Tokens/Joule | 0.35 | 0.48 |
 
 Per-resource effective speedups actually applied: compute (NPU) 4.04x, memory 3.66x, CPU/tool-exec
 (Amdahl, p=0.5) **1.85x** — note none of these equal the raw 4x/4.13x/4x hardware ratios, because the
@@ -298,7 +305,7 @@ The same projection against the **iGPU** baseline (`kpi_runs/preset6_roofline_20
 | Speedup | — | **3.25x** |
 | Wall time reduction | — | **69.2%** |
 | Tokens/s | 13.3 | 43.1 |
-| Tokens/Joule | 0.25 | 0.32 |
+| Tokens/Joule | 0.25 | 0.33 |
 
 Here `compute_capability()` resolves to `igpu_capability` instead (this run's `device_type` is
 `GPU`, not `NPU`) — verified in the what-if calculator: the NPU MACs/frequency dropdowns render
@@ -307,9 +314,16 @@ ones.
 
 Also validated (no code changes needed) against the Data Agent scenario, both device types:
 `kpi_runs/preset7_dataagent_npu_20260923_220921/` (788.7s → 343.2s, 2.30x, 56.5% reduction,
-Tokens/J 0.34→0.41) and `kpi_runs/preset8_dataagent_gpu_20260923_225621/` (910.2s → 288.6s, 3.15x,
-68.3% reduction, Tokens/J 0.36→0.45) — confirming the pipeline generalizes across both agent
+Tokens/J 0.35→0.40) and `kpi_runs/preset8_dataagent_gpu_20260923_225621/` (910.2s → 288.6s, 3.15x,
+68.3% reduction, Tokens/J 0.40→0.50) — confirming the pipeline generalizes across both agent
 scenarios (SWE Agent / Data Agent) and both accelerator types without any scenario-specific code.
+
+> **2026-09-24 correction**: Tokens/Joule numbers above also reflect the power-lookup-window
+> widening fix (see §2) — an earlier version averaged RAPL power only over each stage's own
+> active window then applied it across that stage's whole bucket (including its tool-exec gap),
+> which overstated energy whenever the accelerator's gap-time power was lower than its
+> active-generation power (confirmed on preset8: e.g. one stage measured 10.48W active vs 0.00W
+> during its own trailing gap). Wall-time/speedup numbers are unaffected by this fix.
 
 ## 8. Known limitations / assumptions (be explicit about these when presenting results)
 
@@ -338,6 +352,8 @@ scenarios (SWE Agent / Data Agent) and both accelerator types without any scenar
    `end_iso` matching instead of an epoch/timezone-mismatched conversion (see §2) — if you see
    `N/A` on a run with `--power` known to have been enabled during collection, suspect this same
    class of alignment bug before assuming the hardware simply didn't report power for that domain.
+   **Fixed 2026-09-24**: the averaging window itself was also widened to span each stage's whole
+   bucket (through its tool-exec gap), not just its own active `start_iso`→`end_iso` — see §2.
 6. ~~The trailing gap after a run's LAST stage falls into `fixed_overhead_s` (unscaled), not
    `tool_exec_gap_s` (Amdahl-scaled).~~ **Fixed 2026-09-24**: the last stage's `tool_exec_gap_s` is
    now computed against the workflow's `timeline.end_epoch`, not hardcoded to `0` — any real
@@ -354,3 +370,12 @@ scenarios (SWE Agent / Data Agent) and both accelerator types without any scenar
    compute/memory for the same `efficiency_retention` value. This is intentional (tool-exec
    involves OS scheduling/process-spawn overhead that compute/memory scaling doesn't), but keep it
    in mind when tuning both sliders in the what-if calculator — their effects are not independent.
+9. **Tokens/Joule silently treats any stage with no RAPL-power match as 0 energy for that stage**,
+   not as "unknown"/excluded. `has_power` only requires *one* stage in the whole run to have
+   power data to turn Tokens/Joule on at all; any other stage whose lookup window happened to miss
+   every CSV row (very short stage, sampler gap, etc.) contributes `0` watts × its wall time to the
+   energy total instead of being excluded, which would silently bias Tokens/Joule optimistic (too
+   high) for that run. Not observed in any of the 13 runs in this repo (every stage in every run
+   has non-empty `avg_power_w`), but there's no coverage check or warning if it ever happens —
+   treat a Tokens/Joule number as suspect if `hw_samples.csv`'s sampling interval is coarse relative
+   to a run's shortest stage.
