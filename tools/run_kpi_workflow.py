@@ -109,6 +109,10 @@ _ITL_RE = re.compile(r"2nd\+ token latency ([\d.]+)ms")
 # "Average 2nd+ Token Latency: (ms) 47.726 (+-3.873)" - same mean, plus a std-dev across the
 # individual decode-step latencies (not full percentiles, so p50/p99 stay unavailable).
 _ITL_STDDEV_RE = re.compile(r"Average 2nd\+ Token Latency:.*\(\+-([\d.]+)\)")
+# "Tools time: 11.153100" (ms) - mlperf's OWN real wall-clock timer around its RunTools call for
+# this turn (sum of every "Tool call:"/"...result:" pair) - ground truth, unlike the inter-stage
+# timestamp gap previously used as a stand-in when this line wasn't parsed.
+_TOOLS_TIME_RE = re.compile(r"Tools time: ([\d.]+)")
 
 
 def parse_executor_log(path: Path, start_offset: int) -> dict:
@@ -169,6 +173,8 @@ def parse_executor_log(path: Path, start_offset: int) -> dict:
             entry["prefill_ms_est"] = round(max(ttft_s * 1000 - avg_itl_ms, 0), 1)
         if "itl_stddev_ms" in stage:
             entry["itl_stddev_ms"] = stage["itl_stddev_ms"]
+        if "tool_exec_ms" in stage:
+            entry["tool_exec_ms"] = stage["tool_exec_ms"]
         if task_idx < len(task_queue):
             meta = task_queue[task_idx]
             entry["is_cold"] = meta["is_cold"]
@@ -247,6 +253,14 @@ def parse_executor_log(path: Path, start_offset: int) -> dict:
                     md = _ITL_STDDEV_RE.search(msg)
                     if md:
                         target["itl_stddev_ms"] = round(float(md.group(1)), 3)
+            elif msg.startswith("Tools time:"):
+                # Logged right after TTFT, before the next stage's power_begin - same stage that
+                # is still "open" (not yet emitted), matching the TTFT/ITL target selection above.
+                target = open_stage if open_stage is not None else closing_stage
+                if target is not None:
+                    mt = _TOOLS_TIME_RE.search(msg)
+                    if mt:
+                        target["tool_exec_ms"] = round(float(mt.group(1)), 1)
             elif msg.startswith("Input tokens:"):
                 target = closing_stage if closing_stage is not None else open_stage
                 if target is not None:

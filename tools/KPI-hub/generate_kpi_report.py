@@ -1041,16 +1041,23 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
                 "extra_tooltip": "",
             })
 
-            # Tool execution (CPU-bound): the gap between this stage's inference ending and
-            # the next stage's inference starting is where the harness runs the tool call(s)
-            # this stage's output requested (read_file/write_file/apply_patch/execute_command).
+            # Tool execution (CPU-bound): prefer mlperf's own real "Tools time:" log measurement
+            # (tool_exec_ms) when present; otherwise fall back to the gap between this stage's
+            # inference ending and the next stage's inference starting as a rough estimate.
             tool_calls = data.get("tool_calls")
             if tool_calls and i + 1 < len(ordered):
                 next_start = ordered[i + 1][1]["start_epoch"]
                 gap_s = next_start - data["end_epoch"]
-                if gap_s > 0.2:
+                measured_ms = data.get("tool_exec_ms")
+                if measured_ms is not None:
+                    tool_duration_s = round(measured_ms / 1000.0, 1)
+                    duration_label = f"measured {tool_duration_s}s (mlperf 'Tools time' log)"
+                else:
+                    tool_duration_s = round(gap_s, 1)
+                    duration_label = f"est. {tool_duration_s}s (inter-stage gap, not directly measured)"
+                if gap_s > 0.2 or measured_ms is not None:
                     tool_left_pct = (data["end_epoch"] - t0_epoch) / total_span * 100
-                    tool_width_pct = max(gap_s / total_span * 100, 0.5)
+                    tool_width_pct = max(tool_duration_s / total_span * 100, 0.5)
                     tool_summary = ", ".join(f"{tn}\u00d7{tc}" for tn, tc in sorted(tool_calls.items()))
                     timeline_rows.append({
                         "name": f"{name} (tools)",
@@ -1058,13 +1065,13 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
                         "width_pct": round(tool_width_pct, 2),
                         "start_time": _fmt_time(data.get("end_iso", "")),
                         "end_time": _fmt_time(ordered[i + 1][1].get("start_iso", "")),
-                        "duration_s": round(gap_s, 1),
+                        "duration_s": tool_duration_s,
                         "color": "rgba(139,148,158,0.55)",
                         "tokens": 0,
                         "tok_s": 0,
                         "hw": "CPU",
                         "is_background": True,
-                        "extra_tooltip": tool_summary,
+                        "extra_tooltip": f"{tool_summary} | {duration_label}",
                     })
 
     # ---- Build agent table rows ----
@@ -1091,6 +1098,7 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
             "p50_itl_ms": s.get("p50_itl_ms", ""),
             "p99_itl_ms": s.get("p99_itl_ms", ""),
             "tool_calls": s.get("tool_calls", {}),
+            "tool_exec_ms": s.get("tool_exec_ms"),
             "is_cold": s.get("is_cold"),
             "history_tokens": s.get("history_tokens", 0),
         }
@@ -1116,6 +1124,7 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
                 "p50_itl_ms": s.get("p50_itl_ms", ""),
                 "p99_itl_ms": s.get("p99_itl_ms", ""),
                 "tool_calls": s.get("tool_calls", {}),
+                "tool_exec_ms": s.get("tool_exec_ms"),
                 "is_cold": s.get("is_cold"),
                 "history_tokens": s.get("history_tokens", 0),
             })
@@ -1291,6 +1300,9 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
                     f'title="{name} called {count}x">{html.escape(name)}\u00d7{count}</span>'
                     for name, count in sorted(tool_calls.items())
                 )
+                if r.get("tool_exec_ms") is not None:
+                    badges += (f'<span class="tool-badge" title="mlperf-measured Tools time '
+                               f'(real RunTools wall-clock, not inferred)">\u23f1{r["tool_exec_ms"]:.0f}ms</span>')
                 tools_cell = badges
         rows_html += f"""
             <tr{row_style}>

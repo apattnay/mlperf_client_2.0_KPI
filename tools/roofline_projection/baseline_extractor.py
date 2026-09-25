@@ -10,8 +10,11 @@ to project independently:
   stage_overhead_s   - residual bookkeeping/logging inside the stage (assumed fixed)
   tool_exec_gap_s    - wall-clock time the harness spends running a tool call after this stage
                        (git apply, pytest, file IO, ...) - CPU-bound, scales via Amdahl's law.
-                       For the LAST stage this is the gap up to workflow end (timeline.end_epoch),
-                       not 0 - any final verification/tool call belongs here, not in fixed_overhead_s.
+                       Prefers mlperf's own real "Tools time:" log measurement when present
+                       (workflow_kpi.json's tool_exec_ms); falls back to the inferred inter-stage
+                       gap only for stages/logs predating that measurement. For the LAST stage the
+                       gap fallback is up to workflow end (timeline.end_epoch), not 0 - any final
+                       verification/tool call belongs here, not in fixed_overhead_s.
   fixed_overhead_s   - workflow-level constant (process startup, model load, shutdown, ...); by
                        construction this ends up being ~ the gap BEFORE the first stage starts
 
@@ -281,7 +284,12 @@ def extract_baseline(run_dir: str) -> BaselineProfile:
             # CPU-bound tool-exec time, not workflow-level fixed overhead - see module docstring.
             next_start = workflow_end_epoch or this_end
             next_start_iso = wkpi.get("workflow_end_iso")
-        tool_exec_gap_s = max(next_start - this_end, 0.0)
+        measured_tool_ms = s.get("tool_exec_ms")
+        if measured_tool_ms is not None:
+            # Ground truth from mlperf's own "Tools time:" line - prefer over the inferred gap.
+            tool_exec_gap_s = round(measured_tool_ms / 1000.0, 3)
+        else:
+            tool_exec_gap_s = max(next_start - this_end, 0.0)
 
         avg_power_w = {}
         if s.get("start_iso"):
