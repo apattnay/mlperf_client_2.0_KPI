@@ -51,17 +51,17 @@ def main(argv=None) -> int:
             eff = calib.mem_bw_efficiency_pct(spec, use_best=True)
             med = calib.median_decode_achieved_gbs
             med_eff = calib.mem_bw_efficiency_pct(spec, use_best=False)
-            print(f"  Best observed decode:   {calib.best_decode_achieved_gbs:.1f} GB/s "
-                  f"({eff:.1f}% of spec's {spec.mem_bw_peak_gbs:.1f} GB/s theoretical peak)" if eff is not None else "")
+            print(f"  Best observed decode:   {calib.best_decode_achieved_gbs:.1f} GB/s"
+                  + (f" ({eff:.1f}% of spec's {spec.mem_bw_peak_gbs:.1f} GB/s theoretical peak)" if eff is not None else ""))
             if med is not None:
-                print(f"  Median observed decode: {med:.1f} GB/s "
-                      f"({med_eff:.1f}% of theoretical peak)" if med_eff is not None else "")
+                print(f"  Median observed decode: {med:.1f} GB/s"
+                      + (f" ({med_eff:.1f}% of theoretical peak)" if med_eff is not None else ""))
 
         # Cross-check against the SAME run's hw_samples.csv telemetry-based diagnostic, if present.
         if telemetry.measured_mem_bw_gbs is not None:
             tel_eff = (telemetry.measured_mem_bw_gbs / spec.mem_bw_peak_gbs * 100.0) if spec.mem_bw_peak_gbs else None
-            print(f"  Telemetry (hw_samples.csv) achieved mem BW: {telemetry.measured_mem_bw_gbs:.1f} GB/s "
-                  f"({tel_eff:.1f}% of theoretical peak)" if tel_eff is not None else "")
+            print(f"  Telemetry (hw_samples.csv) achieved mem BW: {telemetry.measured_mem_bw_gbs:.1f} GB/s"
+                  + (f" ({tel_eff:.1f}% of theoretical peak)" if tel_eff is not None else ""))
             if calib.best_decode_achieved_gbs:
                 delta_pct = (calib.best_decode_achieved_gbs - telemetry.measured_mem_bw_gbs) / telemetry.measured_mem_bw_gbs * 100.0
                 print(f"  -> Calibration vs telemetry delta: {delta_pct:+.1f}% "

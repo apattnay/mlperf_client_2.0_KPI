@@ -240,7 +240,9 @@ def build_what_if_html(
         bw_row = (
             f"<div class='card'><div class='label'>Measured mem BW achieved</div>"
             f"<div class='value'>{profile.measured_mem_bw_gbs:.1f} GB/s</div>"
-            f"<div class='sub'>{bw_pct:.1f}% of baseline_spec's theoretical peak</div></div>"
+            f"<div class='sub'>"
+            + (f"{bw_pct:.1f}% of baseline_spec's theoretical peak" if bw_pct is not None else "theoretical peak unknown")
+            + "</div></div>"
         ) if profile.measured_mem_bw_gbs is not None else ""
         measured_efficiency_html = f"""<div class="section">
 <h2>Measured Baseline Efficiency (real telemetry, diagnostic only)</h2>

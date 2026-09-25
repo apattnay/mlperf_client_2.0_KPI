@@ -128,7 +128,10 @@ def build_report_html(result: ProjectionResult) -> str:
         bw_row = (
             f"<div class='card'><div class='label'>Measured mem BW achieved</div>"
             f"<div class='value'>{result.measured_mem_bw_gbs:.1f} GB/s</div>"
-            f"<div class='sub'>{result.measured_mem_bw_efficiency_pct:.1f}% of baseline_spec's theoretical peak</div></div>"
+            f"<div class='sub'>"
+            + (f"{result.measured_mem_bw_efficiency_pct:.1f}% of baseline_spec's theoretical peak"
+               if result.measured_mem_bw_efficiency_pct is not None else "theoretical peak unknown")
+            + "</div></div>"
         ) if result.measured_mem_bw_gbs is not None else ""
         measured_cards = f"""
 <div class="section">

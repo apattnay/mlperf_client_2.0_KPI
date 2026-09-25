@@ -13,6 +13,11 @@ Usage examples:
       --target-spec data\\configs\\roofline_targets\\example_heavy_duty_workstation.json ^
       --out kpi_runs\\preset5_roofline_20260923_140129\\roofline_projection --what-if
 
+  # Per-domain efficiency-retention overrides (compute/memory/cpu can differ - see the doc's §4.1)
+  .venv\\Scripts\\python.exe tools\\run_roofline_projection.py --run kpi_runs\\preset5_roofline_20260923_140129 ^
+      --target-spec data\\configs\\roofline_targets\\example_heavy_duty_workstation.json ^
+      --compute-efficiency-retention 0.9 --memory-efficiency-retention 0.75 --cpu-efficiency-retention 0.6
+
 See docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md for the full methodology.
 """
 from __future__ import annotations
@@ -96,8 +101,7 @@ def main(argv=None) -> int:
         if val is not None:
             setattr(target_spec, field, val)
 
-    assumptions = ProjectionAssumptions()
-    base_eff = args.efficiency_retention if args.efficiency_retention is not None else assumptions.compute_efficiency_retention
+    base_eff = args.efficiency_retention if args.efficiency_retention is not None else 0.85
     assumptions = ProjectionAssumptions(
         compute_efficiency_retention=args.compute_efficiency_retention if args.compute_efficiency_retention is not None else base_eff,
         memory_efficiency_retention=args.memory_efficiency_retention if args.memory_efficiency_retention is not None else base_eff,

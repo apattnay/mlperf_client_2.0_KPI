@@ -39,10 +39,10 @@ class CalibrationProfile:
     points: List[CalibrationPoint]
 
     def _decode_values(self) -> List[float]:
-        return [p.decode_achieved_gbs for p in self.points if p.decode_achieved_gbs]
+        return [p.decode_achieved_gbs for p in self.points if p.decode_achieved_gbs is not None]
 
     def _prefill_values(self) -> List[float]:
-        return [p.prefill_gflops_s for p in self.points if p.prefill_gflops_s]
+        return [p.prefill_gflops_s for p in self.points if p.prefill_gflops_s is not None]
 
     @property
     def best_prefill_gflops_s(self) -> Optional[float]:
@@ -66,7 +66,7 @@ class CalibrationProfile:
         """% of `spec`'s theoretical mem_bw_peak_gbs achieved, from this run's own best/median
         decode trial - an independent (non-telemetry) cross-check for measured_mem_bw_gbs."""
         gbs = self.best_decode_achieved_gbs if use_best else self.median_decode_achieved_gbs
-        if not gbs or not spec.mem_bw_peak_gbs:
+        if gbs is None or not spec.mem_bw_peak_gbs:
             return None
         return gbs / spec.mem_bw_peak_gbs * 100.0
 
