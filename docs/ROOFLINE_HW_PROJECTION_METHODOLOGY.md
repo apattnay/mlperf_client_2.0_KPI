@@ -48,6 +48,8 @@ four time buckets (no new measurement, pure arithmetic on existing fields):
 ```
 prefill_s          = prefill_ms_est / 1000                         # already derived: ttft_ms - avg_itl_ms
 decode_s           = avg_itl_ms / 1000 * output_tokens              # per-token decode latency × tokens generated
+                     # (if prefill_s + decode_s > wall_time_s due to measurement noise, both are
+                     # rescaled proportionally so the invariant below holds exactly, not just usually)
 stage_overhead_s   = max(wall_time_s - prefill_s - decode_s, 0)     # residual bookkeeping inside the stage
 tool_exec_gap_s    = max(next_stage.start_epoch - this_stage.end_epoch, 0)   # harness runs a tool here (NPU/iGPU idle)
                      # for the LAST stage, "next_stage.start_epoch" is workflow timeline.end_epoch,
@@ -88,8 +90,9 @@ exact bug was hit and fixed during development (see `tools/roofline_projection/b
 already proven correct in `tools/KPI-hub/plot_utilization_interactive.py::load_phases()`.
 
 TTFT and per-token decode latency (ITL) are also captured per stage for direct reporting
-(`ttft_ms = prefill_s*1000 + itl_ms`, `itl_ms = avg_itl_ms` straight from the log) — these mirror
-the same definitions established in `docs/AGENTIC_WORKFLOW_CHARACTERIZATION.md` §8.
+(`ttft_ms = ttft_s*1000` straight from the log when present, else `prefill_s*1000 + itl_ms` as a
+fallback; `itl_ms = avg_itl_ms` straight from the log) — these mirror the same definitions
+established in `docs/AGENTIC_WORKFLOW_CHARACTERIZATION.md` §8.
 
 ## 3. Step 2 — Hardware spec + capability ratios (`hw_spec.py`)
 
@@ -379,3 +382,15 @@ scenarios (SWE Agent / Data Agent) and both accelerator types without any scenar
    has non-empty `avg_power_w`), but there's no coverage check or warning if it ever happens —
    treat a Tokens/Joule number as suspect if `hw_samples.csv`'s sampling interval is coarse relative
    to a run's shortest stage.
+10. ~~`stage_overhead_s = max(wall_time_s - prefill_s - decode_s, 0)` could silently break the
+    "sum of buckets == wall_time_s" invariant on noisy telemetry~~ **Fixed 2026-09-24**:
+    `prefill_s`/`decode_s` are now rescaled proportionally (not just clamped) whenever their sum
+    would exceed `wall_time_s`, so the invariant holds exactly for every stage, not just when the
+    telemetry happens to agree (verified: `invariant_diff == 0.0` on all 13 runs in this repo,
+    both before and after this fix — it was never actually triggered by current data, but is now
+    guaranteed rather than assumed).
+11. ~~`ttft_ms` was recomputed (`prefill_s*1000 + itl_ms`) instead of reading the log's own
+    `ttft_s` field~~ **Fixed 2026-09-24**: now reads `ttft_s` directly when present (falling back
+    to the recomputed value only if it's absent), so this stays "no new measurement, pure
+    arithmetic on existing fields" even if a future log format ever changes how `ttft_s` itself is
+    derived. Numerically identical to the old behavior on all 13 runs in this repo.

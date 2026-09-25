@@ -66,7 +66,7 @@ class StageMacroProfile:
     stage_overhead_s: float
     tool_exec_gap_s: float
     itl_ms: float               # per-token decode latency (avg_itl_ms, straight from the log)
-    ttft_ms: float              # prefill_s*1000 + itl_ms - matches the log's own TTFT definition
+    ttft_ms: float              # log's own ttft_s*1000 if present, else prefill_s*1000 + itl_ms
     tool_calls: Dict[str, int] = field(default_factory=dict)
     avg_power_w: Dict[str, float] = field(default_factory=dict)
 
@@ -179,6 +179,15 @@ def extract_baseline(run_dir: str) -> BaselineProfile:
         prefill_s = (s.get("prefill_ms_est") or 0.0) / 1000.0
         avg_itl_ms = s.get("avg_itl_ms") or 0.0
         decode_s = avg_itl_ms / 1000.0 * output_tokens
+        # Measurement noise can occasionally make prefill_s+decode_s slightly exceed wall_time_s;
+        # rescale both proportionally (rather than just clamping stage_overhead_s to 0) so the
+        # "sum(buckets) == wall_time_s" invariant documented above always holds exactly, not just
+        # when the underlying telemetry happens to agree.
+        raw_active_s = prefill_s + decode_s
+        if raw_active_s > wall_time_s > 0:
+            scale = wall_time_s / raw_active_s
+            prefill_s *= scale
+            decode_s *= scale
         stage_overhead_s = max(wall_time_s - prefill_s - decode_s, 0.0)
 
         this_end = s.get("end_epoch", 0)
@@ -215,7 +224,10 @@ def extract_baseline(run_dir: str) -> BaselineProfile:
             stage_overhead_s=stage_overhead_s,
             tool_exec_gap_s=tool_exec_gap_s,
             itl_ms=avg_itl_ms,
-            ttft_ms=prefill_s * 1000.0 + avg_itl_ms,
+            # Prefer the log's own ttft_s (ground truth) over recomputing it; only derive it when
+            # absent, so this stays "no new measurement, pure arithmetic on existing fields" even
+            # if a future log format ever changes how ttft_s itself is derived.
+            ttft_ms=(s["ttft_s"] * 1000.0) if s.get("ttft_s") is not None else (prefill_s * 1000.0 + avg_itl_ms),
             tool_calls=s.get("tool_calls", {}) or {},
             avg_power_w=avg_power_w,
         ))
