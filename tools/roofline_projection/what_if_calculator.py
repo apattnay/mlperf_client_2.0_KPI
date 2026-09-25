@@ -102,17 +102,17 @@ function effectiveSpeedup(raw, retention) {
 
 function projectStage(stage, deviceType, baselineSpec, targetSpec, assumptions) {
     const computeRaw = rawSpeedup(computeCapability(targetSpec, deviceType), computeCapability(baselineSpec, deviceType));
-    const computeEff = effectiveSpeedup(computeRaw, assumptions.efficiency_retention);
+    const computeEff = effectiveSpeedup(computeRaw, assumptions.compute_efficiency_retention);
     const prefillT = stage.prefill_s / computeEff;
 
     const memRaw = rawSpeedup(memBwPeakGbs(targetSpec), memBwPeakGbs(baselineSpec));
-    const memEff = effectiveSpeedup(memRaw, assumptions.efficiency_retention);
+    const memEff = effectiveSpeedup(memRaw, assumptions.memory_efficiency_retention);
     const decodeT = stage.decode_s / memEff;
 
     const coresRatio = rawSpeedup(targetSpec.cpu_cores, baselineSpec.cpu_cores);
     const freqRatio = rawSpeedup(targetSpec.cpu_freq_ghz, baselineSpec.cpu_freq_ghz);
     const cpuRaw = amdahlSpeedup(coresRatio, freqRatio, assumptions.tool_parallel_fraction);
-    const cpuEff = effectiveSpeedup(cpuRaw, assumptions.efficiency_retention);
+    const cpuEff = effectiveSpeedup(cpuRaw, assumptions.cpu_efficiency_retention);
     const toolT = stage.tool_exec_gap_s / cpuEff;
 
     const overheadT = stage.stage_overhead_s;
@@ -229,6 +229,27 @@ def build_what_if_html(
     mem_width_sel = _options_html("memWidth", _MEM_WIDTH_OPTIONS, baseline_spec.mem_width_bits, "-bit", preset_values("mem_width_bits"))
     mem_freq_sel = _options_html("memFreq", _MEM_FREQ_OPTIONS, baseline_spec.mem_freq_mts, " MT/s", preset_values("mem_freq_mts"))
 
+    measured_efficiency_html = ""
+    if profile.measured_accel_busy_pct is not None or profile.measured_mem_bw_gbs is not None:
+        busy_row = (
+            f"<div class='card'><div class='label'>Measured accelerator busy%</div>"
+            f"<div class='value'>{profile.measured_accel_busy_pct:.1f}%</div>"
+            f"<div class='sub'>avg during active LLM windows</div></div>"
+        ) if profile.measured_accel_busy_pct is not None else ""
+        bw_pct = (profile.measured_mem_bw_gbs / baseline_spec.mem_bw_peak_gbs * 100.0) if baseline_spec.mem_bw_peak_gbs else None
+        bw_row = (
+            f"<div class='card'><div class='label'>Measured mem BW achieved</div>"
+            f"<div class='value'>{profile.measured_mem_bw_gbs:.1f} GB/s</div>"
+            f"<div class='sub'>{bw_pct:.1f}% of baseline_spec's theoretical peak</div></div>"
+        ) if profile.measured_mem_bw_gbs is not None else ""
+        measured_efficiency_html = f"""<div class="section">
+<h2>Measured Baseline Efficiency (real telemetry, diagnostic only)</h2>
+<p class="note">Straight from this run's own <code>hw_samples.csv</code> - NOT used in the projection math
+(a baseline machine's own achieved efficiency doesn't tell you what a different target machine will
+achieve). Use it to sanity-check the sliders below against reality instead of guessing.</p>
+<div class="cards">{busy_row}{bw_row}</div>
+</div>"""
+
     preset_options = "".join(
         f'<option value="{i}">{p.name}</option>' for i, p in enumerate(presets)
     )
@@ -276,15 +297,24 @@ def build_what_if_html(
 </div>
 </div>
 <div class="grid" style="margin-top:14px;">
-<div><label>Efficiency retention: <span id="effRetentionVal"></span></label>
-<input type="range" id="effRetention" min="0" max="1" step="0.05" value="{default_assumptions.efficiency_retention}"></div>
+<div><label>Compute efficiency retention: <span id="compEffVal"></span></label>
+<input type="range" id="compEff" min="0" max="1" step="0.05" value="{default_assumptions.compute_efficiency_retention}"></div>
+<div><label>Memory efficiency retention: <span id="memEffVal"></span></label>
+<input type="range" id="memEff" min="0" max="1" step="0.05" value="{default_assumptions.memory_efficiency_retention}"></div>
+<div><label>CPU efficiency retention: <span id="cpuEffVal"></span></label>
+<input type="range" id="cpuEff" min="0" max="1" step="0.05" value="{default_assumptions.cpu_efficiency_retention}"></div>
 <div><label>Tool-exec parallel fraction: <span id="parFracVal"></span></label>
 <input type="range" id="parFrac" min="0" max="1" step="0.05" value="{default_assumptions.tool_parallel_fraction}"></div>
 <div><label>Power scaling exponent: <span id="powerExpVal"></span></label>
 <input type="range" id="powerExp" min="0" max="2" step="0.1" value="{default_assumptions.power_scaling_exponent}"></div>
 </div>
+<p class="note">Compute/Memory/CPU efficiency retention are separate knobs (not one shared value) because
+NPU-MAC, iGPU-XeCore, and memory-bandwidth paths on a real SoC do NOT achieve the same fraction of their
+own theoretical peak - see the measured baseline numbers below.</p>
 <div class="note">Target memory bandwidth (derived): <b id="memBwOut"></b> GB/s &nbsp;|&nbsp; Baseline: {baseline_spec.mem_bw_peak_gbs:.1f} GB/s</div>
 </div>
+
+{measured_efficiency_html}
 
 <div class="section">
 <h2>Projected Result</h2>
@@ -380,11 +410,15 @@ function markActiveAccelGroup() {{
 function recompute() {{
     const target = readTargetSpec();
     const assumptions = {{
-        efficiency_retention: parseFloat(document.getElementById('effRetention').value),
+        compute_efficiency_retention: parseFloat(document.getElementById('compEff').value),
+        memory_efficiency_retention: parseFloat(document.getElementById('memEff').value),
+        cpu_efficiency_retention: parseFloat(document.getElementById('cpuEff').value),
         tool_parallel_fraction: parseFloat(document.getElementById('parFrac').value),
         power_scaling_exponent: parseFloat(document.getElementById('powerExp').value),
     }};
-    document.getElementById('effRetentionVal').textContent = assumptions.efficiency_retention.toFixed(2);
+    document.getElementById('compEffVal').textContent = assumptions.compute_efficiency_retention.toFixed(2);
+    document.getElementById('memEffVal').textContent = assumptions.memory_efficiency_retention.toFixed(2);
+    document.getElementById('cpuEffVal').textContent = assumptions.cpu_efficiency_retention.toFixed(2);
     document.getElementById('parFracVal').textContent = assumptions.tool_parallel_fraction.toFixed(2);
     document.getElementById('powerExpVal').textContent = assumptions.power_scaling_exponent.toFixed(1);
     document.getElementById('memBwOut').textContent = memBwPeakGbs(target).toFixed(1);
@@ -425,7 +459,10 @@ function buildCliCommand(target, assumptions) {{
         `--igpu-xecores ${{target.igpu_xecores}} --igpu-freq-ghz ${{target.igpu_freq_ghz}} ` +
         `--npu-macs ${{target.npu_macs}} --npu-freq-ghz ${{target.npu_freq_ghz}} ` +
         `--mem-channels ${{target.mem_channels}} --mem-width-bits ${{target.mem_width_bits}} --mem-freq-mts ${{target.mem_freq_mts}} ` +
-        `--efficiency-retention ${{assumptions.efficiency_retention}} --tool-parallel-fraction ${{assumptions.tool_parallel_fraction}} ` +
+        `--compute-efficiency-retention ${{assumptions.compute_efficiency_retention}} ` +
+        `--memory-efficiency-retention ${{assumptions.memory_efficiency_retention}} ` +
+        `--cpu-efficiency-retention ${{assumptions.cpu_efficiency_retention}} ` +
+        `--tool-parallel-fraction ${{assumptions.tool_parallel_fraction}} ` +
         `--power-scaling-exponent ${{assumptions.power_scaling_exponent}} --what-if`;
 }}
 
@@ -447,7 +484,9 @@ function downloadTargetSpecJson() {{
 function copyCliCommand() {{
     const target = readTargetSpec();
     const assumptions = {{
-        efficiency_retention: parseFloat(document.getElementById('effRetention').value),
+        compute_efficiency_retention: parseFloat(document.getElementById('compEff').value),
+        memory_efficiency_retention: parseFloat(document.getElementById('memEff').value),
+        cpu_efficiency_retention: parseFloat(document.getElementById('cpuEff').value),
         tool_parallel_fraction: parseFloat(document.getElementById('parFrac').value),
         power_scaling_exponent: parseFloat(document.getElementById('powerExp').value),
     }};

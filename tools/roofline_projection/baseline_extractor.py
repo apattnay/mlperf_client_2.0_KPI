@@ -69,6 +69,11 @@ class StageMacroProfile:
     ttft_ms: float              # log's own ttft_s*1000 if present, else prefill_s*1000 + itl_ms
     tool_calls: Dict[str, int] = field(default_factory=dict)
     avg_power_w: Dict[str, float] = field(default_factory=dict)
+    # Best-effort MEASURED (not modeled) accelerator busy% / achieved mem BW during this stage's
+    # own active window (start_iso->end_iso, i.e. NOT the tool-exec gap) - diagnostic only, never
+    # fed into the scaling math (a baseline machine's own efficiency says nothing about what a
+    # different target machine will achieve) - see BaselineProfile.measured_*  and §4.1 of the doc.
+    measured_util: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -83,6 +88,10 @@ class BaselineProfile:
     workflow_wall_time_s: float
     fixed_overhead_s: float
     stages: List[StageMacroProfile]
+    # Active-time-weighted averages of StageMacroProfile.measured_util across all stages -
+    # diagnostic only (see above), None if hw_samples.csv/its columns were unavailable.
+    measured_accel_busy_pct: Optional[float] = None
+    measured_mem_bw_gbs: Optional[float] = None
 
     def total_output_tokens(self) -> int:
         return sum(s.output_tokens for s in self.stages)
@@ -100,29 +109,11 @@ def _load_power_lookup(run_dir: Path):
     doesn't contain the expected columns - power/energy projection is an optional enrichment,
     never a hard requirement for the wall-time projection itself.
     """
-    csv_path = run_dir / "hw_samples.csv"
+    df = _load_hw_samples_df(run_dir)
     empty = lambda a, b: {}
-    if not csv_path.exists():
+    if df is None:
         return empty
-    try:
-        import pandas as pd
-    except ImportError:
-        return empty
-
-    try:
-        df = pd.read_csv(csv_path)
-        # Naive-datetime comparison (NOT epoch/Unix-timestamp conversion) - matches the proven
-        # approach in tools/KPI-hub/plot_utilization_interactive.py::load_phases(). hw_samples.csv's
-        # "timestamp" column is naive LOCAL time (whatever machine/timezone ran the sampler);
-        # workflow_kpi.json's start_epoch/end_epoch are true UTC Unix epoch from time.time() in a
-        # different process. Converting the CSV's naive-local strings to Unix epoch (e.g. via
-        # pandas datetime64->int64) silently produces a wrong, TZ-offset-shifted value with no
-        # error - every stage window then matches zero rows. start_iso/end_iso are naive strings
-        # written by the SAME process/clock convention as the CSV, so comparing them directly
-        # (no epoch conversion at all) is the only alignment that's actually correct.
-        df["_dt"] = pd.to_datetime(df["timestamp"])
-    except Exception:
-        return empty
+    import pandas as pd  # already imported successfully inside _load_hw_samples_df above
 
     rapl_cols = {
         "cpu": "rapl_cpu_w", "igpu": "rapl_igpu_w", "npu": "rapl_npu_w", "soc": "rapl_soc_w",
@@ -146,6 +137,79 @@ def _load_power_lookup(run_dir: Path):
     return lookup
 
 
+def _load_hw_samples_df(run_dir: Path):
+    """Shared hw_samples.csv loader (naive-local `timestamp` -> `_dt`) for power + utilization
+    lookups. Returns None (never raises) if pandas is missing or the CSV is absent/unparseable -
+    both lookups built on top of this are best-effort diagnostics, never hard requirements.
+    """
+    csv_path = run_dir / "hw_samples.csv"
+    if not csv_path.exists():
+        return None
+    try:
+        import pandas as pd
+    except ImportError:
+        return None
+    try:
+        df = pd.read_csv(csv_path)
+        # Naive-datetime comparison (NOT epoch/Unix-timestamp conversion) - matches the proven
+        # approach in tools/KPI-hub/plot_utilization_interactive.py::load_phases(). hw_samples.csv's
+        # "timestamp" column is naive LOCAL time (whatever machine/timezone ran the sampler);
+        # workflow_kpi.json's start_epoch/end_epoch are true UTC Unix epoch from time.time() in a
+        # different process. Converting the CSV's naive-local strings to Unix epoch (e.g. via
+        # pandas datetime64->int64) silently produces a wrong, TZ-offset-shifted value with no
+        # error - every stage window then matches zero rows. start_iso/end_iso are naive strings
+        # written by the SAME process/clock convention as the CSV, so comparing them directly
+        # (no epoch conversion at all) is the only alignment that's actually correct.
+        df["_dt"] = pd.to_datetime(df["timestamp"])
+        return df
+    except Exception:
+        return None
+
+
+def _load_utilization_lookup(run_dir: Path, device_type: str):
+    """Return a function (start_iso, end_iso) -> {"accel_busy_pct", "mem_bw_gbs"}, best-effort.
+
+    MEASURED (not modeled) accelerator busy% (npu_pct/igpu_pct, whichever matches device_type)
+    and achieved DRAM bandwidth (dram_total_gbs) - i.e. the ACTUAL fraction of theoretical peak
+    this baseline machine achieved, straight from hw_samples.csv. Diagnostic only: shown in
+    reports so a user can sanity-check their `--*-efficiency-retention` guesses against real
+    numbers instead of picking them blind - never fed back into the projection math itself,
+    since a baseline machine's own achieved efficiency doesn't tell you what a *different*
+    target machine will achieve (see docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md §4.1).
+    """
+    df = _load_hw_samples_df(run_dir)
+    empty = lambda a, b: {}
+    if df is None:
+        return empty
+    import pandas as pd  # already imported successfully inside _load_hw_samples_df above
+
+    busy_col = {"NPU": "npu_pct", "GPU": "igpu_pct", "IGPU": "igpu_pct", "CPU": "cpu_total_pct"}.get(
+        (device_type or "").upper()
+    )
+    has_busy = busy_col in df.columns if busy_col else False
+    has_bw = "dram_total_gbs" in df.columns
+    if not has_busy and not has_bw:
+        return empty
+
+    def lookup(start_iso: str, end_iso: str) -> Dict[str, float]:
+        start_dt, end_dt = pd.Timestamp(start_iso), pd.Timestamp(end_iso)
+        window = df[(df["_dt"] >= start_dt) & (df["_dt"] <= end_dt)]
+        if window.empty:
+            return {}
+        out = {}
+        if has_busy:
+            vals = pd.to_numeric(window[busy_col], errors="coerce").dropna()
+            if len(vals):
+                out["accel_busy_pct"] = float(vals.mean())
+        if has_bw:
+            vals = pd.to_numeric(window["dram_total_gbs"], errors="coerce").dropna()
+            if len(vals):
+                out["mem_bw_gbs"] = float(vals.mean())
+        return out
+
+    return lookup
+
+
 def extract_baseline(run_dir: str) -> BaselineProfile:
     run_path = Path(run_dir)
     with open(run_path / "workflow_kpi.json", "r", encoding="utf-8") as fh:
@@ -164,6 +228,7 @@ def extract_baseline(run_dir: str) -> BaselineProfile:
     params_b = estimate_params_b(model_weight_mb, bpw)
 
     power_lookup = _load_power_lookup(run_path)
+    utilization_lookup = _load_utilization_lookup(run_path, device_type)
 
     workflow_end_epoch = (wkpi.get("timeline") or {}).get("end_epoch")
 
@@ -213,6 +278,13 @@ def extract_baseline(run_dir: str) -> BaselineProfile:
             power_window_end_iso = next_start_iso or s.get("end_iso")
             avg_power_w = power_lookup(s["start_iso"], power_window_end_iso)
 
+        measured_util = {}
+        if s.get("start_iso") and s.get("end_iso"):
+            # Deliberately the NARROW active window (start_iso->end_iso, not the gap-widened one
+            # used for power above) - this is meant to characterize busy%/achieved-BW WHILE the
+            # accelerator is actually generating tokens, not diluted by idle tool-exec time.
+            measured_util = utilization_lookup(s["start_iso"], s["end_iso"])
+
         stages.append(StageMacroProfile(
             name=name,
             is_cold=s.get("is_cold"),
@@ -230,11 +302,25 @@ def extract_baseline(run_dir: str) -> BaselineProfile:
             ttft_ms=(s["ttft_s"] * 1000.0) if s.get("ttft_s") is not None else (prefill_s * 1000.0 + avg_itl_ms),
             tool_calls=s.get("tool_calls", {}) or {},
             avg_power_w=avg_power_w,
+            measured_util=measured_util,
         ))
 
     workflow_wall_time_s = wkpi.get("workflow_wall_time_s") or exp_meta.get("workflow_duration_s", 0.0)
     accounted = sum(s.wall_time_s + s.tool_exec_gap_s for s in stages)
     fixed_overhead_s = max(workflow_wall_time_s - accounted, 0.0)
+
+    def _active_weighted_avg(key: str) -> Optional[float]:
+        # Weight by each stage's own active window (prefill_s+decode_s), matching the window the
+        # underlying measurement was averaged over - see measured_util's narrow-window comment above.
+        weighted_sum, weight_total = 0.0, 0.0
+        for st in stages:
+            v = st.measured_util.get(key)
+            if v is None:
+                continue
+            w = st.prefill_s + st.decode_s
+            weighted_sum += v * w
+            weight_total += w
+        return (weighted_sum / weight_total) if weight_total else None
 
     return BaselineProfile(
         run_dir=str(run_path),
@@ -247,4 +333,6 @@ def extract_baseline(run_dir: str) -> BaselineProfile:
         workflow_wall_time_s=workflow_wall_time_s,
         fixed_overhead_s=fixed_overhead_s,
         stages=stages,
+        measured_accel_busy_pct=_active_weighted_avg("accel_busy_pct"),
+        measured_mem_bw_gbs=_active_weighted_avg("mem_bw_gbs"),
     )

@@ -28,10 +28,20 @@ from .hw_spec import SystemSpec, raw_speedup, amdahl_speedup, effective_speedup
 class ProjectionAssumptions:
     # How much of the *ideal* HW speedup is actually realized (1.0 = perfect/iso-efficiency
     # scaling; lower values model real-world NUMA/contention/driver-overhead losses at scale).
-    efficiency_retention: float = 0.85
+    # Split per-domain (rather than one shared knob) because NPU-MAC, iGPU-XeCore, and
+    # CPU/mem-bandwidth paths on a real SoC do NOT achieve the same fraction of their own
+    # theoretical peak - see baseline_extractor.py's measured_accel_busy_pct/measured_mem_bw_gbs
+    # (real telemetry) and docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md §4.1 for measured evidence
+    # that NPU/iGPU/mem achieved-vs-peak utilization genuinely differ, sometimes by 2x.
+    compute_efficiency_retention: float = 0.85   # prefill: NPU MACs or iGPU XeCores, whichever ran
+    memory_efficiency_retention: float = 0.85    # decode: memory bandwidth (USM path of that accelerator)
+    cpu_efficiency_retention: float = 0.85       # tool-exec: stacks with Amdahl's law below (see doc limitation #8)
     # Amdahl parallel fraction for tool-execution time (git apply / pytest / file IO / ...):
     # how much of that wall-clock time is assumed to actually benefit from extra CPU cores
-    # vs. being effectively serial (single-thread-bound: process spawn, disk IO, ...).
+    # vs. being effectively serial (single-thread-bound: process spawn, disk IO, ...). This is
+    # the "contention due to parallelism" factor - NOT a duplicate of cpu_efficiency_retention
+    # above (that's "how much of the ideal ratio is realized"; this is "how much of the work can
+    # even use extra cores in the first place").
     tool_parallel_fraction: float = 0.5
     # Dynamic power ~ (resource_count x freq) ^ power_scaling_exponent. 1.0 = linear (common
     # simplifying assumption at iso process-node); has no effect if RAPL power wasn't measured.
@@ -44,6 +54,14 @@ class ProjectionAssumptions:
     def from_dict(cls, d: Optional[dict]) -> "ProjectionAssumptions":
         if not d:
             return cls()
+        d = dict(d)
+        # Backward-compat: a legacy single "efficiency_retention" sets all three per-domain knobs
+        # at once, unless the caller also specifies one of the per-domain keys explicitly.
+        if "efficiency_retention" in d:
+            legacy = d.pop("efficiency_retention")
+            d.setdefault("compute_efficiency_retention", legacy)
+            d.setdefault("memory_efficiency_retention", legacy)
+            d.setdefault("cpu_efficiency_retention", legacy)
         known = {k: d[k] for k in cls.__dataclass_fields__ if k in d}
         return cls(**known)
 
@@ -91,6 +109,12 @@ class ProjectionResult:
     avg_projected_ttft_ms: Optional[float]
     avg_baseline_itl_ms: Optional[float]
     avg_projected_itl_ms: Optional[float]
+    # Real MEASURED (not modeled) baseline efficiency, straight from hw_samples.csv - diagnostic
+    # only, to help calibrate the *_efficiency_retention knobs above against reality instead of
+    # guessing; never fed back into the projection math itself. None if unavailable.
+    measured_accel_busy_pct: Optional[float]
+    measured_mem_bw_gbs: Optional[float]
+    measured_mem_bw_efficiency_pct: Optional[float]
 
     @property
     def wall_time_speedup_x(self) -> float:
@@ -127,6 +151,9 @@ class ProjectionResult:
             "avg_projected_ttft_ms": self.avg_projected_ttft_ms,
             "avg_baseline_itl_ms": self.avg_baseline_itl_ms,
             "avg_projected_itl_ms": self.avg_projected_itl_ms,
+            "measured_accel_busy_pct": self.measured_accel_busy_pct,
+            "measured_mem_bw_gbs": self.measured_mem_bw_gbs,
+            "measured_mem_bw_efficiency_pct": self.measured_mem_bw_efficiency_pct,
             "wall_time_speedup_x": self.wall_time_speedup_x,
             "wall_time_reduction_pct": self.wall_time_reduction_pct,
         }
@@ -141,19 +168,19 @@ def _project_stage(
 ) -> ProjectedStage:
     # ---- compute-bound prefill ----
     compute_raw = raw_speedup(target_spec.compute_capability(device_type), baseline_spec.compute_capability(device_type))
-    compute_eff = effective_speedup(compute_raw, assumptions.efficiency_retention)
+    compute_eff = effective_speedup(compute_raw, assumptions.compute_efficiency_retention)
     prefill_target = stage.prefill_s / compute_eff
 
     # ---- memory-bandwidth-bound decode ----
     mem_raw = raw_speedup(target_spec.mem_bw_peak_gbs, baseline_spec.mem_bw_peak_gbs)
-    mem_eff = effective_speedup(mem_raw, assumptions.efficiency_retention)
+    mem_eff = effective_speedup(mem_raw, assumptions.memory_efficiency_retention)
     decode_target = stage.decode_s / mem_eff
 
     # ---- CPU-bound tool execution (Amdahl) ----
     cores_ratio = raw_speedup(target_spec.cpu_cores, baseline_spec.cpu_cores)
     freq_ratio = raw_speedup(target_spec.cpu_freq_ghz, baseline_spec.cpu_freq_ghz)
     cpu_raw = amdahl_speedup(cores_ratio, freq_ratio, assumptions.tool_parallel_fraction)
-    cpu_eff = effective_speedup(cpu_raw, assumptions.efficiency_retention)
+    cpu_eff = effective_speedup(cpu_raw, assumptions.cpu_efficiency_retention)
     tool_gap_target = stage.tool_exec_gap_s / cpu_eff
 
     # ---- fixed, non-resource-bound bookkeeping (unchanged) ----
@@ -263,6 +290,12 @@ def project(
     avg_baseline_itl_ms = _weighted_avg([s.baseline_itl_ms for s in decoded])
     avg_projected_itl_ms = _weighted_avg([s.projected_itl_ms for s in decoded])
 
+    measured_mem_bw_gbs = baseline_profile.measured_mem_bw_gbs
+    measured_mem_bw_efficiency_pct = (
+        (measured_mem_bw_gbs / baseline_spec.mem_bw_peak_gbs * 100.0)
+        if measured_mem_bw_gbs and baseline_spec.mem_bw_peak_gbs else None
+    )
+
     return ProjectionResult(
         baseline_spec=baseline_spec,
         target_spec=target_spec,
@@ -285,4 +318,7 @@ def project(
         avg_projected_ttft_ms=avg_projected_ttft_ms,
         avg_baseline_itl_ms=avg_baseline_itl_ms,
         avg_projected_itl_ms=avg_projected_itl_ms,
+        measured_accel_busy_pct=baseline_profile.measured_accel_busy_pct,
+        measured_mem_bw_gbs=measured_mem_bw_gbs,
+        measured_mem_bw_efficiency_pct=measured_mem_bw_efficiency_pct,
     )

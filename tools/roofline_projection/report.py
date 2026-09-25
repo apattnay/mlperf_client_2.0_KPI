@@ -118,6 +118,28 @@ def build_report_html(result: ProjectionResult) -> str:
         <div class="card"><div class="label">Avg ITL (baseline)</div><div class="value">{result.avg_baseline_itl_ms:.1f} ms</div></div>
         <div class="card"><div class="label">Avg ITL (projected)</div><div class="value green">{result.avg_projected_itl_ms:.1f} ms</div></div>"""
 
+    measured_cards = ""
+    if result.measured_accel_busy_pct is not None or result.measured_mem_bw_gbs is not None:
+        busy_row = (
+            f"<div class='card'><div class='label'>Measured accelerator busy%</div>"
+            f"<div class='value'>{result.measured_accel_busy_pct:.1f}%</div>"
+            f"<div class='sub'>avg during active LLM windows</div></div>"
+        ) if result.measured_accel_busy_pct is not None else ""
+        bw_row = (
+            f"<div class='card'><div class='label'>Measured mem BW achieved</div>"
+            f"<div class='value'>{result.measured_mem_bw_gbs:.1f} GB/s</div>"
+            f"<div class='sub'>{result.measured_mem_bw_efficiency_pct:.1f}% of baseline_spec's theoretical peak</div></div>"
+        ) if result.measured_mem_bw_gbs is not None else ""
+        measured_cards = f"""
+<div class="section">
+<h2>Measured Baseline Efficiency (real telemetry, diagnostic only)</h2>
+<p class="note">Straight from this run's own <code>hw_samples.csv</code> - NOT used in the projection math above
+(a baseline machine's own achieved efficiency doesn't tell you what a different target machine will achieve).
+Use it to sanity-check the <code>--compute/--memory/--cpu-efficiency-retention</code> assumptions below against
+reality instead of guessing. See docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md §4.1.</p>
+<div class="cards">{busy_row}{bw_row}</div>
+</div>"""
+
     stage_rows = "".join(
         f"<tr><td>{html.escape(s.name)}</td>"
         f"<td class='num'>{_fmt_s(s.baseline_wall_s)}</td><td class='num'>{_fmt_s(s.projected_wall_s)}</td>"
@@ -156,10 +178,13 @@ def build_report_html(result: ProjectionResult) -> str:
     {latency_cards}
     {power_cards}
 </div>
-<p class="note">Assumptions: efficiency retention={result.assumptions.efficiency_retention:.2f}, tool-exec parallel
+<p class="note">Assumptions: compute efficiency retention={result.assumptions.compute_efficiency_retention:.2f},
+memory efficiency retention={result.assumptions.memory_efficiency_retention:.2f},
+cpu efficiency retention={result.assumptions.cpu_efficiency_retention:.2f}, tool-exec parallel
 fraction={result.assumptions.tool_parallel_fraction:.2f}, power scaling exponent={result.assumptions.power_scaling_exponent:.2f}.
 See docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md for the full equations.</p>
 </div>
+{measured_cards}
 
 <div class="section">
 <h2>Target Hardware Spec vs. Baseline ({html.escape(result.baseline_spec.name)} &rarr; {html.escape(result.target_spec.name)})</h2>

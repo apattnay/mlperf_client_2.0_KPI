@@ -47,7 +47,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     for field in _TARGET_OVERRIDE_FIELDS:
         p.add_argument(f"--{field.replace('_', '-')}", type=float, help=f"Override target_spec.{field}")
 
-    p.add_argument("--efficiency-retention", type=float, default=0.85, help="0-1, how much of the ideal HW speedup is realized (default 0.85)")
+    p.add_argument("--efficiency-retention", type=float, help="0-1 convenience shortcut: sets compute/memory/cpu efficiency retention below all at once (default 0.85 if none of the four --*-efficiency-retention flags are given)")
+    p.add_argument("--compute-efficiency-retention", type=float, help="0-1, how much of the ideal prefill (NPU/iGPU compute) speedup is realized - overrides --efficiency-retention for this domain only")
+    p.add_argument("--memory-efficiency-retention", type=float, help="0-1, how much of the ideal decode (memory bandwidth) speedup is realized - overrides --efficiency-retention for this domain only")
+    p.add_argument("--cpu-efficiency-retention", type=float, help="0-1, how much of the ideal tool-exec (CPU, on top of Amdahl's law) speedup is realized - overrides --efficiency-retention for this domain only")
     p.add_argument("--tool-parallel-fraction", type=float, default=0.5, help="0-1, Amdahl parallel fraction for tool-execution time (default 0.5)")
     p.add_argument("--power-scaling-exponent", type=float, default=1.0, help="Exponent for power-vs-capability scaling (default 1.0 = linear)")
     return p
@@ -93,8 +96,12 @@ def main(argv=None) -> int:
         if val is not None:
             setattr(target_spec, field, val)
 
+    assumptions = ProjectionAssumptions()
+    base_eff = args.efficiency_retention if args.efficiency_retention is not None else assumptions.compute_efficiency_retention
     assumptions = ProjectionAssumptions(
-        efficiency_retention=args.efficiency_retention,
+        compute_efficiency_retention=args.compute_efficiency_retention if args.compute_efficiency_retention is not None else base_eff,
+        memory_efficiency_retention=args.memory_efficiency_retention if args.memory_efficiency_retention is not None else base_eff,
+        cpu_efficiency_retention=args.cpu_efficiency_retention if args.cpu_efficiency_retention is not None else base_eff,
         tool_parallel_fraction=args.tool_parallel_fraction,
         power_scaling_exponent=args.power_scaling_exponent,
     )
@@ -111,6 +118,13 @@ def main(argv=None) -> int:
     print(f"Tokens/s (base->proj): {result.baseline_tok_s:.1f} -> {result.projected_tok_s:.1f}")
     if result.baseline_tok_per_j is not None:
         print(f"Tokens/J (base->proj): {result.baseline_tok_per_j:.2f} -> {result.projected_tok_per_j:.2f}")
+    if result.measured_accel_busy_pct is not None:
+        print(f"Measured baseline accelerator busy%: {result.measured_accel_busy_pct:.1f}% (diagnostic only, see report)")
+    if result.measured_mem_bw_efficiency_pct is not None:
+        print(
+            f"Measured baseline mem BW achieved:    {result.measured_mem_bw_gbs:.1f} GB/s "
+            f"({result.measured_mem_bw_efficiency_pct:.1f}% of baseline_spec's theoretical peak)"
+        )
     print(f"Report written to:    {out_dir}")
 
     if args.what_if:

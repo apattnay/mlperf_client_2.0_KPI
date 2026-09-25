@@ -138,7 +138,7 @@ raw_speedup(target, baseline)              = target / baseline                  
 effective_speedup(raw, retention)          = 1 + (raw - 1) × retention
     # retention ∈ [0,1]: 1.0 = ideal ("iso-efficiency") scaling - the resource ratio is fully
     # realized. Lower values model real-world losses at scale (NUMA, contention, driver
-    # overhead) that keep bigger systems from scaling perfectly linearly. Default: 0.85.
+    # overhead) that keep bigger systems from scaling perfectly linearly.
 
 amdahl_speedup(cores_ratio, freq_ratio, p) = freq_ratio / ((1 - p) + p / cores_ratio)
     # Amdahl's law for CPU-bound tool execution. p = assumed parallel fraction of that time
@@ -151,17 +151,27 @@ amdahl_speedup(cores_ratio, freq_ratio, p) = freq_ratio / ((1 - p) + p / cores_r
     # - clearly wrong, since serial code still runs faster on a faster core. Corrected here.)
 ```
 
+**2026-09-24: `efficiency_retention` is now THREE independent knobs, not one shared value** -
+`compute_efficiency_retention` (prefill), `memory_efficiency_retention` (decode),
+`cpu_efficiency_retention` (tool-exec, on top of Amdahl's law). See §4.1 for why: NPU-MAC,
+iGPU-XeCore, and memory-bandwidth paths on a real SoC do NOT achieve the same fraction of their
+own theoretical peak, so one shared "efficiency" number was hiding a real, measurable difference.
+A legacy single `--efficiency-retention` / `efficiency_retention` JSON key still works and sets all
+three at once (for backward compatibility) unless a per-domain value is also given.
+
 Applied per stage:
 
 ```
 compute_eff  = effective_speedup( raw_speedup(target.compute_capability(device_type),
-                                               baseline.compute_capability(device_type)), retention )
+                                               baseline.compute_capability(device_type)),
+                                   compute_efficiency_retention )
 prefill_target = prefill_s / compute_eff
 
-mem_eff      = effective_speedup( raw_speedup(target.mem_bw_peak_gbs, baseline.mem_bw_peak_gbs), retention )
+mem_eff      = effective_speedup( raw_speedup(target.mem_bw_peak_gbs, baseline.mem_bw_peak_gbs),
+                                   memory_efficiency_retention )
 decode_target = decode_s / mem_eff
 
-cpu_eff      = effective_speedup( amdahl_speedup(cores_ratio, freq_ratio, p), retention )
+cpu_eff      = effective_speedup( amdahl_speedup(cores_ratio, freq_ratio, p), cpu_efficiency_retention )
 tool_target  = tool_exec_gap_s / cpu_eff
 
 overhead_target = stage_overhead_s          # unchanged - not resource-bound
@@ -195,6 +205,52 @@ prefill scaling — matching which device actually ran the workload. An unrecogn
 raises rather than silently defaulting (an earlier version defaulted anything that wasn't `"NPU"`
 to `igpu_capability`, which would have silently mis-scaled prefill for a hypothetical CPU-only run).
 
+### 4.1 Measured baseline efficiency (diagnostic) & why the retention knobs are split per-domain
+
+`hw_samples.csv` already contains REAL per-sample telemetry this tool wasn't using at all before
+2026-09-24: `npu_pct`/`igpu_pct` (accelerator busy%) and `dram_total_gbs` (achieved DRAM
+bandwidth). `baseline_extractor.py` now averages these over each stage's own active window
+(`start_iso`→`end_iso`, i.e. while the accelerator is actually generating tokens - NOT diluted by
+idle tool-exec gap time) and rolls them up into `BaselineProfile.measured_accel_busy_pct` /
+`measured_mem_bw_gbs` (both `None` if the columns aren't present). These are **diagnostic only** -
+shown in the report / what-if calculator to calibrate the retention knobs against reality, never
+fed back into the projection math (a baseline machine's own achieved efficiency says nothing about
+what a *different* target machine will achieve - that's still necessarily an assumption).
+
+Measured on the 4 primary validated runs (default placeholder baseline spec,
+`mem_bw_peak_gbs = 136.5 GB/s`):
+
+| Run | device | measured accel busy% (active windows) | measured mem BW achieved | % of theoretical peak |
+|---|---|---|---|---|
+| preset5 (SWE Agent) | NPU | 91.8% | 76.6 GB/s | 56.1% |
+| preset6 (SWE Agent) | GPU | 59.9% | 61.2 GB/s | 44.9% |
+| preset7 (Data Agent) | NPU | 89.5% | 65.6 GB/s | 48.1% |
+| preset8 (Data Agent) | GPU | 36.2% | 31.8 GB/s | 23.3% |
+
+This is real, measured evidence that the NPU path and the iGPU path on the *same* class of SoC
+achieve genuinely different fractions of theoretical peak (busy% and mem-BW-efficiency both run
+meaningfully higher on NPU runs than GPU runs in this data) - a single shared `efficiency_retention`
+knob was masking that difference by construction. Splitting it into
+`compute_efficiency_retention` / `memory_efficiency_retention` / `cpu_efficiency_retention` lets a
+user pick different, better-informed values per accelerator type instead of one blind guess for
+everything. It does **not** mean these measured percentages should be plugged in directly as the
+retention values for a *target* machine - see the limitations below - but they're a much better
+starting point than an unexamined `0.85` for every domain on every run.
+
+**On "contention due to parallelism" / USM path (per the second-round review question this section
+answers):** this benchmark's timeline is fully **serial per the measured stages** - one stage
+(prefill+decode on the accelerator) runs to completion, then the harness runs any tool call
+(`tool_exec_gap_s`, CPU-only, accelerator idle), then the next stage starts. There is no point in
+the current data where NPU/iGPU and CPU workloads execute *concurrently* and contend for the same
+shared-memory (USM) bus at the same time - contention in that sense doesn't apply to this
+single-agent, batch=1, request-response workload structure. The "contention" that Amdahl's law
+already captures is a *different* thing: how much of a **single** CPU-bound phase (tool-exec) can
+actually be sped up by adding more cores vs. being effectively single-threaded (`tool_parallel_fraction`).
+If a future workload profile ever overlaps LLM inference and tool execution in time (e.g. streaming
+generation while a background tool runs), true cross-resource memory-bus contention would need a
+new macro-component this tool doesn't have yet - that's out of scope for the current serial-timeline
+model, and is called out as limitation #12 below rather than silently assumed away.
+
 ### Power / energy (Tokens/Joule)
 
 Only computed if at least one stage has measured RAPL power (`hw_samples.csv`'s
@@ -225,11 +281,14 @@ Tokens/Joule = total_output_tokens / Total energy_j   (baseline and projected)
   (`_JS_ENGINE` in `what_if_calculator.py` — kept in sync with `hw_spec.py`/`scaling_engine.py` by
   convention, no shared code since this must run with no server/build step). Dropdowns for CPU
   cores/frequency, iGPU XeCores/frequency, NPU MACs/frequency, and memory channels/width/transfer
-  rate, plus sliders for efficiency retention / tool-exec parallel fraction / power scaling
-  exponent, recompute the projected wall time, speedup, tokens/s, avg TTFT/ITL, and Tokens/Joule
-  (when RAPL power data exists) live on every change; a "quick preset" dropdown loads any
-  `SystemSpec` JSON from `data/configs/roofline_targets/`. A "Generate a Persisted Report" section
-  lets you take the current selection back to the CLI (copy a ready-to-run command, or download a
+  rate, plus sliders for **compute / memory / cpu efficiency retention** (split per-domain, see
+  §4.1), tool-exec parallel fraction, and power scaling exponent, recompute the projected wall
+  time, speedup, tokens/s, avg TTFT/ITL, and Tokens/Joule (when RAPL power data exists) live on
+  every change; a "quick preset" dropdown loads any `SystemSpec` JSON from
+  `data/configs/roofline_targets/`. If the baseline run has real busy%/mem-BW telemetry, a
+  "Measured Baseline Efficiency" card shows it (diagnostic only, doesn't move any of the sliders).
+  A "Generate a Persisted Report" section lets you take the current selection back to the CLI
+  (copy a ready-to-run command with all three efficiency flags, or download a
   `--target-spec`-compatible JSON) since this page has no filesystem/server access to write a
   report itself.
 
@@ -262,6 +321,13 @@ Tokens/Joule = total_output_tokens / Total energy_j   (baseline and projected)
     --baseline-spec data\configs\roofline_targets\current_baseline_TEMPLATE.json `
     --target-spec data\configs\roofline_targets\example_heavy_duty_workstation.json `
     --efficiency-retention 0.8 --tool-parallel-fraction 0.4 --what-if
+
+# Per-domain overrides (compute/memory/cpu efficiency retention can differ - see §4.1) - each
+# --*-efficiency-retention flag overrides --efficiency-retention for just that one domain
+.venv\Scripts\python.exe tools\run_roofline_projection.py `
+    --run kpi_runs\preset5_roofline_20260923_140129 `
+    --target-spec data\configs\roofline_targets\example_heavy_duty_workstation.json `
+    --compute-efficiency-retention 0.9 --memory-efficiency-retention 0.75 --cpu-efficiency-retention 0.6 --what-if
 ```
 
 Output defaults to `<run>/roofline_projection/` (report + `what_if_calculator.html` if `--what-if`
@@ -332,8 +398,11 @@ scenarios (SWE Agent / Data Agent) and both accelerator types without any scenar
 
 1. **Iso-efficiency projection, not a cycle-accurate simulator.** Compute and memory scaling
    assume the *utilization %* achieved on the baseline machine is achievable on the target machine
-   too (subject to the efficiency-retention knob) — real silicon can behave non-linearly (cache
-   effects, NUMA topology changes, driver/firmware differences) in ways this model cannot capture.
+   too (subject to the `compute`/`memory_efficiency_retention` knobs) — real silicon can behave
+   non-linearly (cache effects, NUMA topology changes, driver/firmware differences) in ways this
+   model cannot capture. §4.1's measured busy%/mem-BW numbers describe the *baseline*, not what the
+   *target* will achieve — extrapolating from one machine's measured efficiency to a different
+   machine's future efficiency is still fundamentally an assumption, not a measurement.
 2. **iGPU/NPU peak-capability ratios use count × frequency as a linear proxy**, not a verified
    FLOPs-per-MAC/FLOPs-per-XeCore constant (none exists for this exact silicon+workload — see
    `docs/KPI_HUB_INTEGRATION_NOTES.md`). This is fine for *ratios* between two specs using the
@@ -367,12 +436,13 @@ scenarios (SWE Agent / Data Agent) and both accelerator types without any scenar
    `compute_capability()` now explicitly handles `NPU` / `GPU`&`IGPU` / `CPU` and raises a clear
    error on anything else, instead of silently routing an unrecognized `device_type` (e.g. a
    hypothetical `CPU` baseline) to `igpu_capability`. See `hw_spec.py::SystemSpec.compute_capability`.
-8. **`efficiency_retention` and Amdahl's law compound multiplicatively for tool-exec.** The
-   CPU/tool-exec speedup is Amdahl-damped *and then* further discounted by `efficiency_retention` —
-   two independent "be conservative" knobs stack, so tool-exec ends up more heavily discounted than
-   compute/memory for the same `efficiency_retention` value. This is intentional (tool-exec
-   involves OS scheduling/process-spawn overhead that compute/memory scaling doesn't), but keep it
-   in mind when tuning both sliders in the what-if calculator — their effects are not independent.
+8. **`cpu_efficiency_retention` and Amdahl's law compound multiplicatively for tool-exec.** The
+   CPU/tool-exec speedup is Amdahl-damped *and then* further discounted by `cpu_efficiency_retention`
+   — two independent "be conservative" knobs stack, so tool-exec ends up more heavily discounted
+   for a given retention value than compute/memory would be for the same value. This is intentional
+   (tool-exec involves OS scheduling/process-spawn overhead that compute/memory scaling doesn't),
+   but keep it in mind when tuning both the CPU efficiency slider and the parallel-fraction slider
+   in the what-if calculator — their effects are not independent.
 9. **Tokens/Joule silently treats any stage with no RAPL-power match as 0 energy for that stage**,
    not as "unknown"/excluded. `has_power` only requires *one* stage in the whole run to have
    power data to turn Tokens/Joule on at all; any other stage whose lookup window happened to miss
@@ -394,3 +464,17 @@ scenarios (SWE Agent / Data Agent) and both accelerator types without any scenar
     to the recomputed value only if it's absent), so this stays "no new measurement, pure
     arithmetic on existing fields" even if a future log format ever changes how `ttft_s` itself is
     derived. Numerically identical to the old behavior on all 13 runs in this repo.
+12. **No cross-resource contention modeling for concurrent accelerator+CPU use.** The current
+    macro-component timeline is strictly serial (prefill+decode on the accelerator, THEN the
+    harness runs any tool call with the accelerator idle, see §4.1) - there is no macro-component
+    for "NPU/iGPU and CPU both active at once, contending for the same USM/DRAM bus," because that
+    never happens in this benchmark's measured data. If a future workload profile overlaps
+    generation and tool execution in time (e.g. streaming output while a background tool runs),
+    this model would need a new contention-aware macro-component; today it's simply out of scope,
+    not silently assumed away as zero-cost.
+13. **Measured `accel_busy_pct`/`mem_bw_gbs` diagnostics (§4.1) depend on `hw_samples.csv` having
+    `npu_pct`/`igpu_pct`/`dram_total_gbs` columns with real values** - both are `None` (silently
+    omitted from the report) on 6 of the 13 runs in this repo whose `hw_samples.csv` predates this
+    telemetry or lacks power/utilization sampling entirely. Absence of these diagnostics doesn't
+    affect the wall-time/speedup projection at all (they're purely informational), but means you
+    can't cross-check the retention knobs against measured reality for those older runs.
