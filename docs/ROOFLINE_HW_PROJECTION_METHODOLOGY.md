@@ -130,6 +130,24 @@ XeCore / NPU MAC counts from its datasheet — see
 
 ## 4. Step 3 — Scaling engine (`scaling_engine.py`)
 
+**The complete closed-form wall-time equation** (every term defined in detail below):
+
+```
+Total projected wall time =
+    Σ over all stages i ( prefill_s[i]/E_c + decode_s[i]/E_m + tool_exec_gap_s[i]/E_cpu + stage_overhead_s[i] )
+    + fixed_overhead_s
+
+  where, computed ONCE per projection (same for every stage - depend only on baseline vs target
+  hardware, not on any per-stage data):
+    E_c   = effective_speedup( compute_capability(target)/compute_capability(baseline), compute_efficiency_retention )
+    E_m   = effective_speedup( mem_bw_peak_gbs(target)/mem_bw_peak_gbs(baseline),       memory_efficiency_retention )
+    E_cpu = effective_speedup( amdahl_speedup(cores_ratio, freq_ratio, tool_parallel_fraction), cpu_efficiency_retention )
+
+Speedup             = Total baseline wall time / Total projected wall time
+Wall time reduction = (Total baseline wall time - Total projected wall time) / Total baseline wall time × 100%
+Tokens/s             = total_output_tokens / Total wall time
+```
+
 Per stage, per macro component:
 
 ```
