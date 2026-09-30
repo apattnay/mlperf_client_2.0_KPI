@@ -1158,6 +1158,46 @@ platform's actual physical row-buffer size and memory-controller page policy (op
 closed-page), which neither machine's documentation currently states, and which this repo has no
 tooling to query directly.
 
+**A second, related real finding, 2026-09-30 — the 96-EU box's GPU also allocates ~2× more shared
+memory for the identical workload**: comparing `igpu_shared_mb`/`zes_mem_used_mb` across all four
+runs during the same `n=8198` stages: this repo's 96-EU box averages **~9.4 GB** (peak ~10.6 GB)
+of iGPU shared/unified memory; `JF04WVAW0381-TA` averages **~4.4 GB** (peak ~5.4 GB) — roughly
+half, for the exact same model, quantization, and input length. **Neither machine is anywhere
+near exhausting physical RAM** (checked directly: `ram_used_gb`/`ram_total_gb` peaks at 44% on the
+96-EU box, 24% on `JF04WVAW0381-TA` — no swap-pressure signal, ruling out a disk-swap/memory-
+exhaustion explanation specifically). But a working set that's ~2× larger is a plausible
+*compounding* factor on top of the LPDDR5X-vs-DDR5 architecture difference above: a larger working
+set touches more distinct rows, which is more punishing specifically for a narrow-row-buffer
+memory system (LPDDR5X) than for a wide-row-buffer one (DDR5) — consistent with, not contradicting,
+the page-hit-rate finding. **Not yet explained**: whether the larger footprint is KV-cache-related,
+an OpenVINO GPU-plugin buffer-padding/workspace difference, or something else — would need
+Level-Zero allocation-event tracing or the model's OpenVINO memory-plan output, neither of which
+this repo's tooling captures.
+
+**A more significant implication, 2026-09-30 — the reference SUT behind the ENTIRE external §9.1
+methodology, not just the borrowed ratio, is confirmed to be this exact anomalous machine.**
+Cross-checking `JF04WVAW0867-TA.md` (the external project's own onboarding doc for its 96-EU
+reference SUT) against this repo's own documented hardware confirms they are **the same physical
+machine**: `Genuine Intel(R) 0000` pre-release CPU, 16 cores/16 threads, **64 GB LPDDR5X (8×8 GB,
+8533 MT/s configured)**, driver **32.0.101.8949** — every one of these facts matches this repo's
+own dev box exactly (see `docs/KPI_HUB_INTEGRATION_NOTES.md`'s own memory-config query and the
+driver version already cited above). **This means §9.1's entire `TTFT(n)` formula — the
+`T_linear`/`T_attention`/`host_overhead` decomposition, its EU-axis calibration, and the
+`attention_buffer` hypothesis — was built entirely from real measurements on this same anomalously
+poor-memory-locality machine, calibrated against the same `JF04WVAW0381-TA` (16-EU, DDR5) pair
+investigated in this section.** The external project's own `host_overhead`/`attention_buffer`
+residual (§9.1: "an unattributed memory-bound cost… the `[heads,n,n]` fp16 attention-score buffer")
+was never cross-checked against a machine with normal (non-LPDDR5X, high-page-hit) memory
+behavior — so **it's a real, concrete possibility that some fraction of that residual is actually
+measuring this one machine's own DRAM row-buffer-locality pathology, not a universal, portable
+property of the attention computation itself.** This doesn't invalidate the external formula
+(the compute-bound `T_linear`/`missing_linear` bracket is cross-checked against an independent
+GEMM-ceiling microbenchmark and is architecturally sound regardless), but it means the
+memory-bound `attention_buffer` term specifically — and by extension anything this repo's §9.5
+integration borrows from it — carries a confound neither this repo's docs nor (as far as known)
+the external project's own review docs previously flagged. Worth raising back to that project,
+given the bidirectional evidence-sharing relationship already established in §9.6.
+
 **Same-day control run, 2026-09-29 — rules out time-based drift as the explanation**: to check
 whether the 6-day gap between the original 96-EU run (2026-09-23) and the `JF04WVAW0381-TA` run
 (2026-09-29) could itself explain part of the anomaly (e.g. an OpenVINO/driver update landing on
@@ -1270,3 +1310,46 @@ retention no longer has to be a blind guess — it can be read directly off real
 .venv\Scripts\python.exe tools\roofline_projection\integrate_external_ttft.py --run kpi_runs\preset6_roofline_20260923_141035 `
     --igpu-xecores 256 --mem-bw-gbs 300 --p-cores 20 --e-cores 48 --use-measured-memory-efficiency
 ```
+
+### 9.7a Does this actually close the gap against real `JF04WVAW0381-TA` ground truth? (2026-09-30)
+
+Re-ran §9.6a/§9.6b's two advance predictions with the new EMON-informed flags, against the same
+real target (`JF04WVAW0381-TA_16EU.json`) and the same real ground truth (778.62s):
+
+```powershell
+.venv\Scripts\python.exe tools\run_roofline_projection.py --run kpi_runs\preset6_roofline_20260923_141035 `
+    --target-spec data\configs\roofline_targets\JF04WVAW0381-TA_16EU.json --efficiency-retention 0.85 `
+    --tool-parallel-fraction 0.5 --use-measured-memory-efficiency --use-measured-compute-efficiency
+
+.venv\Scripts\python.exe tools\roofline_projection\integrate_external_ttft.py --run kpi_runs\preset6_roofline_20260923_141035 `
+    --external-ttft-csv data\configs\roofline_targets\JF04WVAW0381-TA_real_ttft_ratio.csv `
+    --igpu-xecores 16 --mem-bw-gbs 102.4 --p-cores 12 --e-cores 16 --use-measured-memory-efficiency
+```
+
+| Method | Flat retention (§9.6b) | Error vs. real | EMON-informed | Error vs. real |
+|---|---|---|---|---|
+| Naive (100%-compute-bound prefill) | 1,320.13s | +69.6% | **928.31s** | **+19.2%** |
+| Corrected (borrowed `ttft_ratio(n)`) | 1,020.16s | +31.0% | **970.48s** | +24.6% |
+
+Real measured wall time: **778.62s**.
+
+**No — it doesn't match exactly, but it gets much closer, and reveals which fix actually mattered
+more.** The naive method's error collapses from +69.6% to +19.2% — a bigger improvement than the
+"corrected" (external-ratio) method saw (+31.0% → +24.6%, only marginal). That's because
+`--use-measured-*-efficiency` only touches the **decode**-domain retention (and, for the naive
+method, the **compute**-domain retention too, since naive's prefill still uses a flat
+`compute_efficiency_retention`) — the corrected method's prefill term is still driven by §9.1's
+*borrowed* `ttft_ratio(n)`, which §9.6b already showed predicts the wrong *direction* entirely
+(predicted ~2.14× slower; real was ~3.3× faster). Fixing the decode-side retention can't repair a
+prefill term that's wrong for an unrelated reason. **The remaining ~19-25% gap is very plausibly
+that same still-unvalidated `ttft_ratio(n)` prefill assumption** (or the naive method's still-flat
+`compute_efficiency_retention`, now less wrong than before but still just this-baseline's-own
+measured busy%, not a validated cross-machine assumption) — not a new, separate error source.
+**§9.6b now gives a concrete reason to suspect why**: the external `ttft_ratio(n)` curve's own
+underlying reference SUT (`JF04WVAW0867-TA`) is confirmed to be this exact anomalous
+poor-memory-locality machine — so the ratio itself may be partly built on a confounded
+measurement, not just "borrowed from elsewhere." This is a genuinely encouraging result (real
+evidence-based tuning measurably narrows a real prediction-vs-ground-truth gap) but **still not
+proof of correctness** — 19-25% off is a real, material error for a "final" number, and the honest
+state of this whole methodology remains: use directionally, cross-check with real hardware before
+trusting a specific number.
