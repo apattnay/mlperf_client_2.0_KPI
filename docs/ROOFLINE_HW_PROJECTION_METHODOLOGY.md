@@ -1367,6 +1367,115 @@ faster), not an extension of that noise band — reinforcing that this is worth 
 that specific machine (driver/OpenVINO version check, kernel-cache-clear rerun per the earlier
 recommendation) rather than dismissed as measurement drift.
 
+### 9.6c Why do the two machines' DRAM latency numbers differ, and how do we pick a better reference machine next time?
+
+**Quick correction on which machine has which memory type** (easy to mix up): this repo's own
+**96-EU dev box** (`JF04WVAW0867-TA`) is the one with **LPDDR5X** (8 channels × 16-bit × 8533 MT/s,
+on-package/soldered, many-narrow-channel — typical of a mobile SoC). `JF04WVAW0381-TA` (**16-EU**)
+is the one with **conventional DDR5** (2×48 GB DIMMs, 6400 MT/s, few-wide-channel — a standard
+desktop/laptop DIMM layout). If it read the other way around anywhere, that's the correction.
+
+**Why the latency numbers differ — the short answer**: it is *not* about raw bandwidth (both
+machines achieve a similar ~46-54 GB/s during prefill, see the table below) — it's about
+**row-buffer/page-hit locality**, which is a property of *channel topology*, not clock speed:
+
+| Metric (same `n=8198` prefill stages, both machines) | 96-EU, LPDDR5X (8ch×16-bit) | 16-EU, DDR5 (2 DIMMs) |
+|---|---|---|
+| `dram_page_hit_rate_rd` | 61-67% | **94-95%** |
+| `dram_rd_latency_ns` | ~44-51 ns | **~21-22 ns** (~2.2× lower) |
+| `dram_total_gbs` achieved | 48-54 GB/s | 46-52 GB/s (similar!) |
+
+**The grounded (not guessed) hypothesis** (full detail already in §9.6b above — this is the
+condensed answer): many-narrow-channel memory (LPDDR5X's 8×16-bit layout) is optimized for peak
+*sequential* bandwidth via fine address interleaving across channels, which means a **smaller
+row buffer per channel**. A workload whose access pattern is scattered/non-sequential — exactly
+what KV-cache population and attention-score-buffer writes look like — thrashes that smaller
+row buffer far more than it would on DDR5's fewer, wider channels, even though both layouts can
+hit similar peak sequential bandwidth on a friendlier access pattern. This same mechanism
+plausibly also explains §9.6b's separate finding that the 96-EU/LPDDR5X box's *incremental*
+(context-driven) memory footprint at `n=8198` is **~8× larger** (5,319 MB vs 670 MB) than the
+16-EU/DDR5 box's — if OpenVINO pads/aligns the attention-score buffer to the channel-interleave
+granularity, a narrower-channel layout could require a physically larger allocation for the
+identical logical tensor. **Not yet proven causal** (§9.6b) — this is where the finding lives in
+this doc, with the full real-number evidence: §9.6b's *"Open question — now with a strong,
+quantified candidate root cause"*, *"Why the page-hit rate/latency differs"*, and *"A second,
+related real finding... INCREMENTAL memory footprint"* paragraphs, plus the clock-frequency
+paragraph immediately after them (which rules out "faster memory clock" as the explanation —
+the *better-performing* 16-EU machine actually runs its IMC at a *lower*, more variable clock).
+
+**A second, distinct candidate mechanism, not yet checked on either machine — memory RANKS (not
+the same thing as channel count/width above).** A DRAM **rank** is an independent set of DRAM
+devices sharing one chip-select (CS) line, together forming one full data-bus-width access unit;
+multiple ranks can share the *same physical channel*, each addressed via its own CS signal. This
+matters because while one rank is busy with a row activate/precharge (`tRCD`/`tRP` — exactly the
+cost a DRAM *page miss* pays), the memory controller can already issue a command to a *different
+rank on that same channel* — "rank interleaving" hides row-miss latency independently of, and in
+addition to, the channel-count/width effect already documented above. This is a real, physically
+distinct lever from channel topology: a channel with 2 ranks behaves differently under a
+scattered access pattern than the same channel with 1 rank, even with identical channel
+count/width/frequency. **Whether either machine's channel(s) are single- or dual-rank is currently
+unknown** — `generate_kpi_report.py`'s own memory-topology query (`Get-CimInstance
+Win32_PhysicalMemory | Select ConfiguredClockSpeed,DataWidth`) does not request rank count, and
+standard Windows WMI does not expose it directly (real rank count normally requires parsing raw
+SMBIOS Type 17 data or a vendor SPD-reading tool — `dmidecode -t 17`'s "Rank" field is the
+equivalent on Linux, not currently run on either machine here). A 48 GB-per-DIMM DDR5 module at
+today's typical die densities is *often* dual-rank, and an LPDDR5X mobile SoC package is *often*
+single-rank per channel — but that is a general industry pattern, not a verified fact about these
+two specific machines, so it's recorded here as an open, plausible **additional** contributor to
+the page-hit-rate/latency gap (§9.6b), not a second proven cause layered on top of the first.
+
+**How this could be captured and used in the equations, if/when rank count becomes measurable**:
+it should **not** be folded into `mem_bw_peak_gbs` (§3) — rank count doesn't change theoretical
+*peak sequential* bandwidth, only how gracefully a channel degrades under scattered/random access,
+so adding it to the bandwidth-ratio term would misattribute a latency/locality effect as a
+throughput effect (the same reasoning already given for why `dram_page_hit_rate_rd`/
+`dram_rd_latency_ns` themselves aren't wired into a separate scaling term, §9.7 above). The
+correct place for it is exactly where page-hit-rate/latency already live: as an **additional
+diagnostic field** on `BaselineProfile`/`StageMacroProfile.measured_util` (alongside the existing
+`page_hit_rate_rd`/`dram_rd_latency_ns`), shown for context but not fed into the projection math -
+its *net effect* on a real baseline machine is already implicitly captured by
+`--use-measured-memory-efficiency`'s real achieved-bandwidth fraction (§9.7), since achieved GB/s
+is downstream of rank interleaving same as it's downstream of channel topology. For a
+*hypothetical target* machine that doesn't exist, rank count is exactly as unmeasurable as
+page-hit-rate/latency already are (§8 limitation #1) - the practical use is the same as this
+whole section's other findings: a **reference-machine-selection signal** (checklist below), not a
+new scaling term.
+
+**How to pick a better reference/development machine next time** — concrete, actionable steps,
+directly motivated by this exact confound:
+
+1. **Record physical memory *topology*, not just capacity/speed-grade, in every machine's
+   onboarding doc.** "96 GB DDR5-6400" or "64 GB LPDDR5X-8533" tells you almost nothing about
+   page-hit behavior on its own — channel *count* and per-channel *width* (on-package/soldered
+   vs DIMM-based) are the load-bearing facts this confound turned on, and neither was originally
+   called out as a thing to check before this investigation. **Also record rank count per channel/
+   DIMM** (single- vs dual-rank) if obtainable (SMBIOS Type 17 / `dmidecode -t 17` / a vendor SPD
+   tool) — a second, physically distinct lever (see the memory-ranks paragraph above) that this
+   repo's current WMI-based query doesn't capture at all.
+2. **Run a short EMON/telemetry intake pass on any NEW candidate machine *before* building a
+   calibration methodology on it** — this repo already has the exact tool for this:
+   `tools/roofline_calibration/run_calibration.py --preset prefill_sweep --device GPU --run`
+   (§4.3) takes minutes and reports `dram_page_hit_rate_rd`/`dram_rd_latency_ns`/`dram_total_gbs`
+   directly. Compare the result against at least one other real machine of a *different* memory
+   architecture family before trusting either one as "the" reference — a single machine's
+   telemetry, taken alone, can't tell you it's anomalous (this repo's own 96-EU box looked
+   perfectly normal until compared against a real second machine).
+3. **Don't treat two machines as a clean single-variable comparison (e.g. "16 EU vs 96 EU") if
+   they also differ in memory architecture, driver version, or OpenVINO version** — this exact
+   pair differs in all three (§9.6b: DDR5 vs LPDDR5X; driver 32.0.101.8907 vs .8949; OpenVINO
+   version unconfirmed on either). Explicitly record and control for (or at minimum flag) every
+   axis two machines differ on before attributing a result to the one axis you meant to study.
+4. **When borrowing any external reference curve/ratio cross-project** (like the Split-Prefill
+   Method's `ttft_ratio(n)`, §9.1/§9.5), explicitly verify what real machine it was measured on —
+   don't assume a "reference SUT" is a clean, representative baseline without checking. This exact
+   mistake already happened once in this doc: the external project's own 96-EU reference SUT
+   turned out, on inspection, to be this repo's own anomalous machine (§9.6b).
+5. **If real target-deployment hardware is known** (e.g. a specific OEM/vendor SKU this
+   methodology is meant to predict for), prefer calibrating on a machine matching that
+   deployment's *real* memory architecture family over whatever development machine happens to be
+   on hand — the whole point of a projection is to predict behavior on the target class of
+   hardware, and this confound shows that class can matter as much as raw specs.
+
 ### 9.6 §9.1-§9.5 only ever covers `prefill_s`/TTFT — the other three buckets rely on this repo's own §4.3 evidence
 
 Easy to lose track of, given how much of §9 is about the external project: **the external
@@ -1606,6 +1715,7 @@ roughly by expected impact on closing the real +19-31% error still open against
 | 12 | **No current target-spec JSON declares a real `power_budget_w`** — the power-budget-exceeded warning (§4, "Power/energy") is a no-op for every preset in `docs/ROOFLINE_PROJECTION_PRESETS.md` today. | The new diagnostic exists but currently checks nothing real. | Fill in real datasheet TDP numbers for each `example_*`/`persona_*` target spec (`data/configs/roofline_targets/*.json`) so the warning has something meaningful to compare against. |
 | 13 | **No cross-resource contention modeling** for concurrent accelerator+CPU use (§8 limitation #12) — out of scope today because it never happens in this benchmark's measured data (strictly serial timeline). | None currently — flagged so it isn't silently reintroduced as a false assumption if the workload changes. | Only act on this if/when a future workload profile overlaps generation streaming with background tool execution in time; would need a new contention-aware macro-component, not a tweak to existing ones. |
 | 14 | **Tool-exec Amdahl parallel fraction (default 0.5) is a flat modeling assumption**, not measured per real tool (§8 limitation #4). | `tool_exec_gap_s` scaling is directional, not calibrated to this repo's actual `git apply`/`pytest`/file-IO mix. | Instrument real tool invocations to record wall-clock vs. CPU-time-consumed across 2+ different core-count machines (if/when a multi-core-count test bed becomes available), to derive a real per-tool-type parallel fraction instead of one shared guess. |
+| 15 | **Memory RANK count (single- vs dual-rank per channel/DIMM) is never captured for either machine** (§9.6c) — a physically distinct lever from channel count/width that could also contribute to the page-hit-rate/latency gap. | Unknown whether rank interleaving is a meaningful additional factor in §9.6b's confound, or negligible next to the channel-topology effect already documented. | Obtain real rank count for both machines via SMBIOS Type 17 parsing (`dmidecode -t 17` on Linux) or a vendor SPD-reading tool (Windows WMI's `Win32_PhysicalMemory` doesn't expose it) — then check whether it correlates with the observed page-hit-rate/latency gap independently of channel topology. |
 
 **How to prioritize this list in practice**: gaps #1-#7 (§11.1) are the ones worth closing first if
 the goal is narrowing the still-open +19-31% real-hardware error (§9.7a) — they're the ones with a
