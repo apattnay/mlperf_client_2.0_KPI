@@ -1,0 +1,461 @@
+{
+  "baseline_spec": {
+    "name": "current_baseline_TEMPLATE (EDIT ME before use)",
+    "cpu_cores": 8,
+    "cpu_freq_ghz": 4.0,
+    "igpu_xecores": 96,
+    "igpu_freq_ghz": 2.0,
+    "npu_macs": 2048,
+    "npu_freq_ghz": 1.4,
+    "mem_channels": 8,
+    "mem_width_bits": 16,
+    "mem_freq_mts": 8533,
+    "notes": "Fill in the REAL specs of the machine that produced your kpi_runs/<experiment> baseline before running tools/run_roofline_projection.py --baseline-spec against this file. cpu_cores/cpu_freq_ghz, igpu_xecores/igpu_freq_ghz and npu_macs/npu_freq_ghz are NOT auto-detectable from the benchmark tooling (see docs/KPI_HUB_INTEGRATION_NOTES.md) - you must supply them from the chip's datasheet/spec sheet. mem_channels/mem_width_bits/mem_freq_mts CAN be auto-detected per-machine (see tools/KPI-hub/generate_kpi_report.py::_collect_sut_info, dram_bw_gbs/dram_channels in a kpi_report.html's SUT Info section) - the defaults below (8 channels x 16-bit x 8533 MT/s = 136.5 GB/s) match one specific machine already validated in this repo (see docs/AGENTIC_WORKFLOW_CHARACTERIZATION.md section 10) - replace with your own machine's detected values."
+  },
+  "target_spec": {
+    "name": "custom_target",
+    "cpu_cores": 8,
+    "cpu_freq_ghz": 4.0,
+    "igpu_xecores": 16.0,
+    "igpu_freq_ghz": 2.0,
+    "npu_macs": 2048,
+    "npu_freq_ghz": 1.4,
+    "mem_channels": 8,
+    "mem_width_bits": 16,
+    "mem_freq_mts": 8533,
+    "notes": "Fill in the REAL specs of the machine that produced your kpi_runs/<experiment> baseline before running tools/run_roofline_projection.py --baseline-spec against this file. cpu_cores/cpu_freq_ghz, igpu_xecores/igpu_freq_ghz and npu_macs/npu_freq_ghz are NOT auto-detectable from the benchmark tooling (see docs/KPI_HUB_INTEGRATION_NOTES.md) - you must supply them from the chip's datasheet/spec sheet. mem_channels/mem_width_bits/mem_freq_mts CAN be auto-detected per-machine (see tools/KPI-hub/generate_kpi_report.py::_collect_sut_info, dram_bw_gbs/dram_channels in a kpi_report.html's SUT Info section) - the defaults below (8 channels x 16-bit x 8533 MT/s = 136.5 GB/s) match one specific machine already validated in this repo (see docs/AGENTIC_WORKFLOW_CHARACTERIZATION.md section 10) - replace with your own machine's detected values."
+  },
+  "assumptions": {
+    "compute_efficiency_retention": 0.85,
+    "memory_efficiency_retention": 0.85,
+    "cpu_efficiency_retention": 0.85,
+    "tool_parallel_fraction": 0.5,
+    "power_scaling_exponent": 1.0
+  },
+  "device_type": "GPU",
+  "model": "Llama-3.1-8B-Instruct_ov-int4-GRw",
+  "params_b": 8.355053568,
+  "stages": [
+    {
+      "name": "01_warmup",
+      "is_cold": true,
+      "input_tokens": 40,
+      "output_tokens": 65,
+      "baseline_wall_s": 9.166000062942505,
+      "projected_wall_s": 9.490942920085363,
+      "baseline": {
+        "prefill_s": 0.1338,
+        "decode_s": 4.022525,
+        "stage_overhead_s": 0.0006750000000002032,
+        "tool_exec_gap_s": 5.009000062942505
+      },
+      "projected": {
+        "prefill_s": 0.45874285714285723,
+        "decode_s": 4.022525,
+        "stage_overhead_s": 0.0006750000000002032,
+        "tool_exec_gap_s": 5.009000062942505
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 1.0,
+        "cpu_tool_exec": 1.0
+      },
+      "baseline_ttft_ms": 195.70000000000002,
+      "projected_ttft_ms": 520.6278571428572,
+      "baseline_itl_ms": 61.885,
+      "projected_itl_ms": 61.885,
+      "tool_calls": {},
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    },
+    {
+      "name": "02_swe_agent_0",
+      "is_cold": true,
+      "input_tokens": 8198,
+      "output_tokens": 940,
+      "baseline_wall_s": 87.536,
+      "projected_wall_s": 123.65565714285715,
+      "baseline": {
+        "prefill_s": 14.8728,
+        "decode_s": 72.65165999999999,
+        "stage_overhead_s": 0.004540000000005762,
+        "tool_exec_gap_s": 0.007
+      },
+      "projected": {
+        "prefill_s": 50.99245714285715,
+        "decode_s": 72.65165999999999,
+        "stage_overhead_s": 0.004540000000005762,
+        "tool_exec_gap_s": 0.007
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 1.0,
+        "cpu_tool_exec": 1.0
+      },
+      "baseline_ttft_ms": 14950.1,
+      "projected_ttft_ms": 51069.74614285715,
+      "baseline_itl_ms": 77.289,
+      "projected_itl_ms": 77.289,
+      "tool_calls": {
+        "read_file": 3,
+        "apply_patch": 1
+      },
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    },
+    {
+      "name": "03_swe_agent_1",
+      "is_cold": false,
+      "input_tokens": 8979,
+      "output_tokens": 1000,
+      "baseline_wall_s": 87.768,
+      "projected_wall_s": 98.53750000000001,
+      "baseline": {
+        "prefill_s": 4.4345,
+        "decode_s": 78.867,
+        "stage_overhead_s": 0.00549999999999784,
+        "tool_exec_gap_s": 4.461
+      },
+      "projected": {
+        "prefill_s": 15.204000000000002,
+        "decode_s": 78.867,
+        "stage_overhead_s": 0.00549999999999784,
+        "tool_exec_gap_s": 4.461
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 1.0,
+        "cpu_tool_exec": 1.0
+      },
+      "baseline_ttft_ms": 4513.4,
+      "projected_ttft_ms": 15282.867000000002,
+      "baseline_itl_ms": 78.867,
+      "projected_itl_ms": 78.867,
+      "tool_calls": {
+        "read_file": 1,
+        "apply_patch": 1
+      },
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    },
+    {
+      "name": "04_swe_agent_2",
+      "is_cold": false,
+      "input_tokens": 10251,
+      "output_tokens": 251,
+      "baseline_wall_s": 28.389,
+      "projected_wall_s": 48.109971428571434,
+      "baseline": {
+        "prefill_s": 8.1204,
+        "decode_s": 20.264736,
+        "stage_overhead_s": 0.0038640000000000896,
+        "tool_exec_gap_s": 0.0
+      },
+      "projected": {
+        "prefill_s": 27.84137142857143,
+        "decode_s": 20.264736,
+        "stage_overhead_s": 0.0038640000000000896,
+        "tool_exec_gap_s": 0.0
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 1.0,
+        "cpu_tool_exec": 1.0
+      },
+      "baseline_ttft_ms": 8201.1,
+      "projected_ttft_ms": 27922.10742857143,
+      "baseline_itl_ms": 80.736,
+      "projected_itl_ms": 80.736,
+      "tool_calls": {},
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    },
+    {
+      "name": "05_warmup",
+      "is_cold": true,
+      "input_tokens": 40,
+      "output_tokens": 65,
+      "baseline_wall_s": 9.214999782562256,
+      "projected_wall_s": 9.570055660975388,
+      "baseline": {
+        "prefill_s": 0.1461994793465835,
+        "decode_s": 4.065800520653416,
+        "stage_overhead_s": 8.881784197001252e-16,
+        "tool_exec_gap_s": 5.002999782562256
+      },
+      "projected": {
+        "prefill_s": 0.501255357759715,
+        "decode_s": 4.065800520653416,
+        "stage_overhead_s": 8.881784197001252e-16,
+        "tool_exec_gap_s": 5.002999782562256
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 1.0,
+        "cpu_tool_exec": 1.0
+      },
+      "baseline_ttft_ms": 208.8,
+      "projected_ttft_ms": 563.806357759715,
+      "baseline_itl_ms": 62.551,
+      "projected_itl_ms": 62.551,
+      "tool_calls": {},
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    },
+    {
+      "name": "06_swe_agent_0",
+      "is_cold": true,
+      "input_tokens": 8198,
+      "output_tokens": 940,
+      "baseline_wall_s": 87.188,
+      "projected_wall_s": 123.08544285714287,
+      "baseline": {
+        "prefill_s": 14.7813,
+        "decode_s": 72.40256,
+        "stage_overhead_s": 0.004140000000006694,
+        "tool_exec_gap_s": 0.0
+      },
+      "projected": {
+        "prefill_s": 50.678742857142865,
+        "decode_s": 72.40256,
+        "stage_overhead_s": 0.004140000000006694,
+        "tool_exec_gap_s": 0.0
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 1.0,
+        "cpu_tool_exec": 1.0
+      },
+      "baseline_ttft_ms": 14858.3,
+      "projected_ttft_ms": 50755.766857142866,
+      "baseline_itl_ms": 77.024,
+      "projected_itl_ms": 77.024,
+      "tool_calls": {
+        "read_file": 3,
+        "apply_patch": 1
+      },
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    },
+    {
+      "name": "07_swe_agent_1",
+      "is_cold": false,
+      "input_tokens": 8979,
+      "output_tokens": 1000,
+      "baseline_wall_s": 87.22500000000001,
+      "projected_wall_s": 98.01198571428573,
+      "baseline": {
+        "prefill_s": 4.4417,
+        "decode_s": 78.604,
+        "stage_overhead_s": 0.006300000000010186,
+        "tool_exec_gap_s": 4.173
+      },
+      "projected": {
+        "prefill_s": 15.228685714285715,
+        "decode_s": 78.604,
+        "stage_overhead_s": 0.006300000000010186,
+        "tool_exec_gap_s": 4.173
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 1.0,
+        "cpu_tool_exec": 1.0
+      },
+      "baseline_ttft_ms": 4520.3,
+      "projected_ttft_ms": 15307.289714285715,
+      "baseline_itl_ms": 78.604,
+      "projected_itl_ms": 78.604,
+      "tool_calls": {
+        "read_file": 1,
+        "apply_patch": 1
+      },
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    },
+    {
+      "name": "08_swe_agent_2",
+      "is_cold": false,
+      "input_tokens": 10251,
+      "output_tokens": 251,
+      "baseline_wall_s": 27.885,
+      "projected_wall_s": 46.747714285714295,
+      "baseline": {
+        "prefill_s": 7.767,
+        "decode_s": 20.113885000000003,
+        "stage_overhead_s": 0.0041149999999987585,
+        "tool_exec_gap_s": 0.0
+      },
+      "projected": {
+        "prefill_s": 26.62971428571429,
+        "decode_s": 20.113885000000003,
+        "stage_overhead_s": 0.0041149999999987585,
+        "tool_exec_gap_s": 0.0
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 1.0,
+        "cpu_tool_exec": 1.0
+      },
+      "baseline_ttft_ms": 7847.1,
+      "projected_ttft_ms": 26709.84928571429,
+      "baseline_itl_ms": 80.135,
+      "projected_itl_ms": 80.135,
+      "tool_calls": {},
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    },
+    {
+      "name": "09_warmup",
+      "is_cold": true,
+      "input_tokens": 40,
+      "output_tokens": 65,
+      "baseline_wall_s": 9.177000011444091,
+      "projected_wall_s": 9.532300011444091,
+      "baseline": {
+        "prefill_s": 0.1463,
+        "decode_s": 4.017325,
+        "stage_overhead_s": 0.0003750000000000142,
+        "tool_exec_gap_s": 5.013000011444092
+      },
+      "projected": {
+        "prefill_s": 0.5016000000000002,
+        "decode_s": 4.017325,
+        "stage_overhead_s": 0.0003750000000000142,
+        "tool_exec_gap_s": 5.013000011444092
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 1.0,
+        "cpu_tool_exec": 1.0
+      },
+      "baseline_ttft_ms": 208.1,
+      "projected_ttft_ms": 563.4050000000001,
+      "baseline_itl_ms": 61.805,
+      "projected_itl_ms": 61.805,
+      "tool_calls": {},
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    },
+    {
+      "name": "10_swe_agent_0",
+      "is_cold": true,
+      "input_tokens": 8198,
+      "output_tokens": 940,
+      "baseline_wall_s": 87.42200000000001,
+      "projected_wall_s": 123.61718571428572,
+      "baseline": {
+        "prefill_s": 14.9039,
+        "decode_s": 72.51348,
+        "stage_overhead_s": 0.004620000000002733,
+        "tool_exec_gap_s": 0.0
+      },
+      "projected": {
+        "prefill_s": 51.09908571428572,
+        "decode_s": 72.51348,
+        "stage_overhead_s": 0.004620000000002733,
+        "tool_exec_gap_s": 0.0
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 1.0,
+        "cpu_tool_exec": 1.0
+      },
+      "baseline_ttft_ms": 14981.0,
+      "projected_ttft_ms": 51176.22771428572,
+      "baseline_itl_ms": 77.142,
+      "projected_itl_ms": 77.142,
+      "tool_calls": {
+        "read_file": 3,
+        "apply_patch": 1
+      },
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    },
+    {
+      "name": "11_swe_agent_1",
+      "is_cold": false,
+      "input_tokens": 8979,
+      "output_tokens": 1000,
+      "baseline_wall_s": 87.193,
+      "projected_wall_s": 98.07348571428572,
+      "baseline": {
+        "prefill_s": 4.4802,
+        "decode_s": 78.559,
+        "stage_overhead_s": 0.004800000000003024,
+        "tool_exec_gap_s": 4.149
+      },
+      "projected": {
+        "prefill_s": 15.360685714285717,
+        "decode_s": 78.559,
+        "stage_overhead_s": 0.004800000000003024,
+        "tool_exec_gap_s": 4.149
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 1.0,
+        "cpu_tool_exec": 1.0
+      },
+      "baseline_ttft_ms": 4558.8,
+      "projected_ttft_ms": 15439.244714285716,
+      "baseline_itl_ms": 78.559,
+      "projected_itl_ms": 78.559,
+      "tool_calls": {
+        "read_file": 1,
+        "apply_patch": 1
+      },
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    },
+    {
+      "name": "12_swe_agent_2",
+      "is_cold": false,
+      "input_tokens": 10251,
+      "output_tokens": 251,
+      "baseline_wall_s": 28.045,
+      "projected_wall_s": 47.08985714285715,
+      "baseline": {
+        "prefill_s": 7.842,
+        "decode_s": 20.197719,
+        "stage_overhead_s": 0.005281000000003644,
+        "tool_exec_gap_s": 0.0
+      },
+      "projected": {
+        "prefill_s": 26.886857142857146,
+        "decode_s": 20.197719,
+        "stage_overhead_s": 0.005281000000003644,
+        "tool_exec_gap_s": 0.0
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 1.0,
+        "cpu_tool_exec": 1.0
+      },
+      "baseline_ttft_ms": 7922.5,
+      "projected_ttft_ms": 26967.326142857146,
+      "baseline_itl_ms": 80.469,
+      "projected_itl_ms": 80.469,
+      "tool_calls": {},
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    }
+  ],
+  "baseline_wall_time_s": 778.62,
+  "projected_wall_time_s": 977.9330987355561,
+  "fixed_overhead_s": 142.41100014305118,
+  "total_output_tokens": 6768,
+  "baseline_tok_s": 8.692301764660554,
+  "projected_tok_s": 6.9207188188546445,
+  "baseline_energy_j": null,
+  "projected_energy_j": null,
+  "baseline_tok_per_j": null,
+  "projected_tok_per_j": null,
+  "avg_baseline_ttft_ms": 9123.965824468085,
+  "avg_projected_ttft_ms": 31093.316673479836,
+  "avg_baseline_itl_ms": 77.76000369385342,
+  "avg_projected_itl_ms": 77.76000369385342,
+  "measured_accel_busy_pct": null,
+  "measured_mem_bw_gbs": null,
+  "measured_mem_bw_efficiency_pct": null,
+  "wall_time_speedup_x": 0.7961894336194745,
+  "wall_time_reduction_pct": -25.598250588933762
+}

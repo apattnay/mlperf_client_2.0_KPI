@@ -1,0 +1,287 @@
+{
+  "run": "kpi_runs\\preset6_sweagent_gpu_20260929_211533",
+  "device_type": "GPU",
+  "device_type_axis_mismatch": false,
+  "model": "Llama-3.1-8B-Instruct_ov-int4-GRw",
+  "external_ttft_csv": "data\\configs\\roofline_targets\\JF04WVAW0381-TA_real_ttft_ratio.csv",
+  "baseline_spec": {
+    "name": "current_baseline_TEMPLATE (EDIT ME before use)",
+    "cpu_cores": 8,
+    "cpu_freq_ghz": 4.0,
+    "igpu_xecores": 96,
+    "igpu_freq_ghz": 2.0,
+    "npu_macs": 2048,
+    "npu_freq_ghz": 1.4,
+    "mem_channels": 8,
+    "mem_width_bits": 16,
+    "mem_freq_mts": 8533,
+    "notes": "Fill in the REAL specs of the machine that produced your kpi_runs/<experiment> baseline before running tools/run_roofline_projection.py --baseline-spec against this file. cpu_cores/cpu_freq_ghz, igpu_xecores/igpu_freq_ghz and npu_macs/npu_freq_ghz are NOT auto-detectable from the benchmark tooling (see docs/KPI_HUB_INTEGRATION_NOTES.md) - you must supply them from the chip's datasheet/spec sheet. mem_channels/mem_width_bits/mem_freq_mts CAN be auto-detected per-machine (see tools/KPI-hub/generate_kpi_report.py::_collect_sut_info, dram_bw_gbs/dram_channels in a kpi_report.html's SUT Info section) - the defaults below (8 channels x 16-bit x 8533 MT/s = 136.5 GB/s) match one specific machine already validated in this repo (see docs/AGENTIC_WORKFLOW_CHARACTERIZATION.md section 10) - replace with your own machine's detected values."
+  },
+  "target_spec": {
+    "name": "external_ttft_target",
+    "cpu_cores": 28.0,
+    "cpu_freq_ghz": 3.3,
+    "igpu_xecores": 16.0,
+    "igpu_freq_ghz": 2.0,
+    "npu_macs": 2048,
+    "npu_freq_ghz": 1.4,
+    "mem_channels": 8,
+    "mem_width_bits": 16,
+    "mem_freq_mts": 6400.0,
+    "notes": "16 EU iGPU / 102.4 GB/s mem / 12P+16E (28 total) CPU cores - hypothetical, no such machine has been benchmarked (same caveat as the companion repo's own spec)."
+  },
+  "domain_speedups": {
+    "memory": 0.7875249033165359,
+    "cpu_tool_exec": 1.2408333333333335
+  },
+  "fixed_overhead_s": 142.41100014305118,
+  "stages": [
+    {
+      "name": "01_warmup",
+      "input_tokens": 40,
+      "output_tokens": 65,
+      "ttft_ratio_applied": 0.4829845698583809,
+      "baseline": {
+        "prefill_s": 0.1338,
+        "decode_s": 4.022525,
+        "tool_exec_gap_s": 5.009000062942505,
+        "stage_overhead_s": 0.0006750000000002032,
+        "wall_s": 9.166000062942505
+      },
+      "projected": {
+        "prefill_s": 0.27702748358862145,
+        "decode_s": 5.107806728472681,
+        "tool_exec_gap_s": 4.036803274366021,
+        "stage_overhead_s": 0.0006750000000002032,
+        "wall_s": 9.422312486427323
+      }
+    },
+    {
+      "name": "02_swe_agent_0",
+      "input_tokens": 8198,
+      "output_tokens": 940,
+      "ttft_ratio_applied": 0.4670287129732711,
+      "baseline": {
+        "prefill_s": 14.8728,
+        "decode_s": 72.65165999999999,
+        "tool_exec_gap_s": 0.007,
+        "stage_overhead_s": 0.004540000000005762,
+        "wall_s": 87.536
+      },
+      "projected": {
+        "prefill_s": 31.845579483356513,
+        "decode_s": 92.25315884493186,
+        "tool_exec_gap_s": 0.005641370047011417,
+        "stage_overhead_s": 0.004540000000005762,
+        "wall_s": 124.1089196983354
+      }
+    },
+    {
+      "name": "03_swe_agent_1",
+      "input_tokens": 8979,
+      "output_tokens": 1000,
+      "ttft_ratio_applied": 0.4670287129732711,
+      "baseline": {
+        "prefill_s": 4.4345,
+        "decode_s": 78.867,
+        "tool_exec_gap_s": 4.461,
+        "stage_overhead_s": 0.00549999999999784,
+        "wall_s": 87.768
+      },
+      "projected": {
+        "prefill_s": 9.495133547075497,
+        "decode_s": 100.14540450449779,
+        "tool_exec_gap_s": 3.5951645399597045,
+        "stage_overhead_s": 0.00549999999999784,
+        "wall_s": 113.241202591533
+      }
+    },
+    {
+      "name": "04_swe_agent_2",
+      "input_tokens": 10251,
+      "output_tokens": 251,
+      "ttft_ratio_applied": 0.4670287129732711,
+      "baseline": {
+        "prefill_s": 8.1204,
+        "decode_s": 20.264736,
+        "tool_exec_gap_s": 0.0,
+        "stage_overhead_s": 0.0038640000000000896,
+        "wall_s": 28.389
+      },
+      "projected": {
+        "prefill_s": 17.387367787951714,
+        "decode_s": 25.73218435970505,
+        "tool_exec_gap_s": 0.0,
+        "stage_overhead_s": 0.0038640000000000896,
+        "wall_s": 43.12341614765676
+      }
+    },
+    {
+      "name": "05_warmup",
+      "input_tokens": 40,
+      "output_tokens": 65,
+      "ttft_ratio_applied": 0.4829845698583809,
+      "baseline": {
+        "prefill_s": 0.1461994793465835,
+        "decode_s": 4.065800520653416,
+        "tool_exec_gap_s": 5.002999782562256,
+        "stage_overhead_s": 8.881784197001252e-16,
+        "wall_s": 9.214999782562256
+      },
+      "projected": {
+        "prefill_s": 0.30270010362743394,
+        "decode_s": 5.1627580328329215,
+        "tool_exec_gap_s": 4.031967588364477,
+        "stage_overhead_s": 8.881784197001252e-16,
+        "wall_s": 9.497425724824833
+      }
+    },
+    {
+      "name": "06_swe_agent_0",
+      "input_tokens": 8198,
+      "output_tokens": 940,
+      "ttft_ratio_applied": 0.4670287129732711,
+      "baseline": {
+        "prefill_s": 14.7813,
+        "decode_s": 72.40256,
+        "tool_exec_gap_s": 0.0,
+        "stage_overhead_s": 0.004140000000006694,
+        "wall_s": 87.188
+      },
+      "projected": {
+        "prefill_s": 31.649660051727828,
+        "decode_s": 91.93685138728709,
+        "tool_exec_gap_s": 0.0,
+        "stage_overhead_s": 0.004140000000006694,
+        "wall_s": 123.59065143901492
+      }
+    },
+    {
+      "name": "07_swe_agent_1",
+      "input_tokens": 8979,
+      "output_tokens": 1000,
+      "ttft_ratio_applied": 0.4670287129732711,
+      "baseline": {
+        "prefill_s": 4.4417,
+        "decode_s": 78.604,
+        "tool_exec_gap_s": 4.173,
+        "stage_overhead_s": 0.006300000000010186,
+        "wall_s": 87.22500000000001
+      },
+      "projected": {
+        "prefill_s": 9.510550158088902,
+        "decode_s": 99.81144681136018,
+        "tool_exec_gap_s": 3.3630624580255204,
+        "stage_overhead_s": 0.006300000000010186,
+        "wall_s": 112.69135942747462
+      }
+    },
+    {
+      "name": "08_swe_agent_2",
+      "input_tokens": 10251,
+      "output_tokens": 251,
+      "ttft_ratio_applied": 0.4670287129732711,
+      "baseline": {
+        "prefill_s": 7.767,
+        "decode_s": 20.113885000000003,
+        "tool_exec_gap_s": 0.0,
+        "stage_overhead_s": 0.0041149999999987585,
+        "wall_s": 27.885
+      },
+      "projected": {
+        "prefill_s": 16.630669130710427,
+        "decode_s": 25.540633591767797,
+        "tool_exec_gap_s": 0.0,
+        "stage_overhead_s": 0.0041149999999987585,
+        "wall_s": 42.17541772247822
+      }
+    },
+    {
+      "name": "09_warmup",
+      "input_tokens": 40,
+      "output_tokens": 65,
+      "ttft_ratio_applied": 0.4829845698583809,
+      "baseline": {
+        "prefill_s": 0.1463,
+        "decode_s": 4.017325,
+        "tool_exec_gap_s": 5.013000011444092,
+        "stage_overhead_s": 0.0003750000000000142,
+        "wall_s": 9.177000011444091
+      },
+      "projected": {
+        "prefill_s": 0.302908227571116,
+        "decode_s": 5.101203762676804,
+        "tool_exec_gap_s": 4.040026872889798,
+        "stage_overhead_s": 0.0003750000000000142,
+        "wall_s": 9.444513863137718
+      }
+    },
+    {
+      "name": "10_swe_agent_0",
+      "input_tokens": 8198,
+      "output_tokens": 940,
+      "ttft_ratio_applied": 0.4670287129732711,
+      "baseline": {
+        "prefill_s": 14.9039,
+        "decode_s": 72.51348,
+        "tool_exec_gap_s": 0.0,
+        "stage_overhead_s": 0.004620000000002733,
+        "wall_s": 87.42200000000001
+      },
+      "projected": {
+        "prefill_s": 31.912170678150527,
+        "decode_s": 92.0776977269176,
+        "tool_exec_gap_s": 0.0,
+        "stage_overhead_s": 0.004620000000002733,
+        "wall_s": 123.99448840506814
+      }
+    },
+    {
+      "name": "11_swe_agent_1",
+      "input_tokens": 8979,
+      "output_tokens": 1000,
+      "ttft_ratio_applied": 0.4670287129732711,
+      "baseline": {
+        "prefill_s": 4.4802,
+        "decode_s": 78.559,
+        "tool_exec_gap_s": 4.149,
+        "stage_overhead_s": 0.004800000000003024,
+        "wall_s": 87.193
+      },
+      "projected": {
+        "prefill_s": 9.592986203091137,
+        "decode_s": 99.75430576120357,
+        "tool_exec_gap_s": 3.343720617864338,
+        "stage_overhead_s": 0.004800000000003024,
+        "wall_s": 112.69581258215904
+      }
+    },
+    {
+      "name": "12_swe_agent_2",
+      "input_tokens": 10251,
+      "output_tokens": 251,
+      "ttft_ratio_applied": 0.4670287129732711,
+      "baseline": {
+        "prefill_s": 7.842,
+        "decode_s": 20.197719,
+        "tool_exec_gap_s": 0.0,
+        "stage_overhead_s": 0.005281000000003644,
+        "wall_s": 28.045
+      },
+      "projected": {
+        "prefill_s": 16.791258828766725,
+        "decode_s": 25.647086098408465,
+        "tool_exec_gap_s": 0.0,
+        "stage_overhead_s": 0.005281000000003644,
+        "wall_s": 42.4436259271752
+      }
+    }
+  ],
+  "baseline_wall_time_s": 778.62,
+  "projected_wall_time_s": 1008.8401461583363,
+  "wall_time_speedup_x": 0.7717971999478661,
+  "wall_time_reduction_pct": -29.567715465610476,
+  "total_output_tokens": 6768,
+  "baseline_tok_s": 8.692301764660554,
+  "projected_tok_s": 6.708694163066911
+}

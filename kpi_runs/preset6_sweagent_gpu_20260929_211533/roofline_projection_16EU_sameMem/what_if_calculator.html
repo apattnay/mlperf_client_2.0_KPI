@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roofline What-If HW Calculator</title>
+<style>
+:root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --text2: #8b949e; --accent: #58a6ff; --green: #3fb950;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+       background: var(--bg); color: var(--text); padding: 24px; line-height: 1.5; }
+h1 { font-size: 1.5rem; margin-bottom: 4px; }
+h2 { font-size: 1.05rem; color: var(--accent); margin-bottom: 10px; }
+.subtitle { color: var(--text2); font-size: 0.88rem; margin-bottom: 20px; }
+.section { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 18px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+label { display: block; color: var(--text2); font-size: 0.78rem; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.4px; }
+select, input[type=range] { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border);
+       border-radius: 6px; padding: 6px 8px; font-size: 0.9rem; }
+button { background: var(--accent); color: #0d1117; border: none; border-radius: 6px; padding: 8px 14px;
+       font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+button:hover { opacity: 0.85; }
+.field-value { font-size: 0.75rem; color: var(--accent); margin-top: 2px; }
+.cards { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 6px; }
+.card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; min-width: 170px; flex: 1; }
+.card .label { color: var(--text2); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; }
+.card .value { font-size: 1.5rem; font-weight: 600; margin-top: 2px; }
+.card .value.green { color: var(--green); }
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 10px; }
+th { text-align: left; color: var(--text2); font-weight: 500; padding: 6px 8px; border-bottom: 2px solid var(--border); }
+td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: 'SF Mono', Consolas, monospace; }
+.note { color: var(--text2); font-size: 0.78rem; margin-top: 10px; }
+.preset-row { margin-bottom: 16px; }
+.accel-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-top: 14px; }
+.accel-group { border: 1px solid var(--border); border-radius: 8px; padding: 12px; transition: opacity 0.15s; }
+.accel-group-title { font-size: 0.8rem; color: var(--text2); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.4px; }
+.accel-badge { text-transform: none; letter-spacing: normal; font-size: 0.72rem; padding: 1px 7px; border-radius: 3px; margin-left: 4px; }
+.accel-badge.active { background: rgba(63,185,80,0.18); color: #56d364; }
+.accel-badge.inactive { background: rgba(139,148,158,0.18); color: var(--text2); }
+.accel-group.is-inactive { opacity: 0.45; }
+.accel-group.is-inactive select { cursor: not-allowed; }
+</style>
+</head>
+<body>
+<h1>Roofline What-If Hardware Calculator</h1>
+<div class="subtitle">Baseline run: <code>kpi_runs\preset6_sweagent_gpu_20260929_211533</code> &mdash; Llama-3.1-8B-Instruct_ov-int4-GRw (8.4B, GPU)
+&mdash; pick a target system below to see the projected wall time / throughput / energy efficiency, live.</div>
+
+<div class="section">
+<h2>Target System</h2>
+<div class="preset-row">
+<label>Quick preset</label>
+<select id="presetSelect"><option value="-1">Custom (use dropdowns below)</option><option value="0">current_baseline_TEMPLATE (EDIT ME before use)</option><option value="1">example_datacenter_class (ILLUSTRATIVE ONLY - not a verified vendor spec)</option><option value="2">example_heavy_duty_workstation (ILLUSTRATIVE ONLY - not a verified vendor spec, replace with real numbers)</option><option value="3">example_moderate_upgrade (ILLUSTRATIVE ONLY - not a verified vendor spec)</option><option value="4">JF04WVAW0381-TA_16EU_real_secondSUT</option></select>
+</div>
+<div class="grid">
+<div><label>CPU cores</label><select id="cpuCores"><option value="4">4</option><option value="6">6</option><option value="8" selected>8</option><option value="12">12</option><option value="16">16</option><option value="24">24</option><option value="28">28</option><option value="32">32</option><option value="48">48</option><option value="64">64</option><option value="96">96</option><option value="128">128</option></select></div>
+<div><label>CPU frequency</label><select id="cpuFreq"><option value="2">2 GHz</option><option value="2.5">2.5 GHz</option><option value="3">3 GHz</option><option value="3.3">3.3 GHz</option><option value="3.5">3.5 GHz</option><option value="3.8">3.8 GHz</option><option value="4" selected>4 GHz</option><option value="4.5">4.5 GHz</option><option value="4.6">4.6 GHz</option><option value="5">5 GHz</option><option value="5.5">5.5 GHz</option><option value="6">6 GHz</option></select></div>
+<div><label>Memory channels</label><select id="memChannels"><option value="1">1</option><option value="2">2</option><option value="4">4</option><option value="8" selected>8</option><option value="12">12</option><option value="16">16</option></select></div>
+<div><label>Memory bus width/channel</label><select id="memWidth"><option value="16" selected>16-bit</option><option value="32">32-bit</option><option value="64">64-bit</option><option value="128">128-bit</option></select></div>
+<div><label>Memory transfer rate</label><select id="memFreq"><option value="3200">3200 MT/s</option><option value="4800">4800 MT/s</option><option value="6400">6400 MT/s</option><option value="7200">7200 MT/s</option><option value="8000">8000 MT/s</option><option value="8533" selected>8533 MT/s</option><option value="8800">8800 MT/s</option><option value="9600">9600 MT/s</option><option value="10667">10667 MT/s</option><option value="12000">12000 MT/s</option><option value="12800">12800 MT/s</option></select></div>
+</div>
+<div class="accel-groups">
+<div class="accel-group" id="npuGroup">
+<div class="accel-group-title">NPU compute <span id="npuGroupBadge" class="accel-badge"></span></div>
+<div class="grid">
+<div><label>NPU MAC units</label><select id="npuMacs"><option value="512">512</option><option value="1024">1024</option><option value="2048" selected>2048</option><option value="4096">4096</option><option value="8192">8192</option><option value="16384">16384</option><option value="32768">32768</option></select></div>
+<div><label>NPU frequency</label><select id="npuFreq"><option value="0.8">0.8 GHz</option><option value="1">1 GHz</option><option value="1.2">1.2 GHz</option><option value="1.4" selected>1.4 GHz</option><option value="1.5">1.5 GHz</option><option value="1.6">1.6 GHz</option><option value="1.8">1.8 GHz</option><option value="2">2 GHz</option></select></div>
+</div>
+</div>
+<div class="accel-group" id="igpuGroup">
+<div class="accel-group-title">iGPU compute <span id="igpuGroupBadge" class="accel-badge"></span></div>
+<div class="grid">
+<div><label>iGPU XeCores</label><select id="igpuXecores"><option value="16">16</option><option value="32">32</option><option value="48">48</option><option value="64">64</option><option value="96" selected>96</option><option value="128">128</option><option value="160">160</option><option value="256">256</option><option value="384">384</option><option value="512">512</option></select></div>
+<div><label>iGPU frequency</label><select id="igpuFreq"><option value="1">1 GHz</option><option value="1.4">1.4 GHz</option><option value="1.8">1.8 GHz</option><option value="2" selected>2 GHz</option><option value="2.2">2.2 GHz</option><option value="2.4">2.4 GHz</option><option value="2.6">2.6 GHz</option><option value="2.8">2.8 GHz</option><option value="3.2">3.2 GHz</option></select></div>
+</div>
+</div>
+</div>
+<div class="grid" style="margin-top:14px;">
+<div><label>Compute efficiency retention: <span id="compEffVal"></span></label>
+<input type="range" id="compEff" min="0" max="1" step="0.05" value="0.85"></div>
+<div><label>Memory efficiency retention: <span id="memEffVal"></span></label>
+<input type="range" id="memEff" min="0" max="1" step="0.05" value="0.85"></div>
+<div><label>CPU efficiency retention: <span id="cpuEffVal"></span></label>
+<input type="range" id="cpuEff" min="0" max="1" step="0.05" value="0.85"></div>
+<div><label>Tool-exec parallel fraction: <span id="parFracVal"></span></label>
+<input type="range" id="parFrac" min="0" max="1" step="0.05" value="0.5"></div>
+<div><label>Power scaling exponent: <span id="powerExpVal"></span></label>
+<input type="range" id="powerExp" min="0" max="2" step="0.1" value="1.0"></div>
+</div>
+<p class="note">Compute/Memory/CPU efficiency retention are separate knobs (not one shared value) because
+NPU-MAC, iGPU-XeCore, and memory-bandwidth paths on a real SoC do NOT achieve the same fraction of their
+own theoretical peak - see the measured baseline numbers below.</p>
+<div class="note">Target memory bandwidth (derived): <b id="memBwOut"></b> GB/s &nbsp;|&nbsp; Baseline: 136.5 GB/s</div>
+</div>
+
+
+
+<div class="section">
+<h2>Projected Result</h2>
+<div class="cards">
+    <div class="card"><div class="label">Baseline wall time</div><div class="value" id="baselineWallOut"></div></div>
+    <div class="card"><div class="label">Projected wall time</div><div class="value green" id="projectedWallOut"></div></div>
+    <div class="card"><div class="label">Speedup</div><div class="value green" id="speedupOut"></div></div>
+    <div class="card"><div class="label">Wall time reduction</div><div class="value green" id="reductionOut"></div></div>
+    <div class="card"><div class="label">Tokens/s (baseline &rarr; projected)</div><div class="value" id="tokSOut"></div></div>
+    <div class="card"><div class="label">Avg TTFT (baseline &rarr; projected)</div><div class="value" id="ttftOut"></div></div>
+    <div class="card"><div class="label">Avg ITL (baseline &rarr; projected)</div><div class="value" id="itlOut"></div></div>
+    <div class="card"><div class="label">Tokens/Joule (baseline &rarr; projected)</div><div class="value" id="tokJOut"></div></div>
+</div>
+<table><thead><tr><th>Stage</th><th style="text-align:right">Baseline (s)</th><th style="text-align:right">Projected (s)</th>
+<th style="text-align:right">Speedup</th><th style="text-align:right">Compute&nbsp;x</th><th style="text-align:right">Memory&nbsp;x</th><th style="text-align:right">CPU&nbsp;x</th>
+<th style="text-align:right">TTFT (ms)</th><th style="text-align:right">ITL (ms)</th></tr></thead>
+<tbody id="stageTableBody"></tbody></table>
+<p class="note">Bottom-up macro-component projection: prefill scales with accelerator compute capability
+(MACs/XeCores &times; frequency), decode scales with memory bandwidth, tool execution scales via Amdahl's law
+with CPU cores/frequency, fixed overhead is unchanged. Tokens/Joule only populates if this run has measured
+RAPL power (hw_samples.csv). See docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md.</p>
+</div>
+
+<div class="section">
+<h2>Generate a Persisted Report</h2>
+<p class="note">This page is a live, in-browser preview only - it can't write files itself. Use one of the
+buttons below to take your current dropdown selection back to the CLI and generate a real
+<code>roofline_projection_report.html</code>/<code>.json</code> for it (add <code>--what-if</code> to also
+refresh this calculator with the new selection baked in as its default).</p>
+<div class="grid">
+<div><button id="downloadSpecBtn" type="button">Download target_spec.json</button></div>
+<div><button id="copyCliBtn" type="button">Copy CLI command</button></div>
+</div>
+<p class="note" id="exportStatus">&nbsp;</p>
+<pre id="cliPreview" style="white-space:pre-wrap;word-break:break-all;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;margin-top:6px;font-size:0.78rem;color:var(--text2);"></pre>
+</div>
+
+<script>
+const PROFILE = {"run_dir": "kpi_runs\\preset6_sweagent_gpu_20260929_211533", "model": "Llama-3.1-8B-Instruct_ov-int4-GRw", "device_type": "GPU", "backend": "NativeOpenVINO", "model_weight_mb": 3984, "bytes_per_weight": 0.5, "params_b": 8.355053568, "workflow_wall_time_s": 778.62, "fixed_overhead_s": 142.41100014305118, "measured_accel_busy_pct": null, "measured_mem_bw_gbs": null, "stages": [{"name": "01_warmup", "is_cold": true, "input_tokens": 40, "output_tokens": 65, "wall_time_s": 4.157, "prefill_s": 0.1338, "decode_s": 4.022525, "stage_overhead_s": 0.0006750000000002032, "tool_exec_gap_s": 5.009000062942505, "itl_ms": 61.885, "ttft_ms": 195.70000000000002, "tool_calls": {}, "avg_power_w": {}, "measured_util": {}}, {"name": "02_swe_agent_0", "is_cold": true, "input_tokens": 8198, "output_tokens": 940, "wall_time_s": 87.529, "prefill_s": 14.8728, "decode_s": 72.65165999999999, "stage_overhead_s": 0.004540000000005762, "tool_exec_gap_s": 0.007, "itl_ms": 77.289, "ttft_ms": 14950.1, "tool_calls": {"read_file": 3, "apply_patch": 1}, "avg_power_w": {}, "measured_util": {}}, {"name": "03_swe_agent_1", "is_cold": false, "input_tokens": 8979, "output_tokens": 1000, "wall_time_s": 83.307, "prefill_s": 4.4345, "decode_s": 78.867, "stage_overhead_s": 0.00549999999999784, "tool_exec_gap_s": 4.461, "itl_ms": 78.867, "ttft_ms": 4513.4, "tool_calls": {"read_file": 1, "apply_patch": 1}, "avg_power_w": {}, "measured_util": {}}, {"name": "04_swe_agent_2", "is_cold": false, "input_tokens": 10251, "output_tokens": 251, "wall_time_s": 28.389, "prefill_s": 8.1204, "decode_s": 20.264736, "stage_overhead_s": 0.0038640000000000896, "tool_exec_gap_s": 0.0, "itl_ms": 80.736, "ttft_ms": 8201.1, "tool_calls": {}, "avg_power_w": {}, "measured_util": {}}, {"name": "05_warmup", "is_cold": true, "input_tokens": 40, "output_tokens": 65, "wall_time_s": 4.212, "prefill_s": 0.1461994793465835, "decode_s": 4.065800520653416, "stage_overhead_s": 8.881784197001252e-16, "tool_exec_gap_s": 5.002999782562256, "itl_ms": 62.551, "ttft_ms": 208.8, "tool_calls": {}, "avg_power_w": {}, "measured_util": {}}, {"name": "06_swe_agent_0", "is_cold": true, "input_tokens": 8198, "output_tokens": 940, "wall_time_s": 87.188, "prefill_s": 14.7813, "decode_s": 72.40256, "stage_overhead_s": 0.004140000000006694, "tool_exec_gap_s": 0.0, "itl_ms": 77.024, "ttft_ms": 14858.3, "tool_calls": {"read_file": 3, "apply_patch": 1}, "avg_power_w": {}, "measured_util": {}}, {"name": "07_swe_agent_1", "is_cold": false, "input_tokens": 8979, "output_tokens": 1000, "wall_time_s": 83.052, "prefill_s": 4.4417, "decode_s": 78.604, "stage_overhead_s": 0.006300000000010186, "tool_exec_gap_s": 4.173, "itl_ms": 78.604, "ttft_ms": 4520.3, "tool_calls": {"read_file": 1, "apply_patch": 1}, "avg_power_w": {}, "measured_util": {}}, {"name": "08_swe_agent_2", "is_cold": false, "input_tokens": 10251, "output_tokens": 251, "wall_time_s": 27.885, "prefill_s": 7.767, "decode_s": 20.113885000000003, "stage_overhead_s": 0.0041149999999987585, "tool_exec_gap_s": 0.0, "itl_ms": 80.135, "ttft_ms": 7847.1, "tool_calls": {}, "avg_power_w": {}, "measured_util": {}}, {"name": "09_warmup", "is_cold": true, "input_tokens": 40, "output_tokens": 65, "wall_time_s": 4.164, "prefill_s": 0.1463, "decode_s": 4.017325, "stage_overhead_s": 0.0003750000000000142, "tool_exec_gap_s": 5.013000011444092, "itl_ms": 61.805, "ttft_ms": 208.1, "tool_calls": {}, "avg_power_w": {}, "measured_util": {}}, {"name": "10_swe_agent_0", "is_cold": true, "input_tokens": 8198, "output_tokens": 940, "wall_time_s": 87.422, "prefill_s": 14.9039, "decode_s": 72.51348, "stage_overhead_s": 0.004620000000002733, "tool_exec_gap_s": 0.0, "itl_ms": 77.142, "ttft_ms": 14981.0, "tool_calls": {"read_file": 3, "apply_patch": 1}, "avg_power_w": {}, "measured_util": {}}, {"name": "11_swe_agent_1", "is_cold": false, "input_tokens": 8979, "output_tokens": 1000, "wall_time_s": 83.044, "prefill_s": 4.4802, "decode_s": 78.559, "stage_overhead_s": 0.004800000000003024, "tool_exec_gap_s": 4.149, "itl_ms": 78.559, "ttft_ms": 4558.8, "tool_calls": {"read_file": 1, "apply_patch": 1}, "avg_power_w": {}, "measured_util": {}}, {"name": "12_swe_agent_2", "is_cold": false, "input_tokens": 10251, "output_tokens": 251, "wall_time_s": 28.045, "prefill_s": 7.842, "decode_s": 20.197719, "stage_overhead_s": 0.005281000000003644, "tool_exec_gap_s": 0.0, "itl_ms": 80.469, "ttft_ms": 7922.5, "tool_calls": {}, "avg_power_w": {}, "measured_util": {}}]};
+const BASELINE_SPEC = {"name": "current_baseline_TEMPLATE (EDIT ME before use)", "cpu_cores": 8, "cpu_freq_ghz": 4.0, "igpu_xecores": 96, "igpu_freq_ghz": 2.0, "npu_macs": 2048, "npu_freq_ghz": 1.4, "mem_channels": 8, "mem_width_bits": 16, "mem_freq_mts": 8533, "notes": "Fill in the REAL specs of the machine that produced your kpi_runs/<experiment> baseline before running tools/run_roofline_projection.py --baseline-spec against this file. cpu_cores/cpu_freq_ghz, igpu_xecores/igpu_freq_ghz and npu_macs/npu_freq_ghz are NOT auto-detectable from the benchmark tooling (see docs/KPI_HUB_INTEGRATION_NOTES.md) - you must supply them from the chip's datasheet/spec sheet. mem_channels/mem_width_bits/mem_freq_mts CAN be auto-detected per-machine (see tools/KPI-hub/generate_kpi_report.py::_collect_sut_info, dram_bw_gbs/dram_channels in a kpi_report.html's SUT Info section) - the defaults below (8 channels x 16-bit x 8533 MT/s = 136.5 GB/s) match one specific machine already validated in this repo (see docs/AGENTIC_WORKFLOW_CHARACTERIZATION.md section 10) - replace with your own machine's detected values."};
+const PRESETS = [{"name": "current_baseline_TEMPLATE (EDIT ME before use)", "cpu_cores": 8, "cpu_freq_ghz": 4.0, "igpu_xecores": 96, "igpu_freq_ghz": 2.0, "npu_macs": 2048, "npu_freq_ghz": 1.4, "mem_channels": 8, "mem_width_bits": 16, "mem_freq_mts": 8533, "notes": "Fill in the REAL specs of the machine that produced your kpi_runs/<experiment> baseline before running tools/run_roofline_projection.py --baseline-spec against this file. cpu_cores/cpu_freq_ghz, igpu_xecores/igpu_freq_ghz and npu_macs/npu_freq_ghz are NOT auto-detectable from the benchmark tooling (see docs/KPI_HUB_INTEGRATION_NOTES.md) - you must supply them from the chip's datasheet/spec sheet. mem_channels/mem_width_bits/mem_freq_mts CAN be auto-detected per-machine (see tools/KPI-hub/generate_kpi_report.py::_collect_sut_info, dram_bw_gbs/dram_channels in a kpi_report.html's SUT Info section) - the defaults below (8 channels x 16-bit x 8533 MT/s = 136.5 GB/s) match one specific machine already validated in this repo (see docs/AGENTIC_WORKFLOW_CHARACTERIZATION.md section 10) - replace with your own machine's detected values."}, {"name": "example_datacenter_class (ILLUSTRATIVE ONLY - not a verified vendor spec)", "cpu_cores": 64, "cpu_freq_ghz": 3.8, "igpu_xecores": 512, "igpu_freq_ghz": 2.6, "npu_macs": 32768, "npu_freq_ghz": 1.8, "mem_channels": 16, "mem_width_bits": 64, "mem_freq_mts": 9600, "notes": "Illustrative high-end datacenter-class accelerator target: large CPU core count, very high memory bandwidth (HBM-class), large NPU MAC array. Edit freely to match a real target platform's datasheet."}, {"name": "example_heavy_duty_workstation (ILLUSTRATIVE ONLY - not a verified vendor spec, replace with real numbers)", "cpu_cores": 32, "cpu_freq_ghz": 5.0, "igpu_xecores": 384, "igpu_freq_ghz": 2.4, "npu_macs": 8192, "npu_freq_ghz": 1.6, "mem_channels": 8, "mem_width_bits": 64, "mem_freq_mts": 8800, "notes": "Illustrative 'heavy duty' target: ~4x CPU cores, ~4x iGPU XeCores, ~4x NPU MACs, ~4x memory bandwidth vs. a typical current-generation mobile/client SoC. Meant as a starting point for tools/run_roofline_projection.py --target-spec or a what-if calculator quick-pick preset - edit freely to match a real target platform's datasheet."}, {"name": "example_moderate_upgrade (ILLUSTRATIVE ONLY - not a verified vendor spec)", "cpu_cores": 12, "cpu_freq_ghz": 4.6, "igpu_xecores": 160, "igpu_freq_ghz": 2.2, "npu_macs": 4096, "npu_freq_ghz": 1.5, "mem_channels": 8, "mem_width_bits": 32, "mem_freq_mts": 8533, "notes": "Illustrative modest next-gen refresh: ~1.5-2x each resource vs. a typical current-generation mobile/client SoC baseline. Edit freely to match a real target platform's datasheet."}, {"name": "JF04WVAW0381-TA_16EU_real_secondSUT", "cpu_cores": 28, "cpu_freq_ghz": 3.3, "igpu_xecores": 16, "igpu_freq_ghz": 2.0, "npu_macs": 2048, "npu_freq_ghz": 1.4, "mem_channels": 2, "mem_width_bits": 64, "mem_freq_mts": 6400, "notes": "REAL second SUT (companion project's JF04WVAW0381-TA, Nova Lake client, onboarded 2026-09-28) - NOT hypothetical, but no full agentic mlperf SWE-Agent/Data-Agent run exists on it yet, only a raw OpenVINO PERF_COUNT prefill/TTFT sweep + GEMM census + microbenchmark suite (see C:\\portable_agentic_soc_suite\\doc\\sut\\JF04WVAW0381-TA.md). cpu_cores=28 sums this machine's real 12 P-cores + 16 E-cores (this repo's Amdahl model has no P/E distinction, same limitation as elsewhere in the doc). igpu_xecores=16 is confirmed via OpenVINO's gpu_execution_units_count device query, not a guess. mem_freq_mts=6400 with mem_channels=2/mem_width_bits=64 gives the 102.4 GB/s DDR5 dual-channel THEORETICAL peak (this machine's own empirical bulk-copy figure was only 9.45 GB/s via the OpenVINO GPU plugin / 55.5 GB/s via native oneMKL - use whichever convention matches how you're comparing, they differ by >10x). igpu_freq_ghz/npu_macs/npu_freq_ghz are NOT independently verified for this machine - copied from this repo's own default placeholder pending real datasheet values."}];
+
+function memBwPeakGbs(spec) {
+    return spec.mem_channels * (spec.mem_width_bits / 8.0) * spec.mem_freq_mts / 1000.0;
+}
+function cpuCapability(spec) { return spec.cpu_cores * spec.cpu_freq_ghz; }
+function igpuCapability(spec) { return spec.igpu_xecores * spec.igpu_freq_ghz; }
+function npuCapability(spec) { return spec.npu_macs * spec.npu_freq_ghz; }
+function computeCapability(spec, deviceType) {
+    const dt = (deviceType || "").toUpperCase();
+    if (dt === "NPU") return npuCapability(spec);
+    if (dt === "GPU" || dt === "IGPU") return igpuCapability(spec);
+    if (dt === "CPU") return cpuCapability(spec);
+    throw new Error(`computeCapability: unrecognized device_type ${JSON.stringify(deviceType)}`);
+}
+function rawSpeedup(target, baseline) { return baseline ? (target / baseline) : 1.0; }
+function amdahlSpeedup(coresRatio, freqRatio, parallelFraction) {
+    // freq benefits BOTH serial and parallel portions (any core runs faster); only the parallel
+    // portion additionally benefits from extra cores. Must match hw_spec.py::amdahl_speedup.
+    const perCore = Math.max(freqRatio, 1e-9);
+    const cr = Math.max(coresRatio, 1e-9);
+    const serial = 1.0 - parallelFraction;
+    const denom = serial + parallelFraction / cr;
+    return denom <= 0 ? cr * perCore : perCore / denom;
+}
+function effectiveSpeedup(raw, retention) {
+    retention = Math.min(Math.max(retention, 0.0), 1.0);
+    return 1.0 + (raw - 1.0) * retention;
+}
+
+function projectStage(stage, deviceType, baselineSpec, targetSpec, assumptions) {
+    const computeRaw = rawSpeedup(computeCapability(targetSpec, deviceType), computeCapability(baselineSpec, deviceType));
+    const computeEff = effectiveSpeedup(computeRaw, assumptions.compute_efficiency_retention);
+    const prefillT = stage.prefill_s / computeEff;
+
+    const memRaw = rawSpeedup(memBwPeakGbs(targetSpec), memBwPeakGbs(baselineSpec));
+    const memEff = effectiveSpeedup(memRaw, assumptions.memory_efficiency_retention);
+    const decodeT = stage.decode_s / memEff;
+
+    const coresRatio = rawSpeedup(targetSpec.cpu_cores, baselineSpec.cpu_cores);
+    const freqRatio = rawSpeedup(targetSpec.cpu_freq_ghz, baselineSpec.cpu_freq_ghz);
+    const cpuRaw = amdahlSpeedup(coresRatio, freqRatio, assumptions.tool_parallel_fraction);
+    const cpuEff = effectiveSpeedup(cpuRaw, assumptions.cpu_efficiency_retention);
+    const toolT = stage.tool_exec_gap_s / cpuEff;
+
+    const overheadT = stage.stage_overhead_s;
+    const projectedWall = prefillT + decodeT + overheadT + toolT;
+    const baselineWall = stage.prefill_s + stage.decode_s + stage.stage_overhead_s + stage.tool_exec_gap_s;
+
+    // TTFT/ITL (ms): ITL scales with the same per-token memory speedup that drives decodeT.
+    const projectedItlMs = stage.itl_ms / memEff;
+    const projectedTtftMs = prefillT * 1000.0 + projectedItlMs;
+
+    // Best-effort power/energy projection (only if RAPL power was measured for this stage).
+    const projectedPowerW = {};
+    for (const [domain, watts] of Object.entries(stage.avg_power_w || {})) {
+        let ratio;
+        if (domain === "cpu") ratio = rawSpeedup(cpuCapability(targetSpec), cpuCapability(baselineSpec));
+        else if (domain === "igpu") ratio = rawSpeedup(igpuCapability(targetSpec), igpuCapability(baselineSpec));
+        else if (domain === "npu") ratio = rawSpeedup(npuCapability(targetSpec), npuCapability(baselineSpec));
+        else ratio = 1.0; // "soc"/uncore rail: assumed roughly fixed regardless of core/EU/MAC count
+        projectedPowerW[domain] = watts * Math.pow(ratio, assumptions.power_scaling_exponent);
+    }
+
+    return { name: stage.name, baselineWall, projectedWall, computeEff, memEff, cpuEff,
+             prefillT, decodeT, toolT, overheadT, output_tokens: stage.output_tokens,
+             baselineTtftMs: stage.ttft_ms, projectedTtftMs,
+             baselineItlMs: stage.itl_ms, projectedItlMs,
+             baselinePowerW: stage.avg_power_w || {}, projectedPowerW };
+}
+
+function projectAll(profile, baselineSpec, targetSpec, assumptions) {
+    const stages = profile.stages.map(s => projectStage(s, profile.device_type, baselineSpec, targetSpec, assumptions));
+    const baselineWall = stages.reduce((a, s) => a + s.baselineWall, 0) + profile.fixed_overhead_s;
+    const projectedWall = stages.reduce((a, s) => a + s.projectedWall, 0) + profile.fixed_overhead_s;
+    const totalTokens = stages.reduce((a, s) => a + s.output_tokens, 0);
+
+    const decoded = stages.filter(s => s.baselineItlMs > 0);
+    // Output-token-weighted mean (not a plain per-stage average) - matches scaling_engine.py::
+    // project()'s _weighted_avg, so a 1000-token turn counts more than a 44-token warmup call.
+    const weightTotal = decoded.reduce((a, s) => a + s.output_tokens, 0);
+    const avg = (fn) => {
+        if (!decoded.length) return null;
+        if (!weightTotal) return decoded.reduce((a, s) => a + fn(s), 0) / decoded.length;
+        return decoded.reduce((a, s) => a + fn(s) * s.output_tokens, 0) / weightTotal;
+    };
+
+    // Tokens/Joule: only computable if at least one stage has measured RAPL power.
+    const hasPower = stages.some(s => Object.keys(s.baselinePowerW).length > 0);
+    let baselineEnergyJ = null, projectedEnergyJ = null, baselineTokPerJ = null, projectedTokPerJ = null;
+    if (hasPower) {
+        baselineEnergyJ = 0; projectedEnergyJ = 0;
+        for (const s of stages) {
+            const totalPowerB = Object.values(s.baselinePowerW).reduce((a, w) => a + w, 0);
+            const totalPowerP = Object.values(s.projectedPowerW).reduce((a, w) => a + w, 0);
+            baselineEnergyJ += totalPowerB * s.baselineWall;
+            projectedEnergyJ += totalPowerP * s.projectedWall;
+        }
+        baselineTokPerJ = baselineEnergyJ ? totalTokens / baselineEnergyJ : null;
+        projectedTokPerJ = projectedEnergyJ ? totalTokens / projectedEnergyJ : null;
+    }
+
+    return {
+        stages, baselineWall, projectedWall, totalTokens,
+        baselineTokS: baselineWall ? totalTokens / baselineWall : 0,
+        projectedTokS: projectedWall ? totalTokens / projectedWall : 0,
+        speedup: projectedWall ? baselineWall / projectedWall : 1.0,
+        reductionPct: baselineWall ? (baselineWall - projectedWall) / baselineWall * 100.0 : 0.0,
+        avgBaselineTtftMs: avg(s => s.baselineTtftMs), avgProjectedTtftMs: avg(s => s.projectedTtftMs),
+        avgBaselineItlMs: avg(s => s.baselineItlMs), avgProjectedItlMs: avg(s => s.projectedItlMs),
+        baselineEnergyJ, projectedEnergyJ, baselineTokPerJ, projectedTokPerJ,
+    };
+}
+
+
+function readTargetSpec() {
+    return {
+        cpu_cores: parseFloat(document.getElementById('cpuCores').value),
+        cpu_freq_ghz: parseFloat(document.getElementById('cpuFreq').value),
+        igpu_xecores: parseFloat(document.getElementById('igpuXecores').value),
+        igpu_freq_ghz: parseFloat(document.getElementById('igpuFreq').value),
+        npu_macs: parseFloat(document.getElementById('npuMacs').value),
+        npu_freq_ghz: parseFloat(document.getElementById('npuFreq').value),
+        mem_channels: parseFloat(document.getElementById('memChannels').value),
+        mem_width_bits: parseFloat(document.getElementById('memWidth').value),
+        mem_freq_mts: parseFloat(document.getElementById('memFreq').value),
+    };
+}
+
+function applyPresetToDropdowns(spec) {
+    document.getElementById('cpuCores').value = spec.cpu_cores;
+    document.getElementById('cpuFreq').value = spec.cpu_freq_ghz;
+    document.getElementById('igpuXecores').value = spec.igpu_xecores;
+    document.getElementById('igpuFreq').value = spec.igpu_freq_ghz;
+    document.getElementById('npuMacs').value = spec.npu_macs;
+    document.getElementById('npuFreq').value = spec.npu_freq_ghz;
+    document.getElementById('memChannels').value = spec.mem_channels;
+    document.getElementById('memWidth').value = spec.mem_width_bits;
+    document.getElementById('memFreq').value = spec.mem_freq_mts;
+}
+
+// This baseline run's device_type determines which ONE of the NPU/iGPU dropdown groups actually
+// feeds the prefill compute-scaling math (see computeCapability() above) - the other group has no
+// effect on any output number for this run, so grey it out + disable it instead of leaving it
+// silently inert (that ambiguity is exactly what caused user confusion before this was added).
+function markActiveAccelGroup() {
+    const dt = (PROFILE.device_type || "").toUpperCase();
+    const npuActive = dt === "NPU";
+    const igpuActive = dt === "GPU" || dt === "IGPU";
+    const groups = [
+        { id: 'npuGroup', badgeId: 'npuGroupBadge', active: npuActive, inputs: ['npuMacs', 'npuFreq'] },
+        { id: 'igpuGroup', badgeId: 'igpuGroupBadge', active: igpuActive, inputs: ['igpuXecores', 'igpuFreq'] },
+    ];
+    for (const g of groups) {
+        document.getElementById(g.id).classList.toggle('is-inactive', !g.active);
+        const badge = document.getElementById(g.badgeId);
+        badge.textContent = g.active ? 'active for this run' : 'not used - this run used ' + PROFILE.device_type;
+        badge.className = 'accel-badge ' + (g.active ? 'active' : 'inactive');
+        for (const inputId of g.inputs) {
+            document.getElementById(inputId).disabled = !g.active;
+        }
+    }
+}
+
+function recompute() {
+    const target = readTargetSpec();
+    const assumptions = {
+        compute_efficiency_retention: parseFloat(document.getElementById('compEff').value),
+        memory_efficiency_retention: parseFloat(document.getElementById('memEff').value),
+        cpu_efficiency_retention: parseFloat(document.getElementById('cpuEff').value),
+        tool_parallel_fraction: parseFloat(document.getElementById('parFrac').value),
+        power_scaling_exponent: parseFloat(document.getElementById('powerExp').value),
+    };
+    document.getElementById('compEffVal').textContent = assumptions.compute_efficiency_retention.toFixed(2);
+    document.getElementById('memEffVal').textContent = assumptions.memory_efficiency_retention.toFixed(2);
+    document.getElementById('cpuEffVal').textContent = assumptions.cpu_efficiency_retention.toFixed(2);
+    document.getElementById('parFracVal').textContent = assumptions.tool_parallel_fraction.toFixed(2);
+    document.getElementById('powerExpVal').textContent = assumptions.power_scaling_exponent.toFixed(1);
+    document.getElementById('memBwOut').textContent = memBwPeakGbs(target).toFixed(1);
+
+    const r = projectAll(PROFILE, BASELINE_SPEC, target, assumptions);
+    document.getElementById('baselineWallOut').textContent = r.baselineWall.toFixed(1) + 's';
+    document.getElementById('projectedWallOut').textContent = r.projectedWall.toFixed(1) + 's';
+    document.getElementById('speedupOut').textContent = r.speedup.toFixed(2) + 'x';
+    document.getElementById('reductionOut').textContent = r.reductionPct.toFixed(1) + '%';
+    document.getElementById('tokSOut').textContent = r.baselineTokS.toFixed(1) + ' → ' + r.projectedTokS.toFixed(1);
+    document.getElementById('ttftOut').textContent = r.avgBaselineTtftMs !== null
+        ? r.avgBaselineTtftMs.toFixed(0) + ' → ' + r.avgProjectedTtftMs.toFixed(0) + ' ms' : 'n/a';
+    document.getElementById('itlOut').textContent = r.avgBaselineItlMs !== null
+        ? r.avgBaselineItlMs.toFixed(1) + ' → ' + r.avgProjectedItlMs.toFixed(1) + ' ms' : 'n/a';
+    document.getElementById('tokJOut').textContent = r.baselineTokPerJ !== null
+        ? r.baselineTokPerJ.toFixed(2) + ' → ' + r.projectedTokPerJ.toFixed(2) : 'n/a (no RAPL power data)';
+
+    const tbody = document.getElementById('stageTableBody');
+    tbody.innerHTML = r.stages.map(s => `<tr><td>${s.name}</td>
+        <td class="num">${s.baselineWall.toFixed(2)}</td><td class="num">${s.projectedWall.toFixed(2)}</td>
+        <td class="num">${(s.baselineWall / (s.projectedWall || 1)).toFixed(2)}x</td>
+        <td class="num">${s.computeEff.toFixed(2)}x</td><td class="num">${s.memEff.toFixed(2)}x</td>
+        <td class="num">${s.cpuEff.toFixed(2)}x</td>
+        <td class="num">${s.baselineTtftMs.toFixed(0)} → ${s.projectedTtftMs.toFixed(0)}</td>
+        <td class="num">${s.baselineItlMs.toFixed(1)} → ${s.projectedItlMs.toFixed(1)}</td></tr>`).join('');
+
+    document.getElementById('cliPreview').textContent = buildCliCommand(target, assumptions);
+}
+
+// ---- Export current selection back to the CLI, so it can produce a persisted report/JSON ----
+// (this page is a live in-browser preview only - it has no filesystem/server access to write one itself)
+// NOTE: uses forward slashes even though this is a Windows tool - python.exe accepts them fine on
+// Windows, and it sidesteps JS template-literal backslash-escaping pitfalls (an unrecognized
+// escape like backslash-S silently drops the backslash - a double backslash would be needed instead).
+function buildCliCommand(target, assumptions) {
+    return `.venv/Scripts/python.exe tools/run_roofline_projection.py --run "${PROFILE.run_dir}" ` +
+        `--cpu-cores ${target.cpu_cores} --cpu-freq-ghz ${target.cpu_freq_ghz} ` +
+        `--igpu-xecores ${target.igpu_xecores} --igpu-freq-ghz ${target.igpu_freq_ghz} ` +
+        `--npu-macs ${target.npu_macs} --npu-freq-ghz ${target.npu_freq_ghz} ` +
+        `--mem-channels ${target.mem_channels} --mem-width-bits ${target.mem_width_bits} --mem-freq-mts ${target.mem_freq_mts} ` +
+        `--compute-efficiency-retention ${assumptions.compute_efficiency_retention} ` +
+        `--memory-efficiency-retention ${assumptions.memory_efficiency_retention} ` +
+        `--cpu-efficiency-retention ${assumptions.cpu_efficiency_retention} ` +
+        `--tool-parallel-fraction ${assumptions.tool_parallel_fraction} ` +
+        `--power-scaling-exponent ${assumptions.power_scaling_exponent} --what-if`;
+}
+
+function downloadTargetSpecJson() {
+    const target = readTargetSpec();
+    const spec = Object.assign({ name: "custom_what_if_selection", notes: "Exported from what_if_calculator.html" }, target);
+    const blob = new Blob([JSON.stringify(spec, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = "target_spec_custom.json";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    document.getElementById('exportStatus').textContent =
+        `Downloaded target_spec_custom.json - pass it to --target-spec, e.g.: ` +
+        `.venv/Scripts/python.exe tools/run_roofline_projection.py --run "${PROFILE.run_dir}" ` +
+        `--target-spec <downloads-folder>/target_spec_custom.json --what-if`;
+}
+
+function copyCliCommand() {
+    const target = readTargetSpec();
+    const assumptions = {
+        compute_efficiency_retention: parseFloat(document.getElementById('compEff').value),
+        memory_efficiency_retention: parseFloat(document.getElementById('memEff').value),
+        cpu_efficiency_retention: parseFloat(document.getElementById('cpuEff').value),
+        tool_parallel_fraction: parseFloat(document.getElementById('parFrac').value),
+        power_scaling_exponent: parseFloat(document.getElementById('powerExp').value),
+    };
+    const cmd = buildCliCommand(target, assumptions);
+    const done = (ok) => {
+        document.getElementById('exportStatus').textContent = ok
+            ? "Copied - paste into a terminal at the repo root (with the .venv activated) to regenerate the report."
+            : "Clipboard access blocked - the command is shown in the box below, copy it manually.";
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(cmd).then(() => done(true)).catch(() => done(false));
+    } else {
+        done(false);
+    }
+}
+
+document.getElementById('downloadSpecBtn').addEventListener('click', downloadTargetSpecJson);
+document.getElementById('copyCliBtn').addEventListener('click', copyCliCommand);
+
+document.getElementById('presetSelect').addEventListener('change', (e) => {
+    const idx = parseInt(e.target.value);
+    if (idx >= 0) { applyPresetToDropdowns(PRESETS[idx]); recompute(); }
+});
+document.querySelectorAll('select, input[type=range]').forEach(el => {
+    if (el.id !== 'presetSelect') el.addEventListener('input', recompute);
+});
+markActiveAccelGroup();
+recompute();
+</script>
+</body>
+</html>

@@ -1,0 +1,51 @@
+Profile: lightweight
+EMON categories: ['bandwidth', 'dram_detail']
+CPU logical cores: 28
+Intel RAPL Energy Meter detected (background poller, 2s interval)
+CPU thermal/throttle counters detected
+Intel GPU Engine monitor: iGPU=True, NPU=True
+Per-core base frequencies (MHz): 4783, 4542, 4493, 4540, 2750, 3597, 2966, 3116, 3098, 2496, 2766, 3440, 4753, 4799, 4307, 4782, 3136, 3385, 2434, 3652, 3826, 2797, 3369, 3851, 2943, 3030, 3020, 3011
+NVIDIA GPU detected
+DRAM BW: EMON (UNC_M_CAS_COUNT via SEP driver)
+EMON deep sampler: ['bandwidth', 'dram_detail'] (interval=1.0s)
+[L0Sysman] Init OK: 3 engines, 2 freq, 1 mem, 0 temp, 0 power domains
+L0 Sysman: 9 columns (engine busy%, freq, mem — no OA contention)
+L0 TBS: 11 HW counter columns (ComputeBasic OA)
+
+Sampling interval: 1000ms
+Output: C:\mlperf_client_2.0_KPI\kpi_runs\preset6_sweagent_gpu_20260929_211533\hw_samples.csv
+Press Ctrl+C to stop
+
+[2026-09-29 21:15:54.604] CPU=  7.3% freq=1893-3897MHz RAPL_SoC=  0.0W BW=4.5GB/s(emon) PageHit=88% iGPU=0% SYS=2%busy/450MHz NPU=0%(pdh) NV=2% RAM=18.4/95.4GB (0.7ms) #20
+[2026-09-29 21:16:14.620] CPU=  8.6% freq=1646-4154MHz RAPL_SoC=  0.0W BW=4.3GB/s(emon) PageHit=90% iGPU=0% SYS=2%busy/450MHz NPU=0%(pdh) NV=3% RAM=19.3/95.4GB (0.7ms) #40
+[2026-09-29 21:16:34.638] CPU=  4.5% freq=1434-4438MHz RAPL_SoC=  0.0W BW=3.9GB/s(emon) PageHit=90% iGPU=0% SYS=3%busy/450MHz NPU=0%(pdh) NV=2% RAM=18.7/95.4GB (0.8ms) #60
+
+Stopped. 80 samples over ~80.0s saved to C:\mlperf_client_2.0_KPI\kpi_runs\preset6_sweagent_gpu_20260929_211533\hw_samples.csv
+Peak RSS summary (324 MB total) written to C:\mlperf_client_2.0_KPI\kpi_runs\preset6_sweagent_gpu_20260929_211533\hw_samples_peak_rss.json
+  python (pid 5972): 15 MB current, 16 MB peak
+  python (pid 11124): 4 MB current, 4 MB peak
+  python (pid 11388): 14 MB current, 14 MB peak
+  python (pid 22688): 4 MB current, 4 MB peak
+  sample_utilization_fast (pid 15820): 4 MB current, 4 MB peak
+  sample_utilization_fast (pid 20936): 155 MB current, 282 MB peak
+Traceback (most recent call last):
+  File "C:\mlperf_client_2.0_KPI\tools\KPI-hub\sample_utilization_fast.py", line 1549, in <module>
+    main()
+    ~~~~^^
+  File "C:\mlperf_client_2.0_KPI\tools\KPI-hub\sample_utilization_fast.py", line 1545, in main
+    sample_loop(n_cores, pdh, has_rapl, rapl_poller, nv, bw_sampler, bw_proxy, intel_gpu, interval_ms, args.output, emon_sampler)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\mlperf_client_2.0_KPI\tools\KPI-hub\sample_utilization_fast.py", line 1363, in sample_loop
+    print(
+    ~~~~~^
+        f"[{ts}] CPU={cpu_total:5.1f}% "
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<11 lines>...
+        f"#{sample_count}"
+        ^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\python313\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u26a0' in position 160: character maps to <undefined>

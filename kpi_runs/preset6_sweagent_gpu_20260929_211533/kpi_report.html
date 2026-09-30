@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multi-Agent KPI Report — 2026-09-29 21:28:43</title>
+<style>
+:root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --text2: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --red: #f85149; --yellow: #d29922;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+       background: var(--bg); color: var(--text); padding: 24px; line-height: 1.5; }
+h1 { font-size: 1.6rem; margin-bottom: 4px; }
+h2 { font-size: 1.15rem; color: var(--accent); margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.header { margin-bottom: 24px; }
+.header .subtitle { color: var(--text2); font-size: 0.9rem; }
+.header .meta { display: flex; gap: 24px; margin-top: 8px; flex-wrap: wrap; }
+.header .meta-item { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; }
+.header .meta-label { color: var(--text2); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
+.header .meta-value { font-size: 1.3rem; font-weight: 600; }
+.header .meta-value.green { color: var(--green); }
+.section { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+th { text-align: left; color: var(--text2); font-weight: 500; padding: 8px 10px; border-bottom: 2px solid var(--border); }
+td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: 'SF Mono', Consolas, monospace; }
+tr:hover td { background: rgba(88,166,255,0.06); }
+code { background: rgba(110,118,129,0.2); padding: 2px 6px; border-radius: 4px; font-size: 0.85em; }
+
+/* Gantt chart */
+.gantt-chart { margin: 8px 0; }
+.gantt-row { display: flex; align-items: center; margin-bottom: 6px; }
+.gantt-label { width: 200px; flex-shrink: 0; font-size: 0.82rem; padding-right: 12px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gantt-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.gantt-track { flex: 1; height: 28px; background: rgba(48,54,61,0.5); border-radius: 4px; position: relative; overflow: hidden; }
+.gantt-bar { position: absolute; top: 2px; height: 24px; border-radius: 3px; opacity: 0.85; display: flex; align-items: center;
+              justify-content: center; cursor: default; transition: opacity 0.15s; min-width: 2px; }
+.gantt-bar:hover { opacity: 1; box-shadow: 0 0 8px rgba(88,166,255,0.3); }
+.gantt-bar-text { color: #fff; font-size: 0.7rem; font-weight: 600; text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+                   white-space: nowrap; overflow: hidden; padding: 0 4px; }
+.gantt-hw { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); font-size: 0.6rem;
+             background: rgba(0,0,0,0.45); color: #ddd; padding: 1px 5px; border-radius: 3px;
+             white-space: nowrap; line-height: 1.2; pointer-events: none; }
+.gantt-bg-bar { opacity: 0.45; border: 1px dashed rgba(255,255,255,0.3); }
+.gantt-bg-bar:hover { opacity: 0.7; }
+.rag-marker { position: absolute; top: 2px; height: 12px; background: #FF9800; border-radius: 2px;
+               opacity: 0.9; min-width: 4px; cursor: default; }
+.rag-marker:hover { opacity: 1; box-shadow: 0 0 6px rgba(255,152,0,0.5); }
+.tool-badge { display: inline-block; font-size: 0.68rem; padding: 1px 6px; margin: 1px 2px; border-radius: 3px;
+               background: rgba(88,166,255,0.15); color: #79b8ff; white-space: nowrap; }
+.tool-badge-exec { background: rgba(63,185,80,0.18); color: #56d364; }
+.phase-badge { display: inline-block; font-size: 0.65rem; padding: 1px 6px; margin-left: 4px; border-radius: 3px;
+               white-space: nowrap; vertical-align: middle; }
+.phase-badge-cold { background: rgba(121,192,255,0.15); color: #79c0ff; }
+.phase-badge-warm { background: rgba(255,152,56,0.15); color: #ff9838; }
+.timeline-axis { display: flex; justify-content: space-between; color: var(--text2); font-size: 0.78rem;
+                  margin-bottom: 4px; padding: 0 200px 0 0; margin-left: 200px; }
+.timeline-legend { color: var(--text2); font-size: 0.78rem; margin-top: 8px; }
+.no-data { color: var(--text2); font-style: italic; }
+
+/* Device cards */
+.device-grid { display: flex; gap: 14px; flex-wrap: wrap; }
+.device-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px;
+                min-width: 180px; flex: 1; }
+.device-icon { font-size: 1.5rem; margin-bottom: 4px; }
+.device-role { font-weight: 600; font-size: 0.9rem; }
+.device-target { color: var(--text2); font-size: 0.8rem; margin-top: 2px; }
+
+/* Responsive */
+@media (max-width: 800px) {
+    .gantt-label { width: 120px; font-size: 0.72rem; }
+    .timeline-axis { margin-left: 120px; padding: 0 0; }
+    .header .meta { gap: 10px; }
+    .device-grid { flex-direction: column; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Multi-Agent KPI Report</h1>
+    <div class="subtitle">Generated 2026-09-29 21:28:43 &nbsp;|&nbsp; Source: <code>preset6_sweagent_gpu_20260929_211533</code></div>
+    <div class="meta">
+        <div class="meta-item">
+            <div class="meta-label">Model</div>
+            <div class="meta-value">Llama-3.1-8B-Instruct_ov-int4-GRw</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Backend</div>
+            <div class="meta-value">NativeOpenVINO</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Wall Time</div>
+            <div class="meta-value">778.6s</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Output Tokens</div>
+            <div class="meta-value green">6,768</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Throughput</div>
+            <div class="meta-value green">8.69 tok/s</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-label">Run Window</div>
+            <div class="meta-value" style="font-size:1rem">21:15:36 → 21:28:35</div>
+        </div>
+    </div>
+</div>
+
+
+
+
+        <div class="section">
+            <h2>Workflow Timeline</h2>
+            <div class="timeline-axis">
+                <span>21:17:04</span>
+                <span>← 779s total →</span>
+                <span>21:28:34</span>
+            </div>
+            <div class="gantt-chart">
+                
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    01_warmup
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:0.0%;width:0.6%;background:#64B5F6"
+                         title="01_warmup: 21:17:04 - 21:17:08 (4.157s, 65 tokens, 15.639 tok/s)">
+                        <span class="gantt-bar-text">4.157s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    02_swe_agent_0
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:1.33%;width:12.7%;background:#64B5F6"
+                         title="02_swe_agent_0: 21:17:13 - 21:18:41 (87.529s, 940 tokens, 10.74 tok/s)">
+                        <span class="gantt-bar-text">87.529s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:rgba(139,148,158,0.55)"></span>
+                    02_swe_agent_0 (tools)
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar gantt-bg-bar" style="left:14.03%;width:0.5%;background:rgba(139,148,158,0.55)"
+                         title="02_swe_agent_0 (tools): 21:18:41 - 21:18:46 (0.0s, 0 tokens, 0 tok/s | apply_patch×1, read_file×3 | measured 0.0s (mlperf 'Tools time' log))">
+                        <span class="gantt-bar-text">0.0s</span>
+                        <span class="gantt-hw">CPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    03_swe_agent_1
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:14.75%;width:12.08%;background:#64B5F6"
+                         title="03_swe_agent_1: 21:18:46 - 21:20:09 (83.307s, 1000 tokens, 12.005 tok/s)">
+                        <span class="gantt-bar-text">83.307s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:rgba(139,148,158,0.55)"></span>
+                    03_swe_agent_1 (tools)
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar gantt-bg-bar" style="left:26.84%;width:0.65%;background:rgba(139,148,158,0.55)"
+                         title="03_swe_agent_1 (tools): 21:20:09 - 21:20:19 (4.5s, 0 tokens, 0 tok/s | apply_patch×1, read_file×1 | measured 4.5s (mlperf 'Tools time' log))">
+                        <span class="gantt-bar-text">4.5s</span>
+                        <span class="gantt-hw">CPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    04_swe_agent_2
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:28.21%;width:4.12%;background:#64B5F6"
+                         title="04_swe_agent_2: 21:20:19 - 21:20:47 (28.389s, 251 tokens, 8.843 tok/s)">
+                        <span class="gantt-bar-text">28.389s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    05_warmup
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:34.07%;width:0.61%;background:#64B5F6"
+                         title="05_warmup: 21:20:59 - 21:21:03 (4.212s, 65 tokens, 15.432 tok/s)">
+                        <span class="gantt-bar-text">4.212s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    06_swe_agent_0
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:35.41%;width:12.65%;background:#64B5F6"
+                         title="06_swe_agent_0: 21:21:08 - 21:22:35 (87.188s, 940 tokens, 10.782 tok/s)">
+                        <span class="gantt-bar-text">87.188s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:rgba(139,148,158,0.55)"></span>
+                    06_swe_agent_0 (tools)
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar gantt-bg-bar" style="left:48.05%;width:0.5%;background:rgba(139,148,158,0.55)"
+                         title="06_swe_agent_0 (tools): 21:22:35 - 21:22:40 (0.0s, 0 tokens, 0 tok/s | apply_patch×1, read_file×3 | measured 0.0s (mlperf 'Tools time' log))">
+                        <span class="gantt-bar-text">0.0s</span>
+                        <span class="gantt-hw">CPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    07_swe_agent_1
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:48.78%;width:12.05%;background:#64B5F6"
+                         title="07_swe_agent_1: 21:22:40 - 21:24:03 (83.052s, 1000 tokens, 12.042 tok/s)">
+                        <span class="gantt-bar-text">83.052s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:rgba(139,148,158,0.55)"></span>
+                    07_swe_agent_1 (tools)
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar gantt-bg-bar" style="left:60.83%;width:0.61%;background:rgba(139,148,158,0.55)"
+                         title="07_swe_agent_1 (tools): 21:24:03 - 21:24:13 (4.2s, 0 tokens, 0 tok/s | apply_patch×1, read_file×1 | measured 4.2s (mlperf 'Tools time' log))">
+                        <span class="gantt-bar-text">4.2s</span>
+                        <span class="gantt-hw">CPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    08_swe_agent_2
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:62.16%;width:4.04%;background:#64B5F6"
+                         title="08_swe_agent_2: 21:24:13 - 21:24:41 (27.885s, 251 tokens, 9.003 tok/s)">
+                        <span class="gantt-bar-text">27.885s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    09_warmup
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:67.82%;width:0.6%;background:#64B5F6"
+                         title="09_warmup: 21:24:52 - 21:24:56 (4.164s, 65 tokens, 15.612 tok/s)">
+                        <span class="gantt-bar-text">4.164s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    10_swe_agent_0
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:69.15%;width:12.68%;background:#64B5F6"
+                         title="10_swe_agent_0: 21:25:01 - 21:26:28 (87.422s, 940 tokens, 10.753 tok/s)">
+                        <span class="gantt-bar-text">87.422s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:rgba(139,148,158,0.55)"></span>
+                    10_swe_agent_0 (tools)
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar gantt-bg-bar" style="left:81.83%;width:0.5%;background:rgba(139,148,158,0.55)"
+                         title="10_swe_agent_0 (tools): 21:26:28 - 21:26:33 (0.0s, 0 tokens, 0 tok/s | apply_patch×1, read_file×3 | measured 0.0s (mlperf 'Tools time' log))">
+                        <span class="gantt-bar-text">0.0s</span>
+                        <span class="gantt-hw">CPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    11_swe_agent_1
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:82.56%;width:12.05%;background:#64B5F6"
+                         title="11_swe_agent_1: 21:26:33 - 21:27:56 (83.044s, 1000 tokens, 12.042 tok/s)">
+                        <span class="gantt-bar-text">83.044s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:rgba(139,148,158,0.55)"></span>
+                    11_swe_agent_1 (tools)
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar gantt-bg-bar" style="left:94.6%;width:0.59%;background:rgba(139,148,158,0.55)"
+                         title="11_swe_agent_1 (tools): 21:27:56 - 21:28:06 (4.1s, 0 tokens, 0 tok/s | apply_patch×1, read_file×1 | measured 4.1s (mlperf 'Tools time' log))">
+                        <span class="gantt-bar-text">4.1s</span>
+                        <span class="gantt-hw">CPU</span>
+                    </div>
+                </div>
+            </div>
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-dot" style="background:#64B5F6"></span>
+                    12_swe_agent_2
+                </div>
+                <div class="gantt-track">
+                    <div class="gantt-bar" style="left:95.93%;width:4.07%;background:#64B5F6"
+                         title="12_swe_agent_2: 21:28:06 - 21:28:34 (28.045s, 251 tokens, 8.952 tok/s)">
+                        <span class="gantt-bar-text">28.045s</span>
+                        <span class="gantt-hw">GPU</span>
+                    </div>
+                </div>
+            </div>
+                
+            </div>
+            <div class="timeline-legend">
+                <em>Hover bars for detail. Concurrent bars (summary_agent_1/2) show parallel execution.</em>
+                <br><em style="font-size:0.72rem">HW badges show responsible hardware. ★ rag_query marks NPU embedding + HNSW vector search events.</em>
+            </div>
+        </div>
+
+<div class="section">
+    <h2>Per-Agent KPIs</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Agent</th>
+                <th style="text-align:right">Start</th>
+                <th style="text-align:right">End</th>
+                <th style="text-align:right">In Tok</th>
+                <th style="text-align:right">Out Tok</th>
+                <th style="text-align:right">Total</th>
+                <th style="text-align:right">Time (s)</th>
+                <th style="text-align:right">Tok/s</th>
+                <th style="text-align:right">TTFT (s)</th>
+                <th style="text-align:right">Prefill (ms)</th>
+                <th style="text-align:right">Avg ITL (ms)</th>
+                <th style="text-align:right">p50/p99 ITL (ms)</th>
+                <th>Tools</th>
+            </tr>
+        </thead>
+        <tbody>
+            
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 01_warmup <span class="phase-badge phase-badge-cold" title="Fresh context - no prior turn KV cache reused">cold</span></td>
+                <td class="num">21:17:04</td>
+                <td class="num">21:17:08</td>
+                <td class="num">40</td>
+                <td class="num">65</td>
+                <td class="num">105</td>
+                <td class="num">4.2</td>
+                <td class="num">15.639</td>
+                <td class="num">0.1957</td>
+                <td class="num">134</td>
+                <td class="num">61.885 ±5.148</td>
+                <td class="num" title="p50 / p99">- / -</td><td>-</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 02_swe_agent_0 <span class="phase-badge phase-badge-cold" title="Fresh context - no prior turn KV cache reused">cold</span></td>
+                <td class="num">21:17:13</td>
+                <td class="num">21:18:41</td>
+                <td class="num">8,198</td>
+                <td class="num">940</td>
+                <td class="num">9,138</td>
+                <td class="num">87.5</td>
+                <td class="num">10.74</td>
+                <td class="num">14.9501</td>
+                <td class="num">14,873</td>
+                <td class="num">77.289 ±1.492</td>
+                <td class="num" title="p50 / p99">- / -</td><td><span class="tool-badge tool-badge-exec" title="apply_patch called 1x">apply_patch×1</span><span class="tool-badge" title="read_file called 3x">read_file×3</span><span class="tool-badge" title="mlperf-measured Tools time (real RunTools wall-clock, not inferred)">⏱7ms</span></td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 03_swe_agent_1 <span class="phase-badge phase-badge-warm" title="Continues prior turn - 149 history tokens carried in KV cache">warm +149</span></td>
+                <td class="num">21:18:46</td>
+                <td class="num">21:20:09</td>
+                <td class="num">8,979</td>
+                <td class="num">1,000</td>
+                <td class="num">9,979</td>
+                <td class="num">83.3</td>
+                <td class="num">12.005</td>
+                <td class="num">4.5134</td>
+                <td class="num">4,434</td>
+                <td class="num">78.867 ±1.368</td>
+                <td class="num" title="p50 / p99">- / -</td><td><span class="tool-badge tool-badge-exec" title="apply_patch called 1x">apply_patch×1</span><span class="tool-badge" title="read_file called 1x">read_file×1</span><span class="tool-badge" title="mlperf-measured Tools time (real RunTools wall-clock, not inferred)">⏱4461ms</span></td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 04_swe_agent_2 <span class="phase-badge phase-badge-warm" title="Continues prior turn - 1212 history tokens carried in KV cache">warm +1212</span></td>
+                <td class="num">21:20:19</td>
+                <td class="num">21:20:47</td>
+                <td class="num">10,251</td>
+                <td class="num">251</td>
+                <td class="num">10,502</td>
+                <td class="num">28.4</td>
+                <td class="num">8.843</td>
+                <td class="num">8.2011</td>
+                <td class="num">8,120</td>
+                <td class="num">80.736 ±1.1</td>
+                <td class="num" title="p50 / p99">- / -</td><td>-</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 05_warmup <span class="phase-badge phase-badge-cold" title="Fresh context - no prior turn KV cache reused">cold</span></td>
+                <td class="num">21:20:59</td>
+                <td class="num">21:21:03</td>
+                <td class="num">40</td>
+                <td class="num">65</td>
+                <td class="num">105</td>
+                <td class="num">4.2</td>
+                <td class="num">15.432</td>
+                <td class="num">0.2088</td>
+                <td class="num">146</td>
+                <td class="num">62.551 ±5.158</td>
+                <td class="num" title="p50 / p99">- / -</td><td>-</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 06_swe_agent_0 <span class="phase-badge phase-badge-cold" title="Fresh context - no prior turn KV cache reused">cold</span></td>
+                <td class="num">21:21:08</td>
+                <td class="num">21:22:35</td>
+                <td class="num">8,198</td>
+                <td class="num">940</td>
+                <td class="num">9,138</td>
+                <td class="num">87.2</td>
+                <td class="num">10.782</td>
+                <td class="num">14.8583</td>
+                <td class="num">14,781</td>
+                <td class="num">77.024 ±1.302</td>
+                <td class="num" title="p50 / p99">- / -</td><td><span class="tool-badge tool-badge-exec" title="apply_patch called 1x">apply_patch×1</span><span class="tool-badge" title="read_file called 3x">read_file×3</span><span class="tool-badge" title="mlperf-measured Tools time (real RunTools wall-clock, not inferred)">⏱0ms</span></td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 07_swe_agent_1 <span class="phase-badge phase-badge-warm" title="Continues prior turn - 149 history tokens carried in KV cache">warm +149</span></td>
+                <td class="num">21:22:40</td>
+                <td class="num">21:24:03</td>
+                <td class="num">8,979</td>
+                <td class="num">1,000</td>
+                <td class="num">9,979</td>
+                <td class="num">83.1</td>
+                <td class="num">12.042</td>
+                <td class="num">4.5203</td>
+                <td class="num">4,442</td>
+                <td class="num">78.604 ±1.22</td>
+                <td class="num" title="p50 / p99">- / -</td><td><span class="tool-badge tool-badge-exec" title="apply_patch called 1x">apply_patch×1</span><span class="tool-badge" title="read_file called 1x">read_file×1</span><span class="tool-badge" title="mlperf-measured Tools time (real RunTools wall-clock, not inferred)">⏱4173ms</span></td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 08_swe_agent_2 <span class="phase-badge phase-badge-warm" title="Continues prior turn - 1212 history tokens carried in KV cache">warm +1212</span></td>
+                <td class="num">21:24:13</td>
+                <td class="num">21:24:41</td>
+                <td class="num">10,251</td>
+                <td class="num">251</td>
+                <td class="num">10,502</td>
+                <td class="num">27.9</td>
+                <td class="num">9.003</td>
+                <td class="num">7.8471</td>
+                <td class="num">7,767</td>
+                <td class="num">80.135 ±0.701</td>
+                <td class="num" title="p50 / p99">- / -</td><td>-</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 09_warmup <span class="phase-badge phase-badge-cold" title="Fresh context - no prior turn KV cache reused">cold</span></td>
+                <td class="num">21:24:52</td>
+                <td class="num">21:24:56</td>
+                <td class="num">40</td>
+                <td class="num">65</td>
+                <td class="num">105</td>
+                <td class="num">4.2</td>
+                <td class="num">15.612</td>
+                <td class="num">0.2081</td>
+                <td class="num">146</td>
+                <td class="num">61.805 ±4.389</td>
+                <td class="num" title="p50 / p99">- / -</td><td>-</td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 10_swe_agent_0 <span class="phase-badge phase-badge-cold" title="Fresh context - no prior turn KV cache reused">cold</span></td>
+                <td class="num">21:25:01</td>
+                <td class="num">21:26:28</td>
+                <td class="num">8,198</td>
+                <td class="num">940</td>
+                <td class="num">9,138</td>
+                <td class="num">87.4</td>
+                <td class="num">10.753</td>
+                <td class="num">14.981</td>
+                <td class="num">14,904</td>
+                <td class="num">77.142 ±1.269</td>
+                <td class="num" title="p50 / p99">- / -</td><td><span class="tool-badge tool-badge-exec" title="apply_patch called 1x">apply_patch×1</span><span class="tool-badge" title="read_file called 3x">read_file×3</span><span class="tool-badge" title="mlperf-measured Tools time (real RunTools wall-clock, not inferred)">⏱0ms</span></td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 11_swe_agent_1 <span class="phase-badge phase-badge-warm" title="Continues prior turn - 149 history tokens carried in KV cache">warm +149</span></td>
+                <td class="num">21:26:33</td>
+                <td class="num">21:27:56</td>
+                <td class="num">8,979</td>
+                <td class="num">1,000</td>
+                <td class="num">9,979</td>
+                <td class="num">83.0</td>
+                <td class="num">12.042</td>
+                <td class="num">4.5588</td>
+                <td class="num">4,480</td>
+                <td class="num">78.559 ±1.167</td>
+                <td class="num" title="p50 / p99">- / -</td><td><span class="tool-badge tool-badge-exec" title="apply_patch called 1x">apply_patch×1</span><span class="tool-badge" title="read_file called 1x">read_file×1</span><span class="tool-badge" title="mlperf-measured Tools time (real RunTools wall-clock, not inferred)">⏱4149ms</span></td>
+            </tr>
+            <tr>
+                <td><span class="gantt-dot" style="background:#64B5F6"></span> 12_swe_agent_2 <span class="phase-badge phase-badge-warm" title="Continues prior turn - 1212 history tokens carried in KV cache">warm +1212</span></td>
+                <td class="num">21:28:06</td>
+                <td class="num">21:28:34</td>
+                <td class="num">10,251</td>
+                <td class="num">251</td>
+                <td class="num">10,502</td>
+                <td class="num">28.0</td>
+                <td class="num">8.952</td>
+                <td class="num">7.9225</td>
+                <td class="num">7,842</td>
+                <td class="num">80.469 ±0.825</td>
+                <td class="num" title="p50 / p99">- / -</td><td>-</td>
+            </tr>
+            <tr style="font-weight:600; border-top: 2px solid var(--border);">
+                <td>TOTAL</td>
+                <td></td><td></td>
+                <td class="num">82,404</td>
+                <td class="num">6,768</td>
+                <td class="num">89,172</td>
+                <td class="num">778.6</td>
+                <td class="num">8.69</td>
+                <td></td><td></td><td></td><td></td><td></td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+
+
+<div class="section"><h2>GPU Efficiency Analysis</h2><p style="color:var(--text2);font-size:0.8rem;">LLM decode is memory-bandwidth-bound: each token reads the full model weight from DRAM. Compute demand is theoretical (2×params); measured GEMM ceiling was recorded on a different reference iGPU (128 EU), not this machine's - treat as directional only. Memory BW utilization is the meaningful efficiency metric for decode.</p><table><tr><th>Metric</th><th>Value</th></tr><tr><td>End-to-End Throughput</td><td class="num">8.7 tok/s</td></tr><tr><td>Decode Throughput (sum-of-agents)</td><td class="num">12.9 tok/s</td></tr><tr><td>Model Weight</td><td class="num">3,984 MB</td></tr><tr><td>Est. Parameters</td><td class="num">~8.4B</td></tr><tr><td>FLOPs/Token (2×params est.)</td><td class="num">16.7 GFLOPs</td></tr><tr><td>Theoretical Compute Demand</td><td class="num">0.215 TFLOPS</td></tr><tr><td>Measured GPU INT4 GEMM Ceiling (different reference chip)</td><td class="num">0.078 TOPS</td></tr><tr><td>GPU Theoretical Peak (FP16 FMA)</td><td class="num">4.10 TFLOPS</td></tr><tr><td>DRAM BW Achieved</td><td class="num">50.1 GB/s</td></tr><tr><td>DRAM BW Peak (measured)</td><td class="num">102.4 GB/s</td></tr><tr><td>Memory BW Utilization</td><td class="num">48.9%</td></tr></table></div>
+
+<div class="section"><h2>iGPU Roofline Projection</h2>
+<p style="color:var(--text2);font-size:0.8rem;">Params estimated at ~8.4B from model weight size (0.5 bytes/weight). Prefill (▲) reuses weights across the whole prompt in one batched pass - high arithmetic intensity, typically compute-bound. Decode (●) re-reads the full weight per token (batch=1) - a small constant intensity (4.0 FLOPs/Byte) regardless of context length, the classic memory-bandwidth-bound signature. Points near/above a roof are running near that ceiling for this device. Memory roof (102.4 GB/s) is measured from this machine's actual memory configuration (channels × width × clock). Compute Utilization % (prefill only) is measured against this run's own best observed throughput, not a vendor spec - no verified compute peak exists in this codebase for the exact chip + real Llama GEMM shapes in use here (see docs/KPI_HUB_INTEGRATION_NOTES.md).</p>
+<div style="height:480px; width:100%;">                        <script>window.PlotlyConfig = {MathJaxConfig: 'local'};</script>
+        <script charset="utf-8" src="https://cdn.plot.ly/plotly-4.1.1.min.js" integrity="sha256-O24V1F27f8pb0glCkelh3cVHLNiHAJ5gCaVtq2aNch8=" crossorigin="anonymous"></script>                <div id="2006146f-7713-42fb-92a0-34d421a775b7" class="plotly-graph-div" style="height:100%; width:100%;"></div>            <script>                window.PLOTLYENV=window.PLOTLYENV || {};                                if (document.getElementById("2006146f-7713-42fb-92a0-34d421a775b7")) {                    Plotly.newPlot(                        "2006146f-7713-42fb-92a0-34d421a775b7",                        [{"line":{"dash":"solid","width":2},"mode":"lines","name":"iGPU Empirically Observed Peak (this run)","x":[0.5,330.41715696470857,82008.0],"y":[51.2,33834.71687318616,33834.71687318616],"type":"scatter"},{"line":{"dash":"dot","width":2},"mode":"lines","name":"Nova Lake reference iGPU, FP16 (different chip+shape, context only)","x":[0.5,40.0,82008.0],"y":[51.2,4096.0,4096.0],"type":"scatter"},{"line":{"dash":"dot","width":2},"mode":"lines","name":"Nova Lake reference iGPU, measured INT4 GEMM (different chip+shape, context only)","x":[0.5,0.76171875,82008.0],"y":[51.2,78.0,78.0],"type":"scatter"},{"hovertemplate":"%{text}\u003cbr\u003eAI=%{x:.2f} FLOPs\u002fB\u003cbr\u003e%{y:.1f} GFLOPs\u002fs\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#58a6ff","size":10,"symbol":"triangle-up"},"mode":"markers","name":"Prefill","text":["01_warmup (cold)","02_swe_agent_0 (cold)","03_swe_agent_1 (warm)","04_swe_agent_2 (warm)","05_warmup (cold)","06_swe_agent_0 (cold)","07_swe_agent_1 (warm)","08_swe_agent_2 (warm)","09_warmup (cold)","10_swe_agent_0 (cold)","11_swe_agent_1 (warm)","12_swe_agent_2 (warm)"],"x":[160.0,32792.0,35916.0,41004.0,160.0,32792.0,35916.0,41004.0,160.0,32792.0,35916.0,41004.0],"y":[4995.547723766817,9210.7376083137,33834.71687318616,21094.442176633667,4571.8487376197,9267.754412732846,33779.87076437941,22054.24336952955,4568.723755570745,9191.5175424505,33489.58795905184,21843.319083286922],"type":"scatter"},{"hovertemplate":"%{text}\u003cbr\u003eAI=%{x:.2f} FLOPs\u002fB\u003cbr\u003e%{y:.1f} GFLOPs\u002fs\u003cextra\u003e\u003c\u002fextra\u003e","marker":{"color":"#ff9838","size":10,"symbol":"circle"},"mode":"markers","name":"Decode","text":["01_warmup (cold)","02_swe_agent_0 (cold)","03_swe_agent_1 (warm)","04_swe_agent_2 (warm)","05_warmup (cold)","06_swe_agent_0 (cold)","07_swe_agent_1 (warm)","08_swe_agent_2 (warm)","09_warmup (cold)","10_swe_agent_0 (cold)","11_swe_agent_1 (warm)","12_swe_agent_2 (warm)"],"x":[4.0,4.0,4.0,4.0,4.0,4.0,4.0,4.0,4.0,4.0,4.0,4.0],"y":[270.018698165953,216.20291549897144,211.8770478907528,206.9721950059453,267.1437248964845,216.9467586206897,212.5859642766272,208.5244541835652,270.36820865625765,216.61490674340826,212.70773731844858,207.65893867203522],"type":"scatter"}],                        {"template":{"data":{"barpolar":[{"marker":{"line":{"color":"rgb(17,17,17)","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"barpolar"}],"bar":[{"error_x":{"color":"#f2f5fa"},"error_y":{"color":"#f2f5fa"},"marker":{"line":{"color":"rgb(17,17,17)","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"bar"}],"carpet":[{"aaxis":{"endlinecolor":"#A2B1C6","gridcolor":"#506784","linecolor":"#506784","minorgridcolor":"#506784","startlinecolor":"#A2B1C6"},"baxis":{"endlinecolor":"#A2B1C6","gridcolor":"#506784","linecolor":"#506784","minorgridcolor":"#506784","startlinecolor":"#A2B1C6"},"type":"carpet"}],"choropleth":[{"colorbar":{"outlinewidth":0,"ticks":""},"type":"choropleth"}],"contourcarpet":[{"colorbar":{"outlinewidth":0,"ticks":""},"type":"contourcarpet"}],"contour":[{"colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"type":"contour"}],"heatmap":[{"colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"type":"heatmap"}],"histogram2dcontour":[{"colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"type":"histogram2dcontour"}],"histogram2d":[{"colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"type":"histogram2d"}],"histogram":[{"marker":{"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"histogram"}],"mesh3d":[{"colorbar":{"outlinewidth":0,"ticks":""},"type":"mesh3d"}],"parcoords":[{"line":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"parcoords"}],"pie":[{"automargin":true,"type":"pie"}],"scatter3d":[{"line":{"colorbar":{"outlinewidth":0,"ticks":""}},"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scatter3d"}],"scattercarpet":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scattercarpet"}],"scattergeo":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scattergeo"}],"scattergl":[{"marker":{"line":{"color":"#283442"}},"type":"scattergl"}],"scattermap":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scattermap"}],"scatterpolargl":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scatterpolargl"}],"scatterpolar":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scatterpolar"}],"scatter":[{"marker":{"line":{"color":"#283442"}},"type":"scatter"}],"scatterternary":[{"marker":{"colorbar":{"outlinewidth":0,"ticks":""}},"type":"scatterternary"}],"surface":[{"colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"type":"surface"}],"table":[{"cells":{"fill":{"color":"#506784"},"line":{"color":"rgb(17,17,17)"}},"header":{"fill":{"color":"#2a3f5f"},"line":{"color":"rgb(17,17,17)"}},"type":"table"}]},"layout":{"annotationdefaults":{"arrowcolor":"#f2f5fa","arrowhead":0,"arrowwidth":1},"autotypenumbers":"strict","coloraxis":{"colorbar":{"outlinewidth":0,"ticks":""}},"colorscale":{"diverging":[[0,"#8e0152"],[0.1,"#c51b7d"],[0.2,"#de77ae"],[0.3,"#f1b6da"],[0.4,"#fde0ef"],[0.5,"#f7f7f7"],[0.6,"#e6f5d0"],[0.7,"#b8e186"],[0.8,"#7fbc41"],[0.9,"#4d9221"],[1,"#276419"]],"sequential":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"sequentialminus":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]},"colorway":["#636efa","#EF553B","#00cc96","#ab63fa","#FFA15A","#19d3f3","#FF6692","#B6E880","#FF97FF","#FECB52"],"font":{"color":"#f2f5fa"},"geo":{"bgcolor":"rgb(17,17,17)","lakecolor":"rgb(17,17,17)","landcolor":"rgb(17,17,17)","showlakes":true,"showland":true,"subunitcolor":"#506784"},"hoverlabel":{"align":"left"},"hovermode":"closest","paper_bgcolor":"rgb(17,17,17)","plot_bgcolor":"rgb(17,17,17)","polar":{"angularaxis":{"gridcolor":"#506784","linecolor":"#506784","ticks":""},"bgcolor":"rgb(17,17,17)","radialaxis":{"gridcolor":"#506784","linecolor":"#506784","ticks":""}},"scene":{"xaxis":{"backgroundcolor":"rgb(17,17,17)","gridcolor":"#506784","gridwidth":2,"linecolor":"#506784","showbackground":true,"ticks":"","zerolinecolor":"#C8D4E3"},"yaxis":{"backgroundcolor":"rgb(17,17,17)","gridcolor":"#506784","gridwidth":2,"linecolor":"#506784","showbackground":true,"ticks":"","zerolinecolor":"#C8D4E3"},"zaxis":{"backgroundcolor":"rgb(17,17,17)","gridcolor":"#506784","gridwidth":2,"linecolor":"#506784","showbackground":true,"ticks":"","zerolinecolor":"#C8D4E3"}},"shapedefaults":{"line":{"color":"#f2f5fa"}},"sliderdefaults":{"bgcolor":"#C8D4E3","bordercolor":"rgb(17,17,17)","borderwidth":1,"tickwidth":0},"ternary":{"aaxis":{"gridcolor":"#506784","linecolor":"#506784","ticks":""},"baxis":{"gridcolor":"#506784","linecolor":"#506784","ticks":""},"bgcolor":"rgb(17,17,17)","caxis":{"gridcolor":"#506784","linecolor":"#506784","ticks":""}},"title":{"x":0.05},"updatemenudefaults":{"bgcolor":"#506784","borderwidth":0},"xaxis":{"automargin":true,"gridcolor":"#283442","linecolor":"#506784","ticks":"","title":{"standoff":15},"zerolinecolor":"#283442","zerolinewidth":2},"yaxis":{"automargin":true,"gridcolor":"#283442","linecolor":"#506784","ticks":"","title":{"standoff":15},"zerolinecolor":"#283442","zerolinewidth":2}}},"xaxis":{"type":"log","title":{"text":"Arithmetic Intensity (FLOPs\u002fByte)"}},"yaxis":{"type":"log","title":{"text":"Achieved Performance (GFLOPs\u002fs)"}},"margin":{"l":60,"r":20,"t":20,"b":50},"legend":{"orientation":"h","yanchor":"bottom","y":1.02},"height":480,"paper_bgcolor":"rgba(0,0,0,0)","plot_bgcolor":"rgba(22,27,34,1)"},                        {"responsive": true}                    )                };            </script>        </div>
+<table><tr><th>Stage</th><th>Phase</th><th style="text-align:right">AI (FLOPs/Byte)</th><th style="text-align:right">GFLOPs/s</th><th style="text-align:right">Compute Util. %</th></tr>
+<tr><td>01_warmup</td><td>decode</td><td class="num">4.00</td><td class="num">270.0</td><td class="num">0.0%</td></tr><tr><td>01_warmup</td><td>prefill</td><td class="num">160.00</td><td class="num">4995.5</td><td class="num">14.8%</td></tr><tr><td>02_swe_agent_0</td><td>decode</td><td class="num">4.00</td><td class="num">216.2</td><td class="num">0.0%</td></tr><tr><td>02_swe_agent_0</td><td>prefill</td><td class="num">32792.00</td><td class="num">9210.7</td><td class="num">27.2%</td></tr><tr><td>03_swe_agent_1</td><td>decode</td><td class="num">4.00</td><td class="num">211.9</td><td class="num">0.0%</td></tr><tr><td>03_swe_agent_1</td><td>prefill</td><td class="num">35916.00</td><td class="num">33834.7</td><td class="num">100.0%</td></tr><tr><td>04_swe_agent_2</td><td>decode</td><td class="num">4.00</td><td class="num">207.0</td><td class="num">0.0%</td></tr><tr><td>04_swe_agent_2</td><td>prefill</td><td class="num">41004.00</td><td class="num">21094.4</td><td class="num">62.3%</td></tr><tr><td>05_warmup</td><td>decode</td><td class="num">4.00</td><td class="num">267.1</td><td class="num">0.0%</td></tr><tr><td>05_warmup</td><td>prefill</td><td class="num">160.00</td><td class="num">4571.8</td><td class="num">13.5%</td></tr><tr><td>06_swe_agent_0</td><td>decode</td><td class="num">4.00</td><td class="num">216.9</td><td class="num">0.0%</td></tr><tr><td>06_swe_agent_0</td><td>prefill</td><td class="num">32792.00</td><td class="num">9267.8</td><td class="num">27.4%</td></tr><tr><td>07_swe_agent_1</td><td>decode</td><td class="num">4.00</td><td class="num">212.6</td><td class="num">0.0%</td></tr><tr><td>07_swe_agent_1</td><td>prefill</td><td class="num">35916.00</td><td class="num">33779.9</td><td class="num">99.8%</td></tr><tr><td>08_swe_agent_2</td><td>decode</td><td class="num">4.00</td><td class="num">208.5</td><td class="num">0.0%</td></tr><tr><td>08_swe_agent_2</td><td>prefill</td><td class="num">41004.00</td><td class="num">22054.2</td><td class="num">65.2%</td></tr><tr><td>09_warmup</td><td>decode</td><td class="num">4.00</td><td class="num">270.4</td><td class="num">0.0%</td></tr><tr><td>09_warmup</td><td>prefill</td><td class="num">160.00</td><td class="num">4568.7</td><td class="num">13.5%</td></tr><tr><td>10_swe_agent_0</td><td>decode</td><td class="num">4.00</td><td class="num">216.6</td><td class="num">0.0%</td></tr><tr><td>10_swe_agent_0</td><td>prefill</td><td class="num">32792.00</td><td class="num">9191.5</td><td class="num">27.2%</td></tr><tr><td>11_swe_agent_1</td><td>decode</td><td class="num">4.00</td><td class="num">212.7</td><td class="num">0.0%</td></tr><tr><td>11_swe_agent_1</td><td>prefill</td><td class="num">35916.00</td><td class="num">33489.6</td><td class="num">99.0%</td></tr><tr><td>12_swe_agent_2</td><td>decode</td><td class="num">4.00</td><td class="num">207.7</td><td class="num">0.0%</td></tr><tr><td>12_swe_agent_2</td><td>prefill</td><td class="num">41004.00</td><td class="num">21843.3</td><td class="num">64.6%</td></tr></table></div>
+
+<div class="section"><h2>Model Weight</h2><table><tr><th>Property</th><th>Value</th></tr><tr><td>Total Size</td><td class="num">3,984 MB (3.89 GB)</td></tr><tr><td>Path</td><td><code>C:\Applications\mlperf_client\mlperf_v2p0\dependencies\llm\llama3\models\NativeOpenVINO\Llama-3.1-8B-Instruct_ov-int4-GRw</code></td></tr></table></div>
+
+
+
+
+
+<div class="section"><h2>System Under Test — Hardware</h2><table><tr><th style="width:200px">Component</th><th>Detail</th></tr><tr><td>Platform</td><td>Nova Lake Client Platform</td></tr><tr><td>OEM</td><td>Intel Corporation</td></tr><tr><td>CPU</td><td>Genuine Intel(R) 0000</td></tr><tr><td>Cores / Threads</td><td>28 / 28</td></tr><tr><td>Max Clock</td><td>3300 MHz</td></tr><tr><td>RAM</td><td>95.4 GB</td></tr><tr><td>DRAM BW (measured config)</td><td>102.4 GB/s (2 ch)</td></tr><tr><td>Intel iGPU</td><td>Intel(R) Graphics (16 EUs (10 threads/EU, SIMD16), 2 Xe Cores, 2400 MHz, DevID 0xD740)</td></tr><tr><td>iGPU VRAM</td><td>2047 MB dedicated / 50.7 GB max (shared USM)</td></tr><tr><td>NVIDIA GPU</td><td>NVIDIA GeForce RTX 5070 (Blackwell, SM 12.0)</td></tr><tr><td>NVIDIA VRAM</td><td>12227 MiB</td></tr><tr><td>NVIDIA Perf</td><td>SM 3090 MHz · Mem 14001 MHz · PCIe Gen5 x16 · TDP 250 W</td></tr><tr><td>NPU</td><td>Intel(R) NPU</td></tr><tr><td>Hostname</td><td>JF04WVAW0381-TA</td></tr><tr><td>OS</td><td>Windows 10.0.26200</td></tr></table></div><div class="section"><h2>System Under Test — Software / Middleware</h2><table><tr><th style="width:200px">Component</th><th>Version</th></tr><tr><td>Python</td><td><code>3.13.14</code></td></tr><tr><td>OVMS</td><td><code>2026.2.1.1122f03bf</code></td></tr><tr><td>OpenVINO Backend</td><td><code>2026.2.1-21919-ede283a88e3-releases/2026/2</code></td></tr><tr><td>OpenVINO (pip)</td><td><code>-</code></td></tr><tr><td>Agent Framework</td><td><code>-</code></td></tr><tr><td>Agent Framework Core</td><td><code>-</code></td></tr><tr><td>OpenAI SDK</td><td><code>-</code></td></tr><tr><td>MCP SDK</td><td><code>-</code></td></tr><tr><td>FastAPI</td><td><code>-</code></td></tr><tr><td>Plotly</td><td><code>7.1.0</code></td></tr><tr><td>NVIDIA Driver</td><td><code>610.74</code></td></tr><tr><td>Intel iGPU Driver</td><td><code>32.0.101.8907</code></td></tr><tr><td>NPU Driver</td><td><code>10.0.26100.8521</code></td></tr></table></div>
+
+<div style="color:var(--text2); font-size:0.75rem; text-align:center; margin-top:20px;">
+    LiteAgent-Clash &mdash; Heterogeneous AI Workload Orchestration
+</div>
+
+</body>
+</html>

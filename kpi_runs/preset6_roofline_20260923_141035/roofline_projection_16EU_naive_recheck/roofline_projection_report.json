@@ -1,0 +1,569 @@
+{
+  "baseline_spec": {
+    "name": "current_baseline_TEMPLATE (EDIT ME before use)",
+    "cpu_cores": 8,
+    "cpu_freq_ghz": 4.0,
+    "igpu_xecores": 96,
+    "igpu_freq_ghz": 2.0,
+    "npu_macs": 2048,
+    "npu_freq_ghz": 1.4,
+    "mem_channels": 8,
+    "mem_width_bits": 16,
+    "mem_freq_mts": 8533,
+    "notes": "Fill in the REAL specs of the machine that produced your kpi_runs/<experiment> baseline before running tools/run_roofline_projection.py --baseline-spec against this file. cpu_cores/cpu_freq_ghz, igpu_xecores/igpu_freq_ghz and npu_macs/npu_freq_ghz are NOT auto-detectable from the benchmark tooling (see docs/KPI_HUB_INTEGRATION_NOTES.md) - you must supply them from the chip's datasheet/spec sheet. mem_channels/mem_width_bits/mem_freq_mts CAN be auto-detected per-machine (see tools/KPI-hub/generate_kpi_report.py::_collect_sut_info, dram_bw_gbs/dram_channels in a kpi_report.html's SUT Info section) - the defaults below (8 channels x 16-bit x 8533 MT/s = 136.5 GB/s) match one specific machine already validated in this repo (see docs/AGENTIC_WORKFLOW_CHARACTERIZATION.md section 10) - replace with your own machine's detected values."
+  },
+  "target_spec": {
+    "name": "JF04WVAW0381-TA_16EU_real_secondSUT",
+    "cpu_cores": 28,
+    "cpu_freq_ghz": 3.3,
+    "igpu_xecores": 16,
+    "igpu_freq_ghz": 2.0,
+    "npu_macs": 2048,
+    "npu_freq_ghz": 1.4,
+    "mem_channels": 2,
+    "mem_width_bits": 64,
+    "mem_freq_mts": 6400,
+    "notes": "REAL second SUT (companion project's JF04WVAW0381-TA, Nova Lake client, onboarded 2026-09-28) - NOT hypothetical, but no full agentic mlperf SWE-Agent/Data-Agent run exists on it yet, only a raw OpenVINO PERF_COUNT prefill/TTFT sweep + GEMM census + microbenchmark suite (see C:\\portable_agentic_soc_suite\\doc\\sut\\JF04WVAW0381-TA.md). cpu_cores=28 sums this machine's real 12 P-cores + 16 E-cores (this repo's Amdahl model has no P/E distinction, same limitation as elsewhere in the doc). igpu_xecores=16 is confirmed via OpenVINO's gpu_execution_units_count device query, not a guess. mem_freq_mts=6400 with mem_channels=2/mem_width_bits=64 gives the 102.4 GB/s DDR5 dual-channel THEORETICAL peak (this machine's own empirical bulk-copy figure was only 9.45 GB/s via the OpenVINO GPU plugin / 55.5 GB/s via native oneMKL - use whichever convention matches how you're comparing, they differ by >10x). igpu_freq_ghz/npu_macs/npu_freq_ghz are NOT independently verified for this machine - copied from this repo's own default placeholder pending real datasheet values."
+  },
+  "assumptions": {
+    "compute_efficiency_retention": 0.85,
+    "memory_efficiency_retention": 0.85,
+    "cpu_efficiency_retention": 0.85,
+    "tool_parallel_fraction": 0.5,
+    "power_scaling_exponent": 1.0
+  },
+  "device_type": "GPU",
+  "model": "Llama-3.1-8B-Instruct_ov-int4-GRw",
+  "params_b": 8.355053568,
+  "stages": [
+    {
+      "name": "01_warmup",
+      "is_cold": true,
+      "input_tokens": 40,
+      "output_tokens": 53,
+      "baseline_wall_s": 7.085999990463257,
+      "projected_wall_s": 6.887535748634623,
+      "baseline": {
+        "prefill_s": 0.0992,
+        "decode_s": 1.9755749999999999,
+        "stage_overhead_s": 0.0012250000000002537,
+        "tool_exec_gap_s": 5.009999990463257
+      },
+      "projected": {
+        "prefill_s": 0.34011428571428576,
+        "decode_s": 2.508587336959352,
+        "stage_overhead_s": 0.0012250000000002537,
+        "tool_exec_gap_s": 4.037609125960985
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 136.5,
+      "projected_ttft_ms": 387.44612226068864,
+      "baseline_itl_ms": 37.275,
+      "projected_itl_ms": 47.33183654640287,
+      "tool_calls": {},
+      "baseline_power_w": {
+        "cpu": 11.351428571428572,
+        "igpu": 3.0300000000000002,
+        "npu": 0.36,
+        "soc": 19.88571428571429
+      },
+      "projected_power_w": {
+        "cpu": 32.77725,
+        "igpu": 0.505,
+        "npu": 0.36,
+        "soc": 19.88571428571429
+      }
+    },
+    {
+      "name": "02_swe_agent_0",
+      "is_cold": true,
+      "input_tokens": 8198,
+      "output_tokens": 1000,
+      "baseline_wall_s": 94.55299984550476,
+      "projected_wall_s": 224.39455384342716,
+      "baseline": {
+        "prefill_s": 49.4065,
+        "decode_s": 40.13,
+        "stage_overhead_s": 0.004499999999993065,
+        "tool_exec_gap_s": 5.011999845504761
+      },
+      "projected": {
+        "prefill_s": 169.3937142857143,
+        "decode_s": 50.957118728561966,
+        "stage_overhead_s": 0.004499999999993065,
+        "tool_exec_gap_s": 4.039220829150915
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 49446.6,
+      "projected_ttft_ms": 169444.6714044429,
+      "baseline_itl_ms": 40.13,
+      "projected_itl_ms": 50.957118728561966,
+      "tool_calls": {},
+      "baseline_power_w": {
+        "cpu": 6.989894736842109,
+        "igpu": 16.79852631578948,
+        "npu": 0.35884210526315785,
+        "soc": 30.389368421052634
+      },
+      "projected_power_w": {
+        "cpu": 20.183321052631587,
+        "igpu": 2.7997543859649134,
+        "npu": 0.35884210526315785,
+        "soc": 30.389368421052634
+      }
+    },
+    {
+      "name": "03_swe_agent_1",
+      "is_cold": false,
+      "input_tokens": 8979,
+      "output_tokens": 1000,
+      "baseline_wall_s": 59.33099994087219,
+      "projected_wall_s": 90.30911368300256,
+      "baseline": {
+        "prefill_s": 9.065299999999999,
+        "decode_s": 40.349,
+        "stage_overhead_s": 0.004699999999999704,
+        "tool_exec_gap_s": 9.911999940872192
+      },
+      "projected": {
+        "prefill_s": 31.081028571428572,
+        "decode_s": 51.23520517265752,
+        "stage_overhead_s": 0.004699999999999704,
+        "tool_exec_gap_s": 7.988179938916474
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 9105.6,
+      "projected_ttft_ms": 31132.26377660123,
+      "baseline_itl_ms": 40.349,
+      "projected_itl_ms": 51.23520517265752,
+      "tool_calls": {
+        "read_file": 4
+      },
+      "baseline_power_w": {
+        "cpu": 10.021864406779663,
+        "igpu": 12.577627118644068,
+        "npu": 0.3866101694915253,
+        "soc": 31.151355932203387
+      },
+      "projected_power_w": {
+        "cpu": 28.938133474576276,
+        "igpu": 2.096271186440678,
+        "npu": 0.3866101694915253,
+        "soc": 31.151355932203387
+      }
+    },
+    {
+      "name": "04_swe_agent_2",
+      "is_cold": false,
+      "input_tokens": 10251,
+      "output_tokens": 1000,
+      "baseline_wall_s": 67.615000082016,
+      "projected_wall_s": 116.79842400857586,
+      "baseline": {
+        "prefill_s": 16.5604,
+        "decode_s": 40.685,
+        "stage_overhead_s": 0.005599999999994054,
+        "tool_exec_gap_s": 10.364000082015991
+      },
+      "projected": {
+        "prefill_s": 56.778514285714294,
+        "decode_s": 51.66185834716032,
+        "stage_overhead_s": 0.005599999999994054,
+        "tool_exec_gap_s": 8.352451375701268
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 16601.1,
+      "projected_ttft_ms": 56830.17614406145,
+      "baseline_itl_ms": 40.685,
+      "projected_itl_ms": 51.66185834716032,
+      "tool_calls": {},
+      "baseline_power_w": {
+        "cpu": 9.409852941176473,
+        "igpu": 13.46220588235294,
+        "npu": 0.3875,
+        "soc": 30.867205882352938
+      },
+      "projected_power_w": {
+        "cpu": 27.170950367647063,
+        "igpu": 2.2437009803921564,
+        "npu": 0.3875,
+        "soc": 30.867205882352938
+      }
+    },
+    {
+      "name": "05_warmup",
+      "is_cold": true,
+      "input_tokens": 40,
+      "output_tokens": 53,
+      "baseline_wall_s": 7.016000020980835,
+      "projected_wall_s": 6.766739698032229,
+      "baseline": {
+        "prefill_s": 0.0828,
+        "decode_s": 1.9298889999999997,
+        "stage_overhead_s": 0.00031100000000017225,
+        "tool_exec_gap_s": 5.003000020980835
+      },
+      "projected": {
+        "prefill_s": 0.2838857142857143,
+        "decode_s": 2.4505752032381185,
+        "stage_overhead_s": 0.00031100000000017225,
+        "tool_exec_gap_s": 4.0319677805083955
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 119.2,
+      "projected_ttft_ms": 330.1229822713392,
+      "baseline_itl_ms": 36.413,
+      "projected_itl_ms": 46.23726798562488,
+      "tool_calls": {},
+      "baseline_power_w": {
+        "cpu": 7.302857142857144,
+        "igpu": 2.5985714285714283,
+        "npu": 0.3471428571428571,
+        "soc": 14.785714285714283
+      },
+      "projected_power_w": {
+        "cpu": 21.087000000000003,
+        "igpu": 0.43309523809523803,
+        "npu": 0.3471428571428571,
+        "soc": 14.785714285714283
+      }
+    },
+    {
+      "name": "06_swe_agent_0",
+      "is_cold": true,
+      "input_tokens": 8198,
+      "output_tokens": 1000,
+      "baseline_wall_s": 94.51300009346008,
+      "projected_wall_s": 224.09334232364426,
+      "baseline": {
+        "prefill_s": 49.2887,
+        "decode_s": 40.215,
+        "stage_overhead_s": 0.007299999999993645,
+        "tool_exec_gap_s": 5.002000093460083
+      },
+      "projected": {
+        "prefill_s": 168.98982857142857,
+        "decode_s": 51.065051823302255,
+        "stage_overhead_s": 0.007299999999993645,
+        "tool_exec_gap_s": 4.0311619289134315
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 49328.899999999994,
+      "projected_ttft_ms": 169040.89362325188,
+      "baseline_itl_ms": 40.215,
+      "projected_itl_ms": 51.065051823302255,
+      "tool_calls": {},
+      "baseline_power_w": {
+        "cpu": 6.789255319148933,
+        "igpu": 16.838829787234044,
+        "npu": 0.3582978723404254,
+        "soc": 30.241808510638297
+      },
+      "projected_power_w": {
+        "cpu": 19.60397473404254,
+        "igpu": 2.8064716312056737,
+        "npu": 0.3582978723404254,
+        "soc": 30.241808510638297
+      }
+    },
+    {
+      "name": "07_swe_agent_1",
+      "is_cold": false,
+      "input_tokens": 8979,
+      "output_tokens": 1000,
+      "baseline_wall_s": 59.39899989128113,
+      "projected_wall_s": 90.39103053794295,
+      "baseline": {
+        "prefill_s": 9.0693,
+        "decode_s": 40.384,
+        "stage_overhead_s": 0.006700000000002149,
+        "tool_exec_gap_s": 9.938999891281128
+      },
+      "projected": {
+        "prefill_s": 31.09474285714286,
+        "decode_s": 51.27964821166824,
+        "stage_overhead_s": 0.006700000000002149,
+        "tool_exec_gap_s": 8.009939469131869
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 9109.7,
+      "projected_ttft_ms": 31146.02250535453,
+      "baseline_itl_ms": 40.384,
+      "projected_itl_ms": 51.27964821166824,
+      "tool_calls": {
+        "read_file": 4
+      },
+      "baseline_power_w": {
+        "cpu": 9.874237288135593,
+        "igpu": 12.524237288135595,
+        "npu": 0.3840677966101695,
+        "soc": 30.787966101694916
+      },
+      "projected_power_w": {
+        "cpu": 28.51186016949152,
+        "igpu": 2.0873728813559325,
+        "npu": 0.3840677966101695,
+        "soc": 30.787966101694916
+      }
+    },
+    {
+      "name": "08_swe_agent_2",
+      "is_cold": false,
+      "input_tokens": 10251,
+      "output_tokens": 1000,
+      "baseline_wall_s": 66.84699998664857,
+      "projected_wall_s": 116.06853703575248,
+      "baseline": {
+        "prefill_s": 16.5347,
+        "decode_s": 40.59,
+        "stage_overhead_s": 0.00829999999999842,
+        "tool_exec_gap_s": 9.71399998664856
+      },
+      "projected": {
+        "prefill_s": 56.69040000000001,
+        "decode_s": 51.541227241274115,
+        "stage_overhead_s": 0.00829999999999842,
+        "tool_exec_gap_s": 7.828609794478355
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 16575.3,
+      "projected_ttft_ms": 56741.94122724128,
+      "baseline_itl_ms": 40.59,
+      "projected_itl_ms": 51.541227241274115,
+      "tool_calls": {},
+      "baseline_power_w": {
+        "cpu": 9.737611940298505,
+        "igpu": 13.890000000000002,
+        "npu": 0.38865671641791044,
+        "soc": 31.742388059701497
+      },
+      "projected_power_w": {
+        "cpu": 28.11735447761193,
+        "igpu": 2.3150000000000004,
+        "npu": 0.38865671641791044,
+        "soc": 31.742388059701497
+      }
+    },
+    {
+      "name": "09_warmup",
+      "is_cold": true,
+      "input_tokens": 40,
+      "output_tokens": 53,
+      "baseline_wall_s": 7.017999990463257,
+      "projected_wall_s": 6.7740929101164795,
+      "baseline": {
+        "prefill_s": 0.0866,
+        "decode_s": 1.9205610000000002,
+        "stage_overhead_s": 0.0008389999999998121,
+        "tool_exec_gap_s": 5.009999990463257
+      },
+      "projected": {
+        "prefill_s": 0.29691428571428574,
+        "decode_s": 2.4387304984412084,
+        "stage_overhead_s": 0.0008389999999998121,
+        "tool_exec_gap_s": 4.037609125960985
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 122.80000000000001,
+      "projected_ttft_ms": 342.92806870374255,
+      "baseline_itl_ms": 36.237,
+      "projected_itl_ms": 46.013782989456764,
+      "tool_calls": {},
+      "baseline_power_w": {
+        "cpu": 6.884285714285715,
+        "igpu": 2.5642857142857145,
+        "npu": 0.35000000000000003,
+        "soc": 14.205714285714285
+      },
+      "projected_power_w": {
+        "cpu": 19.878375000000002,
+        "igpu": 0.4273809523809524,
+        "npu": 0.35000000000000003,
+        "soc": 14.205714285714285
+      }
+    },
+    {
+      "name": "10_swe_agent_0",
+      "is_cold": true,
+      "input_tokens": 8198,
+      "output_tokens": 1000,
+      "baseline_wall_s": 94.29700002098083,
+      "projected_wall_s": 223.74528397461273,
+      "baseline": {
+        "prefill_s": 49.254400000000004,
+        "decode_s": 40.035,
+        "stage_overhead_s": 0.004599999999996385,
+        "tool_exec_gap_s": 5.003000020980835
+      },
+      "projected": {
+        "prefill_s": 168.8722285714286,
+        "decode_s": 50.836487622675754,
+        "stage_overhead_s": 0.004599999999996385,
+        "tool_exec_gap_s": 4.0319677805083955
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 49294.4,
+      "projected_ttft_ms": 168923.06505905127,
+      "baseline_itl_ms": 40.035,
+      "projected_itl_ms": 50.836487622675754,
+      "tool_calls": {},
+      "baseline_power_w": {
+        "cpu": 7.388085106382979,
+        "igpu": 17.0481914893617,
+        "npu": 0.36585106382978716,
+        "soc": 31.167659574468082
+      },
+      "projected_power_w": {
+        "cpu": 21.33309574468085,
+        "igpu": 2.84136524822695,
+        "npu": 0.36585106382978716,
+        "soc": 31.167659574468082
+      }
+    },
+    {
+      "name": "11_swe_agent_1",
+      "is_cold": false,
+      "input_tokens": 8979,
+      "output_tokens": 1000,
+      "baseline_wall_s": 59.26200005722046,
+      "projected_wall_s": 90.13392301642361,
+      "baseline": {
+        "prefill_s": 9.030700000000001,
+        "decode_s": 40.287,
+        "stage_overhead_s": 0.004300000000000637,
+        "tool_exec_gap_s": 9.940000057220459
+      },
+      "projected": {
+        "prefill_s": 30.96240000000001,
+        "decode_s": 51.15647750355284,
+        "stage_overhead_s": 0.004300000000000637,
+        "tool_exec_gap_s": 8.010745512870752
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 9071.0,
+      "projected_ttft_ms": 31013.55647750356,
+      "baseline_itl_ms": 40.287,
+      "projected_itl_ms": 51.15647750355284,
+      "tool_calls": {
+        "read_file": 4
+      },
+      "baseline_power_w": {
+        "cpu": 8.810166666666667,
+        "igpu": 12.594333333333335,
+        "npu": 0.36333333333333323,
+        "soc": 29.724666666666668
+      },
+      "projected_power_w": {
+        "cpu": 25.43935625,
+        "igpu": 2.0990555555555557,
+        "npu": 0.36333333333333323,
+        "soc": 29.724666666666668
+      }
+    },
+    {
+      "name": "12_swe_agent_2",
+      "is_cold": false,
+      "input_tokens": 10251,
+      "output_tokens": 1000,
+      "baseline_wall_s": 58.25754190063476,
+      "projected_wall_s": 109.18860414542769,
+      "baseline": {
+        "prefill_s": 16.5441,
+        "decode_s": 40.628,
+        "stage_overhead_s": 0.008899999999997021,
+        "tool_exec_gap_s": 1.0765419006347656
+      },
+      "projected": {
+        "prefill_s": 56.72262857142858,
+        "decode_s": 51.58947968362859,
+        "stage_overhead_s": 0.008899999999997021,
+        "tool_exec_gap_s": 0.8675958903705296
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 16584.7,
+      "projected_ttft_ms": 56774.218051112206,
+      "baseline_itl_ms": 40.628,
+      "projected_itl_ms": 51.58947968362859,
+      "tool_calls": {},
+      "baseline_power_w": {
+        "cpu": 8.13051724137931,
+        "igpu": 14.39689655172414,
+        "npu": 0.36120689655172405,
+        "soc": 30.17655172413793
+      },
+      "projected_power_w": {
+        "cpu": 23.476868534482758,
+        "igpu": 2.3994827586206897,
+        "npu": 0.36120689655172405,
+        "soc": 30.17655172413793
+      }
+    }
+  ],
+  "baseline_wall_time_s": 689.77,
+  "projected_wall_time_s": 1320.1266391050667,
+  "fixed_overhead_s": 14.575458179473912,
+  "total_output_tokens": 9159,
+  "baseline_tok_s": 13.278339156530437,
+  "projected_tok_s": 6.937970743631854,
+  "baseline_energy_j": 36073.26406295325,
+  "projected_energy_j": 74189.59124771865,
+  "baseline_tok_per_j": 0.2538999516100393,
+  "projected_tok_per_j": 0.12345397576619808,
+  "avg_baseline_ttft_ms": 24580.997980128835,
+  "avg_projected_ttft_ms": 84190.74294342197,
+  "avg_baseline_itl_ms": 40.302328310950976,
+  "avg_projected_itl_ms": 51.17594140988321,
+  "measured_accel_busy_pct": 59.89089007456527,
+  "measured_mem_bw_gbs": 61.237501507930965,
+  "measured_mem_bw_efficiency_pct": 44.85343776216671,
+  "wall_time_speedup_x": 0.5225029020455229,
+  "wall_time_reduction_pct": -91.3864968185144
+}

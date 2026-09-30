@@ -1,0 +1,461 @@
+{
+  "baseline_spec": {
+    "name": "current_baseline_TEMPLATE (EDIT ME before use)",
+    "cpu_cores": 8,
+    "cpu_freq_ghz": 4.0,
+    "igpu_xecores": 96,
+    "igpu_freq_ghz": 2.0,
+    "npu_macs": 2048,
+    "npu_freq_ghz": 1.4,
+    "mem_channels": 8,
+    "mem_width_bits": 16,
+    "mem_freq_mts": 8533,
+    "notes": "Fill in the REAL specs of the machine that produced your kpi_runs/<experiment> baseline before running tools/run_roofline_projection.py --baseline-spec against this file. cpu_cores/cpu_freq_ghz, igpu_xecores/igpu_freq_ghz and npu_macs/npu_freq_ghz are NOT auto-detectable from the benchmark tooling (see docs/KPI_HUB_INTEGRATION_NOTES.md) - you must supply them from the chip's datasheet/spec sheet. mem_channels/mem_width_bits/mem_freq_mts CAN be auto-detected per-machine (see tools/KPI-hub/generate_kpi_report.py::_collect_sut_info, dram_bw_gbs/dram_channels in a kpi_report.html's SUT Info section) - the defaults below (8 channels x 16-bit x 8533 MT/s = 136.5 GB/s) match one specific machine already validated in this repo (see docs/AGENTIC_WORKFLOW_CHARACTERIZATION.md section 10) - replace with your own machine's detected values."
+  },
+  "target_spec": {
+    "name": "JF04WVAW0381-TA_16EU_real_secondSUT",
+    "cpu_cores": 28,
+    "cpu_freq_ghz": 3.3,
+    "igpu_xecores": 16,
+    "igpu_freq_ghz": 2.0,
+    "npu_macs": 2048,
+    "npu_freq_ghz": 1.4,
+    "mem_channels": 2,
+    "mem_width_bits": 64,
+    "mem_freq_mts": 6400,
+    "notes": "REAL second SUT (companion project's JF04WVAW0381-TA, Nova Lake client, onboarded 2026-09-28) - NOT hypothetical, but no full agentic mlperf SWE-Agent/Data-Agent run exists on it yet, only a raw OpenVINO PERF_COUNT prefill/TTFT sweep + GEMM census + microbenchmark suite (see C:\\portable_agentic_soc_suite\\doc\\sut\\JF04WVAW0381-TA.md). cpu_cores=28 sums this machine's real 12 P-cores + 16 E-cores (this repo's Amdahl model has no P/E distinction, same limitation as elsewhere in the doc). igpu_xecores=16 is confirmed via OpenVINO's gpu_execution_units_count device query, not a guess. mem_freq_mts=6400 with mem_channels=2/mem_width_bits=64 gives the 102.4 GB/s DDR5 dual-channel THEORETICAL peak (this machine's own empirical bulk-copy figure was only 9.45 GB/s via the OpenVINO GPU plugin / 55.5 GB/s via native oneMKL - use whichever convention matches how you're comparing, they differ by >10x). igpu_freq_ghz/npu_macs/npu_freq_ghz are NOT independently verified for this machine - copied from this repo's own default placeholder pending real datasheet values."
+  },
+  "assumptions": {
+    "compute_efficiency_retention": 0.85,
+    "memory_efficiency_retention": 0.85,
+    "cpu_efficiency_retention": 0.85,
+    "tool_parallel_fraction": 0.5,
+    "power_scaling_exponent": 1.0
+  },
+  "device_type": "GPU",
+  "model": "Llama-3.1-8B-Instruct_ov-int4-GRw",
+  "params_b": 8.355053568,
+  "stages": [
+    {
+      "name": "01_warmup",
+      "is_cold": true,
+      "input_tokens": 40,
+      "output_tokens": 65,
+      "baseline_wall_s": 9.166000062942505,
+      "projected_wall_s": 9.60402785998156,
+      "baseline": {
+        "prefill_s": 0.1338,
+        "decode_s": 4.022525,
+        "stage_overhead_s": 0.0006750000000002032,
+        "tool_exec_gap_s": 5.009000062942505
+      },
+      "projected": {
+        "prefill_s": 0.45874285714285723,
+        "decode_s": 5.107806728472681,
+        "stage_overhead_s": 0.0006750000000002032,
+        "tool_exec_gap_s": 4.036803274366021
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 195.70000000000002,
+      "projected_ttft_ms": 537.3244991193601,
+      "baseline_itl_ms": 61.885,
+      "projected_itl_ms": 78.5816419765028,
+      "tool_calls": {},
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    },
+    {
+      "name": "02_swe_agent_0",
+      "is_cold": true,
+      "input_tokens": 8198,
+      "output_tokens": 940,
+      "baseline_wall_s": 87.536,
+      "projected_wall_s": 143.25579735783603,
+      "baseline": {
+        "prefill_s": 14.8728,
+        "decode_s": 72.65165999999999,
+        "stage_overhead_s": 0.004540000000005762,
+        "tool_exec_gap_s": 0.007
+      },
+      "projected": {
+        "prefill_s": 50.99245714285715,
+        "decode_s": 92.25315884493186,
+        "stage_overhead_s": 0.004540000000005762,
+        "tool_exec_gap_s": 0.005641370047011417
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 14950.1,
+      "projected_ttft_ms": 51090.598801202825,
+      "baseline_itl_ms": 77.289,
+      "projected_itl_ms": 98.1416583456722,
+      "tool_calls": {
+        "read_file": 3,
+        "apply_patch": 1
+      },
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    },
+    {
+      "name": "03_swe_agent_1",
+      "is_cold": false,
+      "input_tokens": 8979,
+      "output_tokens": 1000,
+      "baseline_wall_s": 87.768,
+      "projected_wall_s": 118.9500690444575,
+      "baseline": {
+        "prefill_s": 4.4345,
+        "decode_s": 78.867,
+        "stage_overhead_s": 0.00549999999999784,
+        "tool_exec_gap_s": 4.461
+      },
+      "projected": {
+        "prefill_s": 15.204000000000002,
+        "decode_s": 100.14540450449779,
+        "stage_overhead_s": 0.00549999999999784,
+        "tool_exec_gap_s": 3.5951645399597045
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 4513.4,
+      "projected_ttft_ms": 15304.1454045045,
+      "baseline_itl_ms": 78.867,
+      "projected_itl_ms": 100.14540450449779,
+      "tool_calls": {
+        "read_file": 1,
+        "apply_patch": 1
+      },
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    },
+    {
+      "name": "04_swe_agent_2",
+      "is_cold": false,
+      "input_tokens": 10251,
+      "output_tokens": 251,
+      "baseline_wall_s": 28.389,
+      "projected_wall_s": 53.57741978827648,
+      "baseline": {
+        "prefill_s": 8.1204,
+        "decode_s": 20.264736,
+        "stage_overhead_s": 0.0038640000000000896,
+        "tool_exec_gap_s": 0.0
+      },
+      "projected": {
+        "prefill_s": 27.84137142857143,
+        "decode_s": 25.73218435970505,
+        "stage_overhead_s": 0.0038640000000000896,
+        "tool_exec_gap_s": 0.0
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 8201.1,
+      "projected_ttft_ms": 27943.8900913591,
+      "baseline_itl_ms": 80.736,
+      "projected_itl_ms": 102.51866278766954,
+      "tool_calls": {},
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    },
+    {
+      "name": "05_warmup",
+      "is_cold": true,
+      "input_tokens": 40,
+      "output_tokens": 65,
+      "baseline_wall_s": 9.214999782562256,
+      "projected_wall_s": 9.695980978957113,
+      "baseline": {
+        "prefill_s": 0.1461994793465835,
+        "decode_s": 4.065800520653416,
+        "stage_overhead_s": 8.881784197001252e-16,
+        "tool_exec_gap_s": 5.002999782562256
+      },
+      "projected": {
+        "prefill_s": 0.501255357759715,
+        "decode_s": 5.1627580328329215,
+        "stage_overhead_s": 8.881784197001252e-16,
+        "tool_exec_gap_s": 4.031967588364477
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 208.8,
+      "projected_ttft_ms": 580.6826872785358,
+      "baseline_itl_ms": 62.551,
+      "projected_itl_ms": 79.42732951882081,
+      "tool_calls": {},
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    },
+    {
+      "name": "06_swe_agent_0",
+      "is_cold": true,
+      "input_tokens": 8198,
+      "output_tokens": 940,
+      "baseline_wall_s": 87.188,
+      "projected_wall_s": 142.61973424442996,
+      "baseline": {
+        "prefill_s": 14.7813,
+        "decode_s": 72.40256,
+        "stage_overhead_s": 0.004140000000006694,
+        "tool_exec_gap_s": 0.0
+      },
+      "projected": {
+        "prefill_s": 50.678742857142865,
+        "decode_s": 91.93685138728709,
+        "stage_overhead_s": 0.004140000000006694,
+        "tool_exec_gap_s": 0.0
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 14858.3,
+      "projected_ttft_ms": 50776.54801819317,
+      "baseline_itl_ms": 77.024,
+      "projected_itl_ms": 97.80516105030541,
+      "tool_calls": {
+        "read_file": 3,
+        "apply_patch": 1
+      },
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    },
+    {
+      "name": "07_swe_agent_1",
+      "is_cold": false,
+      "input_tokens": 8979,
+      "output_tokens": 1000,
+      "baseline_wall_s": 87.22500000000001,
+      "projected_wall_s": 118.40949498367144,
+      "baseline": {
+        "prefill_s": 4.4417,
+        "decode_s": 78.604,
+        "stage_overhead_s": 0.006300000000010186,
+        "tool_exec_gap_s": 4.173
+      },
+      "projected": {
+        "prefill_s": 15.228685714285715,
+        "decode_s": 99.81144681136018,
+        "stage_overhead_s": 0.006300000000010186,
+        "tool_exec_gap_s": 3.3630624580255204
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 4520.3,
+      "projected_ttft_ms": 15328.497161097075,
+      "baseline_itl_ms": 78.604,
+      "projected_itl_ms": 99.81144681136018,
+      "tool_calls": {
+        "read_file": 1,
+        "apply_patch": 1
+      },
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    },
+    {
+      "name": "08_swe_agent_2",
+      "is_cold": false,
+      "input_tokens": 10251,
+      "output_tokens": 251,
+      "baseline_wall_s": 27.885,
+      "projected_wall_s": 52.174462877482085,
+      "baseline": {
+        "prefill_s": 7.767,
+        "decode_s": 20.113885000000003,
+        "stage_overhead_s": 0.0041149999999987585,
+        "tool_exec_gap_s": 0.0
+      },
+      "projected": {
+        "prefill_s": 26.62971428571429,
+        "decode_s": 25.540633591767797,
+        "stage_overhead_s": 0.0041149999999987585,
+        "tool_exec_gap_s": 0.0
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 7847.1,
+      "projected_ttft_ms": 26731.46979803209,
+      "baseline_itl_ms": 80.135,
+      "projected_itl_ms": 101.75551231779998,
+      "tool_calls": {},
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    },
+    {
+      "name": "09_warmup",
+      "is_cold": true,
+      "input_tokens": 40,
+      "output_tokens": 65,
+      "baseline_wall_s": 9.177000011444091,
+      "projected_wall_s": 9.643205635566602,
+      "baseline": {
+        "prefill_s": 0.1463,
+        "decode_s": 4.017325,
+        "stage_overhead_s": 0.0003750000000000142,
+        "tool_exec_gap_s": 5.013000011444092
+      },
+      "projected": {
+        "prefill_s": 0.5016000000000002,
+        "decode_s": 5.101203762676804,
+        "stage_overhead_s": 0.0003750000000000142,
+        "tool_exec_gap_s": 4.040026872889798
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 208.1,
+      "projected_ttft_ms": 580.0800578873356,
+      "baseline_itl_ms": 61.805,
+      "projected_itl_ms": 78.48005788733546,
+      "tool_calls": {},
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    },
+    {
+      "name": "10_swe_agent_0",
+      "is_cold": true,
+      "input_tokens": 8198,
+      "output_tokens": 940,
+      "baseline_wall_s": 87.42200000000001,
+      "projected_wall_s": 143.18140344120332,
+      "baseline": {
+        "prefill_s": 14.9039,
+        "decode_s": 72.51348,
+        "stage_overhead_s": 0.004620000000002733,
+        "tool_exec_gap_s": 0.0
+      },
+      "projected": {
+        "prefill_s": 51.09908571428572,
+        "decode_s": 92.0776977269176,
+        "stage_overhead_s": 0.004620000000002733,
+        "tool_exec_gap_s": 0.0
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 14981.0,
+      "projected_ttft_ms": 51197.04071186755,
+      "baseline_itl_ms": 77.142,
+      "projected_itl_ms": 97.95499758182723,
+      "tool_calls": {
+        "read_file": 3,
+        "apply_patch": 1
+      },
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    },
+    {
+      "name": "11_swe_agent_1",
+      "is_cold": false,
+      "input_tokens": 8979,
+      "output_tokens": 1000,
+      "baseline_wall_s": 87.193,
+      "projected_wall_s": 118.46351209335363,
+      "baseline": {
+        "prefill_s": 4.4802,
+        "decode_s": 78.559,
+        "stage_overhead_s": 0.004800000000003024,
+        "tool_exec_gap_s": 4.149
+      },
+      "projected": {
+        "prefill_s": 15.360685714285717,
+        "decode_s": 99.75430576120357,
+        "stage_overhead_s": 0.004800000000003024,
+        "tool_exec_gap_s": 3.343720617864338
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 4558.8,
+      "projected_ttft_ms": 15460.44002004692,
+      "baseline_itl_ms": 78.559,
+      "projected_itl_ms": 99.75430576120357,
+      "tool_calls": {
+        "read_file": 1,
+        "apply_patch": 1
+      },
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    },
+    {
+      "name": "12_swe_agent_2",
+      "is_cold": false,
+      "input_tokens": 10251,
+      "output_tokens": 251,
+      "baseline_wall_s": 28.045,
+      "projected_wall_s": 52.539224241265615,
+      "baseline": {
+        "prefill_s": 7.842,
+        "decode_s": 20.197719,
+        "stage_overhead_s": 0.005281000000003644,
+        "tool_exec_gap_s": 0.0
+      },
+      "projected": {
+        "prefill_s": 26.886857142857146,
+        "decode_s": 25.647086098408465,
+        "stage_overhead_s": 0.005281000000003644,
+        "tool_exec_gap_s": 0.0
+      },
+      "speedups": {
+        "compute": 0.29166666666666663,
+        "memory": 0.7875249033165359,
+        "cpu_tool_exec": 1.2408333333333335
+      },
+      "baseline_ttft_ms": 7922.5,
+      "projected_ttft_ms": 26989.036768747217,
+      "baseline_itl_ms": 80.469,
+      "projected_itl_ms": 102.17962589007357,
+      "tool_calls": {},
+      "baseline_power_w": {},
+      "projected_power_w": {}
+    }
+  ],
+  "baseline_wall_time_s": 778.62,
+  "projected_wall_time_s": 1114.5253326895327,
+  "fixed_overhead_s": 142.41100014305118,
+  "total_output_tokens": 6768,
+  "baseline_tok_s": 8.692301764660554,
+  "projected_tok_s": 6.072540301679554,
+  "baseline_energy_j": null,
+  "projected_energy_j": null,
+  "baseline_tok_per_j": null,
+  "projected_tok_per_j": null,
+  "avg_baseline_ttft_ms": 9123.965824468085,
+  "avg_projected_ttft_ms": 31114.29640914709,
+  "avg_baseline_itl_ms": 77.76000369385342,
+  "avg_projected_itl_ms": 98.73973936110406,
+  "measured_accel_busy_pct": null,
+  "measured_mem_bw_gbs": null,
+  "measured_mem_bw_efficiency_pct": null,
+  "wall_time_speedup_x": 0.6986113075788615,
+  "wall_time_reduction_pct": -43.14111282647924
+}
