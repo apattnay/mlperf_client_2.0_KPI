@@ -27,7 +27,7 @@ asking "how much would a specific future SoC actually help?"
 | Baseline spec | `data/configs/roofline_targets/current_baseline_REAL_96EU_devbox.json` — corrected real spec (16 cores, 1.8 GHz iGPU; see `ROOFLINE_HW_PROJECTION_METHODOLOGY.md` §9's frequency-mismatch diagnostic for why this isn't the datasheet-guessed template) |
 | Target spec | `data/configs/roofline_targets/persona_future_igpu_workstation.json` — 48 CPU cores @ 5 GHz, 256-EU iGPU @ 2.8 GHz, ~300 GB/s memory via **LPDDR6** (real JEDEC JESD209-6 max speed grade, 14,400 MT/s, 14 channels × 12-bit = 302.4 GB/s — see that file's own `notes` field for the derivation) |
 | Method | Naive Method (§10 of the main doc) — currently the more accurate of the two available methods against real ground truth (§9.7a) |
-| Efficiency knobs | `--use-measured-compute-efficiency --use-measured-memory-efficiency` (§9.7 — real EMON-measured retention instead of a flat 0.85 guess) |
+| Efficiency knobs | `--use-measured-compute-efficiency --use-measured-memory-efficiency --use-duty-cycle-power` (§9.7 — real EMON-measured retention + duty-cycle-weighted power scaling instead of flat guesses) |
 
 **Exact command:**
 
@@ -37,21 +37,23 @@ Remove-Item Env:PYTHONHOME -ErrorAction SilentlyContinue
     --run kpi_runs\preset6_roofline_20260923_141035 `
     --baseline-spec data\configs\roofline_targets\current_baseline_REAL_96EU_devbox.json `
     --target-spec data\configs\roofline_targets\persona_future_igpu_workstation.json `
-    --use-measured-compute-efficiency --use-measured-memory-efficiency `
+    --use-measured-compute-efficiency --use-measured-memory-efficiency --use-duty-cycle-power `
     --tool-parallel-fraction 0.5 --what-if `
     --out kpi_runs\preset6_roofline_20260923_141035\roofline_projection_persona_future_igpu
 ```
 
 **Last-known real output** (2026-09-30, no frequency-mismatch warning — baseline spec is
-corrected/accurate):
+corrected/accurate; no power-budget warning either, since this target spec doesn't declare a
+`power_budget_w` yet — add one if you have a real TDP number for this future SoC):
 
-| | Baseline | Projected |
-|---|---|---|
-| Wall time | 689.77s | **383.11s** |
-| Speedup | — | **1.80×** |
-| Wall time reduction | — | **44.5%** |
-| Tokens/s | 13.3 | 23.9 |
-| Tokens/Joule | 0.25 | 0.20 |
+| KPI type | Metric | Baseline | Projected |
+|---|---|---|---|
+| **Performance** | Wall time | 689.77s | **383.11s** |
+| **Performance** | Speedup | — | **1.80×** |
+| **Performance** | Wall time reduction | — | **44.5%** |
+| **Performance** | Tokens/s | 13.3 | 23.9 |
+| **Power** | Tokens/Joule | 0.25 | **0.30** |
+| **Power** | Peak projected package power | — | **88.6W** (stage `08_swe_agent_2`, no budget check performed) |
 
 Report + standalone `what_if_calculator.html` written to
 `kpi_runs/preset6_roofline_20260923_141035/roofline_projection_persona_future_igpu/`.
@@ -78,19 +80,20 @@ sanity check). Same command pattern as Preset 1, only `--target-spec`/`--out` ch
     --run kpi_runs\preset6_roofline_20260923_141035 `
     --baseline-spec data\configs\roofline_targets\current_baseline_REAL_96EU_devbox.json `
     --target-spec data\configs\roofline_targets\<example_moderate_upgrade|example_heavy_duty_workstation|example_datacenter_class>.json `
-    --use-measured-compute-efficiency --use-measured-memory-efficiency `
+    --use-measured-compute-efficiency --use-measured-memory-efficiency --use-duty-cycle-power `
     --tool-parallel-fraction 0.5 --what-if `
     --out kpi_runs\preset6_roofline_20260923_141035\roofline_projection_<moderate_upgrade|heavy_duty_workstation|datacenter_class>
 ```
 
 **Last-known real output** (2026-09-30, baseline wall time 689.77s / 13.3 tokens/s / 0.25 tokens/J
-for all three):
+for all three; no target spec here declares a `power_budget_w` yet, so no power-budget warning
+fires — add one to a target spec JSON if you have a real TDP number to check against):
 
-| Preset | Target spec | ~vs. baseline | Projected wall time | Speedup | Reduction | Tokens/s | Tokens/J |
-|---|---|---|---|---|---|---|---|
-| 2 — Moderate upgrade | `example_moderate_upgrade.json` (12 cores@4.6GHz, 160-EU@2.2GHz, 8ch×32-bit@8533MT/s ≈ 273 GB/s) | ~1.5-2x each resource | **494.53s** | **1.39×** | 28.3% | 18.5 | 0.28 |
-| 3 — Heavy-duty workstation | `example_heavy_duty_workstation.json` (32 cores@5.0GHz, 384-EU@2.4GHz, 8ch×64-bit@8800MT/s ≈ 563 GB/s) | ~4x each resource | **289.04s** | **2.39×** | 58.1% | 31.7 | 0.26 |
-| 4 — Datacenter-class | `example_datacenter_class.json` (64 cores@3.8GHz, 512-EU@2.6GHz, 16ch×64-bit@9600MT/s ≈ 1,229 GB/s, HBM-class) | ~8x+ each resource | **203.54s** | **3.39×** | 70.5% | 45.0 | 0.28 |
+| Preset | Target spec | ~vs. baseline | Projected wall time | Speedup | Reduction | Tokens/s | Tokens/J | Peak package power |
+|---|---|---|---|---|---|---|---|---|
+| 2 — Moderate upgrade | `example_moderate_upgrade.json` (12 cores@4.6GHz, 160-EU@2.2GHz, 8ch×32-bit@8533MT/s ≈ 273 GB/s) | ~1.5-2x each resource | **494.53s** | **1.39×** | 28.3% | 18.5 | 0.31 | 65.3W |
+| 3 — Heavy-duty workstation | `example_heavy_duty_workstation.json` (32 cores@5.0GHz, 384-EU@2.4GHz, 8ch×64-bit@8800MT/s ≈ 563 GB/s) | ~4x each resource | **289.04s** | **2.39×** | 58.1% | 31.7 | 0.37 | 98.5W |
+| 4 — Datacenter-class | `example_datacenter_class.json` (64 cores@3.8GHz, 512-EU@2.6GHz, 16ch×64-bit@9600MT/s ≈ 1,229 GB/s, HBM-class) | ~8x+ each resource | **203.54s** | **3.39×** | 70.5% | 45.0 | 0.44 | 123.3W |
 
 Reports + `what_if_calculator.html` written to `kpi_runs/preset6_roofline_20260923_141035/roofline_projection_<moderate_upgrade|heavy_duty_workstation|datacenter_class>/`.
 
