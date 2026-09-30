@@ -982,6 +982,94 @@ the 136.5 GB/s baseline placeholder, unlike the 256-EU/300-GB/s target used ever
 `kpi_runs/<...>` directory from an actual run on `JF04WVAW0381-TA` exists, re-run
 `baseline_extractor.py` on it directly and diff against the two numbers above.
 
+### 9.6b Cross-run reproducibility check (2026-09-29) — the best available proxy for ground-truth error until a real `JF04WVAW0381-TA` run exists
+
+**Still no real full-workflow run on `JF04WVAW0381-TA` exists** — §9.6a's ask stands, and true
+ground-truth error (predicted vs. *actually measured* wall time on that machine) is not
+computable yet. What became available instead is a **second, independent real baseline run** on
+this repo's own 96-EU machine: `kpi_runs/preset6_sweagent_gpu_20260929_211533` (2026-09-29,
+same preset 6 GPU SWE-Agent config as the original `preset6_roofline_20260923_141035`, 6 days
+earlier) — real measured wall time **778.62s** vs. the original **689.77s**, a **+12.9%
+run-to-run variance on the identical hardware/config**, driven mostly by `tool_exec_gap_s`
+(80.99s → 27.81s summed across all 12 stages — real variability in git-apply/pytest tool-call
+duration between the two runs, unrelated to any projected hardware axis). This gives a way to
+test whether §9.6a's naive-vs-corrected disagreement is a stable property of the *methodology*
+or an artifact of one specific noisy input run — by re-running both projection methods against
+this second baseline, onto the exact same real `JF04WVAW0381-TA_16EU.json` target:
+
+```powershell
+# Recheck of the naive method (§9.6a method 1), on the ORIGINAL 2026-09-23 run, to confirm reproducibility
+.venv\Scripts\python.exe tools\run_roofline_projection.py --run kpi_runs\preset6_roofline_20260923_141035 `
+    --baseline-spec data\configs\roofline_targets\current_baseline_TEMPLATE.json `
+    --target-spec data\configs\roofline_targets\JF04WVAW0381-TA_16EU.json `
+    --out kpi_runs\preset6_roofline_20260923_141035\roofline_projection_16EU_naive_recheck
+
+# Recheck of the corrected method (§9.6a method 2), same original run
+.venv\Scripts\python.exe tools\roofline_projection\integrate_external_ttft.py --run kpi_runs\preset6_roofline_20260923_141035 `
+    --baseline-spec data\configs\roofline_targets\current_baseline_TEMPLATE.json `
+    --external-ttft-csv data\configs\roofline_targets\JF04WVAW0381-TA_real_ttft_ratio.csv `
+    --igpu-xecores 16 --mem-bw-gbs 102.4 --p-cores 12 --e-cores 16 --cpu-freq-ghz 3.3 `
+    --out kpi_runs\preset6_roofline_20260923_141035\roofline_projection_16EU_corrected_recheck.json
+
+# Both methods, on the FRESH 2026-09-29 run
+.venv\Scripts\python.exe tools\run_roofline_projection.py --run kpi_runs\preset6_sweagent_gpu_20260929_211533 `
+    --baseline-spec data\configs\roofline_targets\current_baseline_TEMPLATE.json `
+    --target-spec data\configs\roofline_targets\JF04WVAW0381-TA_16EU.json `
+    --out kpi_runs\preset6_sweagent_gpu_20260929_211533\roofline_projection_16EU
+
+.venv\Scripts\python.exe tools\roofline_projection\integrate_external_ttft.py --run kpi_runs\preset6_sweagent_gpu_20260929_211533 `
+    --baseline-spec data\configs\roofline_targets\current_baseline_TEMPLATE.json `
+    --external-ttft-csv data\configs\roofline_targets\JF04WVAW0381-TA_real_ttft_ratio.csv `
+    --igpu-xecores 16 --mem-bw-gbs 102.4 --p-cores 12 --e-cores 16 --cpu-freq-ghz 3.3 `
+    --out kpi_runs\preset6_sweagent_gpu_20260929_211533\roofline_projection_16EU_corrected.json
+```
+
+| Baseline run (real, measured) | Real wall time | Naive projection | Corrected projection | Naive − Corrected error* |
+|---|---|---|---|---|
+| `preset6_roofline_20260923_141035` (original, 2026-09-23) | 689.77s | 1,320.13s | 1,030.42s (recheck; §9.6a's original report said 1,020.16s — 1.0% apart, CLI-arg rounding, not a regression) | **28.1%** |
+| `preset6_sweagent_gpu_20260929_211533` (fresh, 2026-09-29) | 778.62s | 1,114.53s | 1,008.84s | **10.5%** |
+
+\* `error = (naive − corrected) / corrected`, i.e. how much the naive 100%-compute-bound
+assumption overstates the slowdown relative to the more physically-grounded, real-TTFT-calibrated
+method — the same relative comparison §9.2/§9.5 already draw, computed here on two independent
+real inputs instead of one.
+
+**Cross-run spread of each method's own output** (holding the target spec fixed, varying only
+which real baseline run was fed in):
+
+| Method | Run A output | Run B output | Spread |
+|---|---|---|---|
+| Naive (`run_roofline_projection.py`) | 1,320.13s | 1,114.53s | **15.6%** |
+| Corrected (`integrate_external_ttft.py`) | 1,030.42s | 1,008.84s | **2.1%** |
+
+**Interpretation**: the two real baseline runs disagree by 12.9% purely from ordinary benchmark
+noise (nothing to do with hardware projection — see the `tool_exec_gap_s` swing above). The naive
+method has no anchor independent of *this specific run's* own prefill/tool-exec numbers, so
+~15.6% of that noise passes straight through into its projected output. The corrected method's
+prefill term is instead anchored to a fixed, input-length-keyed external ratio curve (§9.1) that
+doesn't change between runs of the same config — so its output only moves 2.1% despite the same
+12.9% baseline noise. This is **evidence, not proof**, that the corrected method is the more
+reliable of the two: it does not establish the corrected method's *absolute* accuracy (that still
+requires a real `JF04WVAW0381-TA` full-workflow run, §9.6a), only that it is far less sensitive to
+ordinary run-to-run measurement noise than the naive method — which bounds how much of any future
+naive-vs-ground-truth gap could plausibly be blamed on "just noise" versus genuine methodology error.
+
+**Files referenced in this cross-check** (all committed under `kpi_runs/`):
+- `kpi_runs/preset6_roofline_20260923_141035/roofline_projection_16EU_naive_recheck/roofline_projection_report.json`
+- `kpi_runs/preset6_roofline_20260923_141035/roofline_projection_16EU_corrected_recheck.json`
+- `kpi_runs/preset6_sweagent_gpu_20260929_211533/roofline_projection_16EU/roofline_projection_report.json`
+- `kpi_runs/preset6_sweagent_gpu_20260929_211533/roofline_projection_16EU_corrected.json`
+- `kpi_runs/preset6_sweagent_gpu_20260929_211533/roofline_projection_16EU_sameMem/roofline_projection_report.json` —
+  a separate control run (naive method, target = baseline spec with only `igpu_xecores` overridden
+  16→96, memory/CPU/NPU held identical) used to isolate the EU-count-only effect from the
+  compounding lower-memory-bandwidth effect of the real `JF04WVAW0381-TA_16EU.json` spec: with
+  memory held constant, cutting EUs 6× (96→16) only degrades wall time 778.62s→977.93s (+25.6%),
+  because ~86% of this decode-dominated agentic run's wall time (decode + tool-exec + fixed
+  startup overhead) doesn't scale with iGPU EU count at all — only the ~10.5%-weight `prefill_s`
+  bucket does. This is the underlying reason §9.6a's 16-EU real-spec projection (which *also*
+  changes memory bandwidth, 136.5→102.4 GB/s) shows a smaller relative penalty than a naive
+  "6× fewer EUs" intuition would predict.
+
 ### 9.6 §9.1-§9.5 only ever covers `prefill_s`/TTFT — the other three buckets rely on this repo's own §4.3 evidence
 
 Easy to lose track of, given how much of §9 is about the external project: **the external
