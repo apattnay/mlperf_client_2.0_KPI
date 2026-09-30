@@ -76,6 +76,36 @@ def _load_presets(presets_dir: str) -> list:
     return presets
 
 
+def _warn_on_frequency_mismatch(baseline_profile, baseline_spec) -> None:
+    """Flag (never auto-correct) a declared baseline_spec frequency that diverges >=15% from this
+    run's own real EMON/PDH-measured average clock - a diagnostic only, same principle as the
+    existing measured busy%/mem-BW checks. Motivated by docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md
+    §9.6b: plugging a declared/nameplate frequency into compute_capability (EU-count x freq)
+    mispredicted this repo's own real 96EU-vs-16EU pair's relative speed by ~15x once real
+    measured clocks were substituted in instead - a spec typed from a datasheet can be badly wrong
+    for what the silicon actually sustains under real load (DVFS/turbo throttling, power limits).
+    """
+    def _check(measured_mhz, declared_ghz, label):
+        if measured_mhz is None or not declared_ghz:
+            return
+        declared_mhz = declared_ghz * 1000.0
+        diff_pct = abs(measured_mhz - declared_mhz) / declared_mhz * 100.0
+        if diff_pct >= 8.0:
+            print(
+                f"warning: baseline_spec's declared {label} ({declared_mhz:.0f} MHz) diverges from "
+                f"this run's real measured average ({measured_mhz:.0f} MHz) by {diff_pct:.0f}% - "
+                "consider updating the baseline spec to the measured value, or see "
+                "docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md §9.6b for why a declared/nameplate "
+                "frequency can meaningfully mislead the compute_capability ratio.",
+                file=sys.stderr,
+            )
+
+    device_type = (baseline_profile.device_type or "").upper()
+    if device_type in ("GPU", "IGPU"):
+        _check(baseline_profile.measured_igpu_freq_mhz, baseline_spec.igpu_freq_ghz, "igpu_freq_ghz")
+    _check(baseline_profile.measured_cpu_freq_mhz, baseline_spec.cpu_freq_ghz, "cpu_freq_ghz")
+
+
 def main(argv=None) -> int:
     args = _build_arg_parser().parse_args(argv)
 
@@ -113,6 +143,8 @@ def main(argv=None) -> int:
         use_measured_compute_efficiency=args.use_measured_compute_efficiency,
         use_measured_memory_efficiency=args.use_measured_memory_efficiency,
     )
+
+    _warn_on_frequency_mismatch(baseline_profile, baseline_spec)
 
     result = project(baseline_profile, baseline_spec, target_spec, assumptions)
 

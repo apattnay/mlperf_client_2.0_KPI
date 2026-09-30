@@ -1344,6 +1344,24 @@ retention no longer has to be a blind guess — it can be read directly off real
     --igpu-xecores 256 --mem-bw-gbs 300 --p-cores 20 --e-cores 48 --use-measured-memory-efficiency
 ```
 
+**Frequency mismatch diagnostic, 2026-09-30 — closing the gap §9.6b's clock-frequency finding
+opened.** §9.6b showed plugging real measured clocks into `compute_capability` mispredicted this
+repo's own real 96EU-vs-16EU pair by ~15×. The declared `igpu_freq_ghz`/`cpu_freq_ghz` in a
+`SystemSpec` JSON is usually typed from a datasheet, not measured — and can diverge from what the
+silicon actually sustains under real load (DVFS/turbo throttling, power limits). Both
+`run_roofline_projection.py` and `integrate_external_ttft.py` now compare the baseline spec's
+declared frequency against this run's own real EMON/PDH-measured average clock
+(`l0_gpu_freq_mhz`/`cpu_freq_max_mhz`) and print a warning (never auto-corrects — same
+diagnostic-only principle as §4.1's busy%/bandwidth checks) when they diverge ≥8%. Verified on
+this repo's own default placeholder baseline (`igpu_freq_ghz=2.0` declared vs. `1800 MHz` really
+measured, a real 10% gap): `warning: baseline_spec's declared igpu_freq_ghz (2000 MHz) diverges
+from this run's real measured average (1800 MHz) by 10%...`. `dram_page_hit_rate_rd`/
+`dram_rd_latency_ns` were **not** wired into a separate scaling term — they're already implicitly
+captured inside the *achieved* `dram_total_gbs` figure that `--use-measured-memory-efficiency`
+already uses (achieved bandwidth is downstream of latency/locality; adding a second explicit
+correction for the same underlying effect would double-count it), so they remain diagnostic-only,
+same as before.
+
 ### 9.7a Does this actually close the gap against real `JF04WVAW0381-TA` ground truth? (2026-09-30)
 
 Re-ran §9.6a/§9.6b's two advance predictions with the new EMON-informed flags, against the same

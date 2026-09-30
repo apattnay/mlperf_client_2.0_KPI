@@ -102,6 +102,13 @@ class BaselineProfile:
     # theoretical bandwidth/EU-count ratios alone do not predict.
     measured_dram_page_hit_rate_rd: Optional[float] = None
     measured_dram_rd_latency_ns: Optional[float] = None
+    # Real achieved clocks (diagnostic, compare against SystemSpec's declared *_freq_ghz) - see
+    # docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md §9.6b: EU-count x declared-freq mispredicted this
+    # repo's own real 96EU-vs-16EU pair's relative speed by ~15x once real measured clocks were
+    # plugged in instead of nameplate/guessed ones.
+    measured_igpu_freq_mhz: Optional[float] = None
+    measured_cpu_freq_mhz: Optional[float] = None
+    measured_imc_freq_ghz: Optional[float] = None
 
     def total_output_tokens(self) -> int:
         return sum(s.output_tokens for s in self.stages)
@@ -200,7 +207,16 @@ def _load_utilization_lookup(run_dir: Path, device_type: str):
     has_bw = "dram_total_gbs" in df.columns
     has_page_hit = "dram_page_hit_rate_rd" in df.columns
     has_latency = "dram_rd_latency_ns" in df.columns
-    if not has_busy and not has_bw and not has_page_hit and not has_latency:
+    # Real achieved clocks, independent of device_type - diagnostic only, same principle as the
+    # busy%/bandwidth fields above: compares against whatever *_freq_ghz the user typed into a
+    # SystemSpec JSON (often a guessed/nameplate value), never fed back into the raw capability
+    # ratio itself (see docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md §9.6b's real EU-count x freq
+    # capability-proxy contradiction - this diagnostic exists to catch that kind of mismatch
+    # early, not to silently "fix" the projection math with it).
+    has_igpu_freq = "l0_gpu_freq_mhz" in df.columns
+    has_cpu_freq = "cpu_freq_max_mhz" in df.columns
+    has_imc_freq = "imc_freq_ghz" in df.columns
+    if not any([has_busy, has_bw, has_page_hit, has_latency, has_igpu_freq, has_cpu_freq, has_imc_freq]):
         return empty
 
     def lookup(start_iso: str, end_iso: str) -> Dict[str, float]:
@@ -225,6 +241,18 @@ def _load_utilization_lookup(run_dir: Path, device_type: str):
             vals = pd.to_numeric(window["dram_rd_latency_ns"], errors="coerce").dropna()
             if len(vals):
                 out["dram_rd_latency_ns"] = float(vals.mean())
+        if has_igpu_freq:
+            vals = pd.to_numeric(window["l0_gpu_freq_mhz"], errors="coerce").dropna()
+            if len(vals):
+                out["igpu_freq_mhz"] = float(vals.mean())
+        if has_cpu_freq:
+            vals = pd.to_numeric(window["cpu_freq_max_mhz"], errors="coerce").dropna()
+            if len(vals):
+                out["cpu_freq_mhz"] = float(vals.mean())
+        if has_imc_freq:
+            vals = pd.to_numeric(window["imc_freq_ghz"], errors="coerce").dropna()
+            if len(vals):
+                out["imc_freq_ghz"] = float(vals.mean())
         return out
 
     return lookup
@@ -379,4 +407,7 @@ def extract_baseline(run_dir: str) -> BaselineProfile:
         measured_mem_bw_gbs=_active_weighted_avg("mem_bw_gbs"),
         measured_dram_page_hit_rate_rd=_active_weighted_avg("page_hit_rate_rd"),
         measured_dram_rd_latency_ns=_active_weighted_avg("dram_rd_latency_ns"),
+        measured_igpu_freq_mhz=_active_weighted_avg("igpu_freq_mhz"),
+        measured_cpu_freq_mhz=_active_weighted_avg("cpu_freq_mhz"),
+        measured_imc_freq_ghz=_active_weighted_avg("imc_freq_ghz"),
     )
