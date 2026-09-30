@@ -17,6 +17,10 @@ This tool answers a different question: "how would the *same measured behavior* 
 > real output, so a result can be reproduced/sanity-checked without re-deriving anything) live in
 > [docs/ROOFLINE_PROJECTION_PRESETS.md](ROOFLINE_PROJECTION_PRESETS.md).
 
+> **Presentation slide deck** (condensed, step-by-step pipeline with brief reasoning + anticipated
+> audience Q&A for each step — "a new persona lands, how do we project it onto future HW?") lives
+> in [docs/ROOFLINE_PROJECTION_SLIDES.md](ROOFLINE_PROJECTION_SLIDES.md) (Marp-compatible).
+
 ## 1. Why bottom-up macro components, not a single wall-time multiplier
 
 A single "the CPU is N% faster so wall time is 1/N" multiplier is wrong for an agentic LLM
