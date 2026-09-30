@@ -1158,21 +1158,54 @@ platform's actual physical row-buffer size and memory-controller page policy (op
 closed-page), which neither machine's documentation currently states, and which this repo has no
 tooling to query directly.
 
-**A second, related real finding, 2026-09-30 — the 96-EU box's GPU also allocates ~2× more shared
-memory for the identical workload**: comparing `igpu_shared_mb`/`zes_mem_used_mb` across all four
-runs during the same `n=8198` stages: this repo's 96-EU box averages **~9.4 GB** (peak ~10.6 GB)
-of iGPU shared/unified memory; `JF04WVAW0381-TA` averages **~4.4 GB** (peak ~5.4 GB) — roughly
-half, for the exact same model, quantization, and input length. **Neither machine is anywhere
+**A second, related real finding, 2026-09-30, refined — it's the INCREMENTAL (context-driven)
+memory footprint that differs sharply, not the base footprint.** Comparing `igpu_shared_mb` at the
+tiny warmup stage (`n=40`, essentially just model weights + fixed runtime overhead) against the
+`n=8198` stage on the same machine isolates the context-dependent delta specifically:
+
+| | Baseline (warmup, `n=40`) | At `n=8198` | Incremental growth |
+|---|---|---|---|
+| 96-EU box | ~4,813 MB | ~10,132 MB | **~5,319 MB** |
+| `JF04WVAW0381-TA` (16-EU) | ~3,996 MB | ~4,666 MB | **~670 MB** |
+
+The *base* footprint is actually similar between machines (~4.8 GB vs ~4.0 GB, only ~20% apart) —
+but the incremental allocation specifically tied to processing 8,198 tokens is **~8× larger on the
+96-EU/LPDDR5X box** (5,319 MB vs 670 MB, identical input length). **Neither machine is anywhere
 near exhausting physical RAM** (checked directly: `ram_used_gb`/`ram_total_gb` peaks at 44% on the
 96-EU box, 24% on `JF04WVAW0381-TA` — no swap-pressure signal, ruling out a disk-swap/memory-
-exhaustion explanation specifically). But a working set that's ~2× larger is a plausible
-*compounding* factor on top of the LPDDR5X-vs-DDR5 architecture difference above: a larger working
-set touches more distinct rows, which is more punishing specifically for a narrow-row-buffer
-memory system (LPDDR5X) than for a wide-row-buffer one (DDR5) — consistent with, not contradicting,
-the page-hit-rate finding. **Not yet explained**: whether the larger footprint is KV-cache-related,
-an OpenVINO GPU-plugin buffer-padding/workspace difference, or something else — would need
-Level-Zero allocation-event tracing or the model's OpenVINO memory-plan output, neither of which
-this repo's tooling captures.
+exhaustion explanation specifically).
+
+**Is this a memory-type/data-placement effect?** Plausibly yes, and it connects directly to §9.1's
+own `attention_buffer` hypothesis ("the `[heads,n,n]` fp16 attention-score buffer... materializes
+in full"). If OpenVINO's GPU plugin pads/aligns that buffer to the LPDDR5X channel-interleave
+granularity (8 narrow 16-bit channels vs DDR5's 2 wide channels), the *same logical tensor* could
+require a physically larger, more padded allocation on the 96-EU box — which would simultaneously
+explain both the ~8× larger incremental footprint here AND the worse page-hit rate above (a
+padded/larger buffer touches proportionally more distinct DRAM rows for the same logical data).
+This would mean the memory-architecture difference and the footprint difference aren't two
+separate findings but plausibly **the same root mechanism showing up twice**. **Not proof** —
+confirming it needs Level-Zero allocation-event tracing (real buffer sizes/strides as requested by
+the driver), which this repo has no tooling for.
+
+**Clock frequencies also genuinely differ, but don't explain the result — if anything they deepen
+it.** Real measured clocks (`hw_samples.csv`) during the same `n=8198` windows:
+
+| Domain | 96-EU box | `JF04WVAW0381-TA` (16-EU) |
+|---|---|---|
+| iGPU clock (`l0_gpu_freq_mhz`) | ~1,800 MHz | **~2,397 MHz** (+33%) |
+| CPU boost (`cpu_freq_max_mhz`) | ~3,700-4,300 MHz | ~4,790-4,800 MHz |
+| Memory controller (`imc_freq_ghz`) | **2.14 GHz, rock-steady** | **1.75-1.91 GHz, lower & more variable** |
+
+Plugging the real EU-count × real clock into this repo's own `compute_capability` proxy (§3):
+`(96 × 1800) / (16 × 2400) = 172,800 / 38,400 = 4.5×` — i.e. the model predicts the 96-EU box
+should have **4.5× more** raw compute capability. Real measured prefill shows the 16-EU box is
+**3.3× faster**. That's a combined ~15× directional miss for the exact proxy metric this whole
+projection tool is built on (§3's `igpu_capability`) — not a footnote, a clean demonstration that
+EU-count×frequency is not a reliable compute-capability proxy across these two chips. The memory-
+controller result cuts the same way: the *better-performing* machine (16-EU) runs its IMC at a
+**lower, more variable** clock than the 96-EU box's steady 2.14 GHz — ruling out "faster memory
+clock" as the explanation and reinforcing that this is an architecture/locality effect (row-buffer
+size, channel width), not a raw-speed effect.
 
 **A more significant implication, 2026-09-30 — the reference SUT behind the ENTIRE external §9.1
 methodology, not just the borrowed ratio, is confirmed to be this exact anomalous machine.**
