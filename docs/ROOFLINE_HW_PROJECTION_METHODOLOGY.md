@@ -883,6 +883,16 @@ at `n≥9,216` are themselves flagged by that project as past its own SUT's real
 (formula-extrapolated) — this run's `n=10,251` stage's `1.64×` ratio falls in that extrapolated
 region and should be read with correspondingly lower confidence than the `n=8,198`/`8,979` rows.
 
+**Update, 2026-09-29 — this caveat was too optimistic, see §9.6b**: a real ground-truth run on
+`JF04WVAW0381-TA` (a real, different-EU-count iGPU) showed `ttft_ratio(n)` predicting the *wrong
+direction* for that machine's real prefill behavior under `mlperf-windows.exe`/`openvino_genai`
+(predicted ~2.14× slower at n≈8192; real measurement was ~3.3× *faster*). This doesn't necessarily
+mean the 256-EU/300-GB/s numbers above are equally wrong (a different, larger EU-count jump on
+possibly-similar driver/software vintage may behave differently), but it means "more physically
+defensible than the naive method" can no longer be asserted as a general property of this
+integration — it should be read as "a different, not-yet-validated set of assumptions," not as a
+confirmed improvement, until §9.6b's open question is root-caused.
+
 **Generalization check — Data Agent scenario, same target spec** (matching §7's own convention of
 validating every feature on both SWE Agent and Data Agent, not just one): run against
 `kpi_runs/preset8_dataagent_gpu_20260923_225621/` (`device_type=GPU`, input tokens 4,513-11,451
@@ -978,24 +988,68 @@ difference between the two methodologies that a genuine ground-truth run on `JF0
 would settle. Note the memory-domain speedup here is `0.788×` (i.e. `decode_s` gets *slower*, not
 faster) — this target's 102.4 GB/s theoretical DDR5-6400 dual-channel figure is genuinely below
 the 136.5 GB/s baseline placeholder, unlike the 256-EU/300-GB/s target used everywhere else in §9.
-**These are predictions only, not yet compared against reality** — the moment a real
-`kpi_runs/<...>` directory from an actual run on `JF04WVAW0381-TA` exists, re-run
-`baseline_extractor.py` on it directly and diff against the two numbers above.
+**Update, 2026-09-29 — checked against reality, see §9.6b**: a real run on `JF04WVAW0381-TA`
+became available the same day. Both predictions were wrong, in the same direction (both far too
+pessimistic) — the real measured wall time (778.62s) is much closer to the original 96-EU run
+(689.77s) than either prediction above, because prefill actually got *faster*, not slower, on the
+real 16-EU machine. Full breakdown in §9.6b.
 
-### 9.6b Cross-run reproducibility check (2026-09-29) — the best available proxy for ground-truth error until a real `JF04WVAW0381-TA` run exists
+### 9.6b REAL ground-truth result from `JF04WVAW0381-TA` (2026-09-29) — both prediction methods were wrong, in the same direction
 
-**Still no real full-workflow run on `JF04WVAW0381-TA` exists** — §9.6a's ask stands, and true
-ground-truth error (predicted vs. *actually measured* wall time on that machine) is not
-computable yet. What became available instead is a **second, independent real baseline run** on
-this repo's own 96-EU machine: `kpi_runs/preset6_sweagent_gpu_20260929_211533` (2026-09-29,
-same preset 6 GPU SWE-Agent config as the original `preset6_roofline_20260923_141035`, 6 days
-earlier) — real measured wall time **778.62s** vs. the original **689.77s**, a **+12.9%
-run-to-run variance on the identical hardware/config**, driven mostly by `tool_exec_gap_s`
-(80.99s → 27.81s summed across all 12 stages — real variability in git-apply/pytest tool-call
-duration between the two runs, unrelated to any projected hardware axis). This gives a way to
-test whether §9.6a's naive-vs-corrected disagreement is a stable property of the *methodology*
-or an artifact of one specific noisy input run — by re-running both projection methods against
-this second baseline, onto the exact same real `JF04WVAW0381-TA_16EU.json` target:
+**Correction to how this section was first written**: `kpi_runs/preset6_sweagent_gpu_20260929_211533`
+was initially logged here as "a second independent real baseline run on this repo's own 96-EU
+machine" used only for a noise/reproducibility check. That was wrong. Cross-checking the run's own
+raw telemetry against `JF04WVAW0381-TA`'s documented hardware (§9.6a) confirms **this run actually
+executed on `JF04WVAW0381-TA` itself** — the real second SUT, not a second run of the original
+96-EU box:
+
+- `hw_samples.csv`'s `cpu_cores_csv` column has **28** per-core entries (this repo's own dev box has
+  16 logical cores; `JF04WVAW0381-TA` is documented as 28 cores/28 threads).
+- `nvidia_mem_used_mb` shows **12,227 MiB** — the exact figure `JF04WVAW0381-TA`'s own onboarding
+  doc records for its RTX 5070 (`nvidia-smi`-reported).
+- `mlperf_stdout.log` explicitly logs `"device_name":"Intel(R) Graphics (iGPU)","device_type":"GPU"`
+  — confirming the real Intel iGPU ran the workload (not the NVIDIA card, which OpenVINO's `GPU`
+  plugin can't target anyway).
+
+**This means §9.6a's two advance predictions can now be checked against real measured ground
+truth** — the actual point of this whole exercise:
+
+| Method | Predicted wall time | Real measured wall time | Error (predicted vs. real) |
+|---|---|---|---|
+| Naive (100%-compute-bound prefill) | 1,320.13s | **778.62s** | **+69.6% too pessimistic** |
+| Corrected (real per-n TTFT ratio, §9.1) | 1,020.16s | **778.62s** | **+31.0% too pessimistic** |
+
+**Both methods predicted this machine would run noticeably slower — it barely did (+12.9% vs. the
+original 96-EU run's 689.77s), and for a completely different reason than either model assumed.**
+Breaking down the same stage (`n=8198`) directly, real vs. real:
+
+| | Original 96-EU run | `JF04WVAW0381-TA` (16-EU) run | Change |
+|---|---|---|---|
+| `ttft_s` (prefill) | 49.4466s | **14.9501s** | **3.3× *faster*** — opposite of both predictions |
+| `avg_itl_ms` (per-token decode) | 40.13ms | 77.289ms | ~1.9× *slower* — direction matches theory |
+| Stage wall time | 89.541s | 87.529s | roughly flat |
+
+Decode got slower, as the memory-bandwidth theory predicts (though a 1.9× slowdown from a
+theoretical 136.5→102.4 GB/s drop, only 1.33×, implies real achieved efficiency also differs
+between the two machines - not modeled). **Prefill got dramatically *faster*, not slower** — the
+opposite of what both §9.6a predictions assumed, and opposite of the real 16-EU-vs-96-EU
+`PERF_COUNT` ratio table in §9.6a itself (which showed 16-EU should be ~2.14× *slower* at n≈8192).
+This is the clearest evidence yet that §9.1/§9.5's borrowed `ttft_ratio(n)` — measured via raw
+`ov.Core` `PERF_COUNT`, bypassing `openvino_genai` — does **not** reliably transfer to real
+`mlperf-windows.exe`/`openvino_genai`-measured `ttft_s`: the two measurement pipelines evidently
+don't scale with EU count the same way (plausibly a much more favorable OpenVINO GPU-plugin
+version/driver on `JF04WVAW0381-TA`, dwarfing the raw EU-count effect this whole external
+methodology was built on). **The corrected method's smaller error (31.0% vs 69.6%) is real and
+directionally useful, but it is not itself validated** — it happened to be less wrong mostly
+because a "smaller assumed slowdown" is closer to "barely any slowdown" than "assume 100% of the
+gap is compute-bound" is, not because its underlying ratio was confirmed correct.
+
+**The previous "cross-run reproducibility"/"benchmark noise" framing and its interpretation below
+are retracted** — they compared two *different physical machines*' real behavior against each
+other while incorrectly assuming both were the same 96-EU box, so "12.9% run-to-run noise" and the
+"2.1% vs 15.6% spread reflects measurement noise" conclusion do not hold. The raw numbers from that
+analysis are kept below (they're real, correctly computed arithmetic) but must be read as **naive
+vs. corrected agreement on two different real machines**, not noise-sensitivity on one.
 
 ```powershell
 # Recheck of the naive method (§9.6a method 1), on the ORIGINAL 2026-09-23 run, to confirm reproducibility
@@ -1010,65 +1064,43 @@ this second baseline, onto the exact same real `JF04WVAW0381-TA_16EU.json` targe
     --external-ttft-csv data\configs\roofline_targets\JF04WVAW0381-TA_real_ttft_ratio.csv `
     --igpu-xecores 16 --mem-bw-gbs 102.4 --p-cores 12 --e-cores 16 --cpu-freq-ghz 3.3 `
     --out kpi_runs\preset6_roofline_20260923_141035\roofline_projection_16EU_corrected_recheck.json
-
-# Both methods, on the FRESH 2026-09-29 run
-.venv\Scripts\python.exe tools\run_roofline_projection.py --run kpi_runs\preset6_sweagent_gpu_20260929_211533 `
-    --baseline-spec data\configs\roofline_targets\current_baseline_TEMPLATE.json `
-    --target-spec data\configs\roofline_targets\JF04WVAW0381-TA_16EU.json `
-    --out kpi_runs\preset6_sweagent_gpu_20260929_211533\roofline_projection_16EU
-
-.venv\Scripts\python.exe tools\roofline_projection\integrate_external_ttft.py --run kpi_runs\preset6_sweagent_gpu_20260929_211533 `
-    --baseline-spec data\configs\roofline_targets\current_baseline_TEMPLATE.json `
-    --external-ttft-csv data\configs\roofline_targets\JF04WVAW0381-TA_real_ttft_ratio.csv `
-    --igpu-xecores 16 --mem-bw-gbs 102.4 --p-cores 12 --e-cores 16 --cpu-freq-ghz 3.3 `
-    --out kpi_runs\preset6_sweagent_gpu_20260929_211533\roofline_projection_16EU_corrected.json
 ```
 
-| Baseline run (real, measured) | Real wall time | Naive projection | Corrected projection | Naive − Corrected error* |
-|---|---|---|---|---|
-| `preset6_roofline_20260923_141035` (original, 2026-09-23) | 689.77s | 1,320.13s | 1,030.42s (recheck; §9.6a's original report said 1,020.16s — 1.0% apart, CLI-arg rounding, not a regression) | **28.1%** |
-| `preset6_sweagent_gpu_20260929_211533` (fresh, 2026-09-29) | 778.62s | 1,114.53s | 1,008.84s | **10.5%** |
-
-\* `error = (naive − corrected) / corrected`, i.e. how much the naive 100%-compute-bound
-assumption overstates the slowdown relative to the more physically-grounded, real-TTFT-calibrated
-method — the same relative comparison §9.2/§9.5 already draw, computed here on two independent
-real inputs instead of one.
-
-**Cross-run spread of each method's own output** (holding the target spec fixed, varying only
-which real baseline run was fed in):
-
-| Method | Run A output | Run B output | Spread |
+| Baseline run used for the prediction | Naive prediction | Corrected prediction | Naive − Corrected gap* |
 |---|---|---|---|
-| Naive (`run_roofline_projection.py`) | 1,320.13s | 1,114.53s | **15.6%** |
-| Corrected (`integrate_external_ttft.py`) | 1,030.42s | 1,008.84s | **2.1%** |
+| `preset6_roofline_20260923_141035` (this repo's 96-EU dev box, 2026-09-23) | 1,320.13s | 1,030.42s | 28.1% |
+| `preset6_sweagent_gpu_20260929_211533` — **this is the real `JF04WVAW0381-TA` run itself, its own numbers projected back onto its own spec, not an independent prediction** | 1,114.53s | 1,008.84s | 10.5% |
 
-**Interpretation**: the two real baseline runs disagree by 12.9% purely from ordinary benchmark
-noise (nothing to do with hardware projection — see the `tool_exec_gap_s` swing above). The naive
-method has no anchor independent of *this specific run's* own prefill/tool-exec numbers, so
-~15.6% of that noise passes straight through into its projected output. The corrected method's
-prefill term is instead anchored to a fixed, input-length-keyed external ratio curve (§9.1) that
-doesn't change between runs of the same config — so its output only moves 2.1% despite the same
-12.9% baseline noise. This is **evidence, not proof**, that the corrected method is the more
-reliable of the two: it does not establish the corrected method's *absolute* accuracy (that still
-requires a real `JF04WVAW0381-TA` full-workflow run, §9.6a), only that it is far less sensitive to
-ordinary run-to-run measurement noise than the naive method — which bounds how much of any future
-naive-vs-ground-truth gap could plausibly be blamed on "just noise" versus genuine methodology error.
+\* Kept for the record, but this comparison is **not a validity check** — the second row projects
+`JF04WVAW0381-TA`'s own real run onto its own real spec, which is a circular exercise, not a fresh
+prediction. The only real prediction-vs-ground-truth comparison is the first table in this section.
 
-**Files referenced in this cross-check** (all committed under `kpi_runs/`):
+**Files referenced** (all committed under `kpi_runs/`):
+- `kpi_runs/preset6_sweagent_gpu_20260929_211533/` — the real `JF04WVAW0381-TA` run (`workflow_kpi.json`, `hw_samples.csv`, `experiment.json`, `mlperf_stdout.log`, `dashboard.html`, `kpi_report.html`)
 - `kpi_runs/preset6_roofline_20260923_141035/roofline_projection_16EU_naive_recheck/roofline_projection_report.json`
 - `kpi_runs/preset6_roofline_20260923_141035/roofline_projection_16EU_corrected_recheck.json`
-- `kpi_runs/preset6_sweagent_gpu_20260929_211533/roofline_projection_16EU/roofline_projection_report.json`
-- `kpi_runs/preset6_sweagent_gpu_20260929_211533/roofline_projection_16EU_corrected.json`
 - `kpi_runs/preset6_sweagent_gpu_20260929_211533/roofline_projection_16EU_sameMem/roofline_projection_report.json` —
-  a separate control run (naive method, target = baseline spec with only `igpu_xecores` overridden
-  16→96, memory/CPU/NPU held identical) used to isolate the EU-count-only effect from the
-  compounding lower-memory-bandwidth effect of the real `JF04WVAW0381-TA_16EU.json` spec: with
-  memory held constant, cutting EUs 6× (96→16) only degrades wall time 778.62s→977.93s (+25.6%),
-  because ~86% of this decode-dominated agentic run's wall time (decode + tool-exec + fixed
-  startup overhead) doesn't scale with iGPU EU count at all — only the ~10.5%-weight `prefill_s`
-  bucket does. This is the underlying reason §9.6a's 16-EU real-spec projection (which *also*
-  changes memory bandwidth, 136.5→102.4 GB/s) shows a smaller relative penalty than a naive
-  "6× fewer EUs" intuition would predict.
+  a control run (naive method, target = baseline spec with only `igpu_xecores` overridden 16→96,
+  memory/CPU/NPU held identical) isolating the EU-count-only effect: with memory held constant,
+  cutting EUs 6× (96→16) only degrades wall time 778.62s→977.93s (+25.6%) in the naive model — most
+  of this decode-dominated agentic run's wall time doesn't scale with iGPU EU count at all. This
+  control was designed to isolate a variable inside the *naive model itself*; it does not explain
+  the real result above, since the real result shows prefill got faster, not slower, which no
+  variant of the naive model (EU-only or EU+memory) predicts.
+
+**Open question, not yet answered**: why does `JF04WVAW0381-TA`'s real 16-EU iGPU prefill 3.3×
+*faster* than this repo's 96-EU reference on the exact same input length, under the exact same
+`mlperf-windows.exe`/`openvino_genai` pipeline, when the companion project's own raw `PERF_COUNT`
+sweep on the same two chips shows the opposite direction? Leading candidates: a materially newer
+OpenVINO GPU-plugin/driver version on `JF04WVAW0381-TA` (see its `.md` onboarding doc — driver
+32.0.101.8907 vs the reference box's 32.0.101.8949, close but not identical; worth checking
+`openvino_genai`'s own version too) dominating over raw EU count for this specific kernel path;
+or `openvino_genai`'s prefill implementation using a fundamentally different, non-`PERF_COUNT`-
+comparable code path (e.g. different batching/kernel-fusion strategy) than the raw `ov.Core` sweep
+this whole external-ratio methodology (§9.1/§9.5) is built on. Until this is root-caused, **§9.5's
+`ttft_ratio(n)` borrowing should be treated as unvalidated for cross-machine prefill projection**,
+not merely "more physically defensible than the naive method" as earlier language in this doc
+claimed — that claim is now directly contradicted by real ground truth.
 
 ### 9.6 §9.1-§9.5 only ever covers `prefill_s`/TTFT — the other three buckets rely on this repo's own §4.3 evidence
 
