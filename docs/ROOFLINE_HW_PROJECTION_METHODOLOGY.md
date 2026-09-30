@@ -282,15 +282,42 @@ Only computed if at least one stage has measured RAPL power (`hw_samples.csv`'s
 ratio(domain) = target.<domain>_capability / baseline.<domain>_capability     # cpu/igpu/npu
 ratio("soc")  = 1.0   # uncore/SoC rail assumed roughly fixed regardless of core/EU/MAC count
 
-projected_power_w[domain] = baseline_power_w[domain] × ratio(domain) ^ power_scaling_exponent
+power_ratio = ratio(domain) ^ power_scaling_exponent
     # power_scaling_exponent: 1.0 = linear (dynamic power ∝ resource count × freq, the common
     # simplifying assumption at iso process-node). Default 1.0.
+
+# Opt-in (--use-duty-cycle-power, default off): weight power_ratio by this stage's own real
+# measured busy% for that SAME domain (cpu_busy_pct/igpu_busy_pct/npu_busy_pct from
+# hw_samples.csv) using the same effective_speedup() damping as the efficiency-retention knobs:
+#     power_ratio = 1 + (power_ratio - 1) × (measured_busy_pct / 100)
+# At 0% busy, power_ratio collapses to 1.0 (idle/lightly-loaded rail stays near baseline power
+# regardless of target resource count); at 100% busy, power_ratio is unchanged (full scaling).
+
+projected_power_w[domain] = baseline_power_w[domain] × power_ratio
 
 Total baseline energy_j  = Σ(stage)  Σ(domain, baseline_power_w[domain])  × stage.baseline_wall_s
 Total projected energy_j = Σ(stage)  Σ(domain, projected_power_w[domain]) × stage.projected_wall_s
 
 Tokens/Joule = total_output_tokens / Total energy_j   (baseline and projected)
 ```
+
+**Why `--use-duty-cycle-power` matters, with a real number**: on `preset6_roofline_20260923_141035`
+projected onto `example_heavy_duty_workstation.json` (96→384 EU), stage `02_swe_agent_0` is
+iGPU/memory-bound (89.5s of its 94.5s wall time is prefill+decode; only 5s is CPU-bound tool-exec).
+Without this flag, its measured near-idle CPU rail (6.99W) still gets the FULL `cpu_capability`
+ratio (2.5×) applied → 17.47W projected, as if the target's extra cores were fully active the whole
+stage. That's the concrete, code-verified gap this flag fixes - re-running the same projection with
+`--use-duty-cycle-power` raised workflow Tokens/Joule from 0.26 to **0.37** (baseline 0.25), simply
+by no longer over-scaling idle-adjacent domains.
+
+**Power-budget-exceeded warning** (diagnostic, never clamps anything): if a target `SystemSpec`
+JSON declares an optional `power_budget_w` (a TDP-class ceiling), `run_roofline_projection.py`
+compares it against the highest single stage's total projected package power and prints a
+`stderr` warning (and a red card in the HTML report) if exceeded - because this power model has
+**no thermal/power-limit awareness at all**: a large enough capability jump can project a package
+power no real chip would sustain. E.g. the same 96→384-EU projection above peaks at **142.2W**
+(stage `10_swe_agent_0`) with a `--power-budget-w 60` override - flagged, not silently accepted.
+
 
 ### 4.2 Calibration cross-check (`calibration.py`, `tools/calibrate_roofline_baseline.py`)
 
@@ -621,6 +648,22 @@ scenarios (SWE Agent / Data Agent) and both accelerator types without any scenar
    class of alignment bug before assuming the hardware simply didn't report power for that domain.
    **Fixed 2026-09-24**: the averaging window itself was also widened to span each stage's whole
    bucket (through its tool-exec gap), not just its own active `start_iso`→`end_iso` — see §2.
+   **Partially addressed 2026-09-30** (opt-in, `--use-duty-cycle-power`): by default every domain's
+   power still scales by its FULL capability ratio regardless of whether that domain was actually
+   the bottleneck for a given stage (confirmed real gap: a near-idle CPU rail during an iGPU-bound
+   stage still got the full `cpu_capability` ratio applied - see the Power/energy section above) -
+   this flag weights each domain's ratio by that domain's own measured busy% for the stage instead.
+   Still NOT addressed even with the flag on: `fixed_overhead_s` (process startup/model load/
+   shutdown) contributes ZERO energy in either baseline or projected totals (it's excluded from the
+   per-stage power/energy loop entirely, since it isn't a "stage") even though it's real wall-clock
+   time a real machine would draw platform power during - Tokens/Joule is likely a slight
+   *underestimate* of total energy for both baseline and projected as a result. The `soc`/uncore
+   rail also stays exactly fixed regardless of how different the target's memory subsystem is
+   (e.g. a much higher-bandwidth target like LPDDR6 would plausibly draw more IMC/PHY power than
+   the baseline's, not the same) - no separate memory-power rail exists in `hw_samples.csv` to
+   model that distinctly. Finally, nothing caps projected power against a real chip's power
+   envelope by default - see the new opt-in power-budget-exceeded warning (`--power-budget-w` on a
+   target `SystemSpec`) for a diagnostic-only check against that.
 6. ~~The trailing gap after a run's LAST stage falls into `fixed_overhead_s` (unscaled), not
    `tool_exec_gap_s` (Amdahl-scaled).~~ **Fixed 2026-09-24**: the last stage's `tool_exec_gap_s` is
    now computed against the workflow's `timeline.end_epoch`, not hardcoded to `0` — any real

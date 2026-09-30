@@ -31,6 +31,7 @@ h2 { font-size: 1.15rem; color: var(--accent); margin-bottom: 12px; border-botto
 .card .label { color: var(--text2); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
 .card .value { font-size: 1.4rem; font-weight: 600; margin-top: 2px; }
 .card .value.green { color: var(--green); }
+.card .value.red { color: var(--red); }
 .card .sub { color: var(--text2); font-size: 0.78rem; margin-top: 2px; }
 table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 th { text-align: left; color: var(--text2); font-weight: 500; padding: 8px 10px; border-bottom: 2px solid var(--border); }
@@ -105,10 +106,26 @@ def build_report_html(result: ProjectionResult) -> str:
     report_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     power_cards = ""
+    power_budget_note = ""
     if result.baseline_tok_per_j is not None:
         power_cards = f"""
         <div class="card"><div class="label">Tokens/Joule (baseline)</div><div class="value">{result.baseline_tok_per_j:.2f}</div></div>
         <div class="card"><div class="label">Tokens/Joule (projected)</div><div class="value green">{result.projected_tok_per_j:.2f}</div></div>"""
+    if result.peak_projected_power_w is not None:
+        budget = getattr(result.target_spec, "power_budget_w", None)
+        exceeded = bool(budget) and result.peak_projected_power_w > budget
+        power_cards += f"""
+        <div class="card"><div class="label">Peak projected package power</div>
+        <div class="value{' red' if exceeded else ''}">{result.peak_projected_power_w:.1f} W</div>
+        <div class="sub">stage '{html.escape(result.peak_projected_power_stage or '')}'{f", budget {budget:.0f}W" if budget else ""}</div></div>"""
+        if exceeded:
+            power_budget_note = (
+                f"<p class=\"note\" style=\"color:var(--red)\">Warning: peak projected package power "
+                f"({result.peak_projected_power_w:.1f}W) exceeds target_spec's declared power_budget_w "
+                f"({budget:.1f}W) - the power-scaling model has no thermal/power-limit awareness, so this "
+                "projection may be physically unrealistic for that target chip. See --use-duty-cycle-power "
+                "and --power-scaling-exponent in docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md.</p>"
+            )
 
     latency_cards = ""
     if result.avg_baseline_ttft_ms is not None:
@@ -186,6 +203,7 @@ memory efficiency retention={result.assumptions.memory_efficiency_retention:.2f}
 cpu efficiency retention={result.assumptions.cpu_efficiency_retention:.2f}, tool-exec parallel
 fraction={result.assumptions.tool_parallel_fraction:.2f}, power scaling exponent={result.assumptions.power_scaling_exponent:.2f}.
 See docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md for the full equations.</p>
+{power_budget_note}
 </div>
 {measured_cards}
 

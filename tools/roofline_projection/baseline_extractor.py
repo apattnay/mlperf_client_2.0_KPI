@@ -207,6 +207,13 @@ def _load_utilization_lookup(run_dir: Path, device_type: str):
     has_bw = "dram_total_gbs" in df.columns
     has_page_hit = "dram_page_hit_rate_rd" in df.columns
     has_latency = "dram_rd_latency_ns" in df.columns
+    # Per-DOMAIN busy% (cpu/igpu/npu), captured regardless of device_type - unlike accel_busy_pct
+    # above (only the domain matching this run's device_type), these feed the opt-in duty-cycle-
+    # aware power scaling in scaling_engine.py (assumptions.use_duty_cycle_power), which needs a
+    # given stage's OWN busy% for a non-bottleneck domain too (e.g. how busy was the CPU during an
+    # iGPU-bound prefill/decode stage), not just the one domain a stage's tokens were generated on.
+    domain_busy_cols = {"cpu": "cpu_total_pct", "igpu": "igpu_pct", "npu": "npu_pct"}
+    has_domain_busy = {k: c in df.columns for k, c in domain_busy_cols.items()}
     # Real achieved clocks, independent of device_type - diagnostic only, same principle as the
     # busy%/bandwidth fields above: compares against whatever *_freq_ghz the user typed into a
     # SystemSpec JSON (often a guessed/nameplate value), never fed back into the raw capability
@@ -216,7 +223,7 @@ def _load_utilization_lookup(run_dir: Path, device_type: str):
     has_igpu_freq = "l0_gpu_freq_mhz" in df.columns
     has_cpu_freq = "cpu_freq_max_mhz" in df.columns
     has_imc_freq = "imc_freq_ghz" in df.columns
-    if not any([has_busy, has_bw, has_page_hit, has_latency, has_igpu_freq, has_cpu_freq, has_imc_freq]):
+    if not any([has_busy, has_bw, has_page_hit, has_latency, has_igpu_freq, has_cpu_freq, has_imc_freq, *has_domain_busy.values()]):
         return empty
 
     def lookup(start_iso: str, end_iso: str) -> Dict[str, float]:
@@ -229,6 +236,11 @@ def _load_utilization_lookup(run_dir: Path, device_type: str):
             vals = pd.to_numeric(window[busy_col], errors="coerce").dropna()
             if len(vals):
                 out["accel_busy_pct"] = float(vals.mean())
+        for domain, present in has_domain_busy.items():
+            if present:
+                vals = pd.to_numeric(window[domain_busy_cols[domain]], errors="coerce").dropna()
+                if len(vals):
+                    out[f"{domain}_busy_pct"] = float(vals.mean())
         if has_bw:
             vals = pd.to_numeric(window["dram_total_gbs"], errors="coerce").dropna()
             if len(vals):

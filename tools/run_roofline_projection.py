@@ -37,6 +37,7 @@ from tools.roofline_projection.what_if_calculator import save_what_if_calculator
 _TARGET_OVERRIDE_FIELDS = [
     "cpu_cores", "cpu_freq_ghz", "igpu_xecores", "igpu_freq_ghz",
     "npu_macs", "npu_freq_ghz", "mem_channels", "mem_width_bits", "mem_freq_mts",
+    "power_budget_w",
 ]
 
 
@@ -60,6 +61,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--power-scaling-exponent", type=float, default=1.0, help="Exponent for power-vs-capability scaling (default 1.0 = linear)")
     p.add_argument("--use-measured-compute-efficiency", action="store_true", help="Use each stage's own real measured accelerator busy%% (hw_samples.csv) as the compute-domain retention instead of --compute-efficiency-retention, falling back to it where no measurement exists")
     p.add_argument("--use-measured-memory-efficiency", action="store_true", help="Use each stage's own real measured achieved-vs-theoretical-peak DRAM bandwidth (hw_samples.csv) as the memory-domain retention instead of --memory-efficiency-retention, falling back to it where no measurement exists - see docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md §9.6b for why this can matter a lot on real hardware")
+    p.add_argument("--use-duty-cycle-power", action="store_true", help="Weight each domain's power-vs-capability-ratio scaling by that domain's own real measured busy%% during the stage (cpu/igpu/npu, hw_samples.csv), so an idle/lightly-loaded rail stays near its baseline power instead of scaling with the full target capability ratio, falling back to the unweighted ratio where no measurement exists")
     return p
 
 
@@ -106,6 +108,28 @@ def _warn_on_frequency_mismatch(baseline_profile, baseline_spec) -> None:
     _check(baseline_profile.measured_cpu_freq_mhz, baseline_spec.cpu_freq_ghz, "cpu_freq_ghz")
 
 
+def _warn_on_power_budget_exceeded(result) -> None:
+    """Flag (never clamp/auto-correct) a projected package power that exceeds the target_spec's
+    optional declared power_budget_w (a TDP-class ceiling) - diagnostic only, same principle as
+    the frequency-mismatch warning above. The projection has no thermal/power-limit model at all:
+    a big enough capability jump can project a package power no real chip would sustain (see
+    docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md's power section for a real worked example), and
+    this is the only check that catches that. No-op if the target spec never declared a budget.
+    """
+    budget = getattr(result.target_spec, "power_budget_w", None)
+    if not budget or result.peak_projected_power_w is None:
+        return
+    if result.peak_projected_power_w > budget:
+        msg = (
+            "warning: projected package power (%.1fW, stage '%s') exceeds target_spec's declared "
+            "power_budget_w (%.1fW) - the power-scaling model has no thermal/power-limit awareness, "
+            "so this projection may be physically unrealistic for that target chip. Consider a lower "
+            "--power-scaling-exponent, --use-duty-cycle-power, or treating the wall-time/speedup "
+            "numbers as more trustworthy than the power/Tokens-per-Joule numbers for this target."
+        ) % (result.peak_projected_power_w, result.peak_projected_power_stage, budget)
+        print(msg, file=sys.stderr)
+
+
 def main(argv=None) -> int:
     args = _build_arg_parser().parse_args(argv)
 
@@ -142,11 +166,14 @@ def main(argv=None) -> int:
         power_scaling_exponent=args.power_scaling_exponent,
         use_measured_compute_efficiency=args.use_measured_compute_efficiency,
         use_measured_memory_efficiency=args.use_measured_memory_efficiency,
+        use_duty_cycle_power=args.use_duty_cycle_power,
     )
 
     _warn_on_frequency_mismatch(baseline_profile, baseline_spec)
 
     result = project(baseline_profile, baseline_spec, target_spec, assumptions)
+
+    _warn_on_power_budget_exceeded(result)
 
     out_dir = args.out or str(Path(args.run) / "roofline_projection")
     save_report(result, out_dir)
@@ -164,6 +191,13 @@ def main(argv=None) -> int:
         print(
             f"Measured baseline mem BW achieved:    {result.measured_mem_bw_gbs:.1f} GB/s "
             f"({result.measured_mem_bw_efficiency_pct:.1f}% of baseline_spec's theoretical peak)"
+        )
+    if result.peak_projected_power_w is not None:
+        budget = getattr(result.target_spec, "power_budget_w", None)
+        budget_note = f" (budget: {budget:.1f}W)" if budget else ""
+        print(
+            f"Peak projected package power: {result.peak_projected_power_w:.1f}W "
+            f"(stage '{result.peak_projected_power_stage}'){budget_note}"
         )
     print(f"Report written to:    {out_dir}")
 

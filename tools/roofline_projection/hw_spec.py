@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
+from typing import Optional
 
 
 @dataclass
@@ -36,6 +37,12 @@ class SystemSpec:
     mem_channels: float = 8
     mem_width_bits: float = 16
     mem_freq_mts: float = 8533
+
+    # Optional declared package/SoC power budget (TDP-class number, Watts) for this spec - used
+    # ONLY as an opt-in diagnostic ceiling check on projected power (see run_roofline_projection.py's
+    # power-budget-exceeded warning), never fed back into the wall-time/speedup math itself. None
+    # (the default, and every existing target-spec JSON in this repo) means "no check performed".
+    power_budget_w: Optional[float] = None
 
     notes: str = ""
 

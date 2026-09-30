@@ -58,6 +58,17 @@ class ProjectionAssumptions:
     # (that remains an assumption regardless of this flag).
     use_measured_compute_efficiency: bool = False
     use_measured_memory_efficiency: bool = False
+    # Opt-in ONLY (default off): a domain's power is scaled by its full capability ratio (raised
+    # to power_scaling_exponent) ONLY in proportion to that domain's own real measured busy% during
+    # THIS stage (cpu_busy_pct/igpu_busy_pct/npu_busy_pct from hw_samples.csv); at 0% measured busy
+    # the ratio collapses to 1.0 (i.e. an idle/lightly-loaded rail is assumed to draw roughly its
+    # baseline power regardless of target resource count, not the full scaled-up amount). Fixes a
+    # confirmed real gap: without this, a CPU rail measured near-idle during an iGPU-bound
+    # prefill/decode stage still gets the FULL cpu_capability-ratio power multiplier applied, e.g.
+    # 6.99W -> 17.47W (2.5x) on a real run where tool-exec (the only CPU-bound part) was <5% of that
+    # stage's wall time. Falls back to the unweighted ratio for any stage/domain with no busy%
+    # measurement (older hw_samples.csv formats, or "soc" which has no single owning domain).
+    use_duty_cycle_power: bool = False
 
     def to_dict(self) -> dict:
         return self.__dict__.copy()
@@ -127,6 +138,12 @@ class ProjectionResult:
     measured_accel_busy_pct: Optional[float]
     measured_mem_bw_gbs: Optional[float]
     measured_mem_bw_efficiency_pct: Optional[float]
+    # Highest single stage's total projected package power (sum of all measured RAPL domains for
+    # that stage), i.e. a stage-average proxy for peak power - NOT true instantaneous peak, since
+    # avg_power_w is itself already a per-stage average. Used only for the opt-in power-budget-
+    # exceeded diagnostic (run_roofline_projection.py); None if no RAPL power was measured.
+    peak_projected_power_w: Optional[float]
+    peak_projected_power_stage: Optional[str]
 
     @property
     def wall_time_speedup_x(self) -> float:
@@ -166,6 +183,8 @@ class ProjectionResult:
             "measured_accel_busy_pct": self.measured_accel_busy_pct,
             "measured_mem_bw_gbs": self.measured_mem_bw_gbs,
             "measured_mem_bw_efficiency_pct": self.measured_mem_bw_efficiency_pct,
+            "peak_projected_power_w": self.peak_projected_power_w,
+            "peak_projected_power_stage": self.peak_projected_power_stage,
             "wall_time_speedup_x": self.wall_time_speedup_x,
             "wall_time_reduction_pct": self.wall_time_reduction_pct,
         }
@@ -242,7 +261,12 @@ def _project_stage(
             ratio = raw_speedup(target_spec.npu_capability, baseline_spec.npu_capability)
         else:  # "soc"/uncore rail: assumed roughly fixed regardless of core/EU/MAC count
             ratio = 1.0
-        projected_power_w[domain] = watts * (ratio ** assumptions.power_scaling_exponent)
+        power_ratio = ratio ** assumptions.power_scaling_exponent
+        if assumptions.use_duty_cycle_power and domain != "soc":
+            busy_pct = stage.measured_util.get(f"{domain}_busy_pct")
+            if busy_pct is not None:
+                power_ratio = effective_speedup(power_ratio, min(max(busy_pct / 100.0, 0.0), 1.0))
+        projected_power_w[domain] = watts * power_ratio
 
     return ProjectedStage(
         name=stage.name,
@@ -326,6 +350,15 @@ def project(
     avg_baseline_itl_ms = _weighted_avg([s.baseline_itl_ms for s in decoded])
     avg_projected_itl_ms = _weighted_avg([s.projected_itl_ms for s in decoded])
 
+    peak_projected_power_w = peak_projected_power_stage = None
+    if has_power:
+        peak_stage = max(
+            (s for s in projected_stages if s.projected_power_w),
+            key=lambda s: sum(s.projected_power_w.values()),
+        )
+        peak_projected_power_w = sum(peak_stage.projected_power_w.values())
+        peak_projected_power_stage = peak_stage.name
+
     measured_mem_bw_gbs = baseline_profile.measured_mem_bw_gbs
     measured_mem_bw_efficiency_pct = (
         (measured_mem_bw_gbs / baseline_spec.mem_bw_peak_gbs * 100.0)
@@ -357,4 +390,6 @@ def project(
         measured_accel_busy_pct=baseline_profile.measured_accel_busy_pct,
         measured_mem_bw_gbs=measured_mem_bw_gbs,
         measured_mem_bw_efficiency_pct=measured_mem_bw_efficiency_pct,
+        peak_projected_power_w=peak_projected_power_w,
+        peak_projected_power_stage=peak_projected_power_stage,
     )
