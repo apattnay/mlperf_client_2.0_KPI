@@ -708,6 +708,19 @@ scenarios (SWE Agent / Data Agent) and both accelerator types without any scenar
 > `effective_speedup`/`amdahl_speedup` terms (§4), calibrated from the real runs in §4.3/§9.6, and
 > can optionally be seeded from each stage's own real EMON-measured achieved efficiency instead of
 > a flat guess (`--use-measured-memory-efficiency`/`--use-measured-compute-efficiency`, §9.7).
+>
+> **Drill-down — what `E_mem`/`E_cpu` (and `E_compute`, inside `R_TTFT`'s decode-side split)
+> actually are**, the "iso-efficiency" damped speedup (§4), now with an evidence-based source for
+> the retention term (§9.7):
+>
+> $$E_{domain}=1+\left(\underbrace{\frac{\text{Target}_{count}\times\text{Target}_{freq}}{\text{Baseline}_{count}\times\text{Baseline}_{freq}}}_{\text{raw capability ratio (\S3)}}-1\right)\times\underbrace{\rho_{domain}}_{\text{retention}}\qquad\rho_{domain}=\begin{cases}\dfrac{\text{measured achieved}}{\text{theoretical peak}} & \text{EMON-informed (\S9.7, opt-in)}\\[4pt]0.85\ (\text{default}) & \text{flat assumption (\S4)}\end{cases}$$
+>
+> Plain-text form: `E_domain = 1 + (raw_capability_ratio - 1) * retention`, where
+> `retention = measured_achieved / theoretical_peak` (real, from `hw_samples.csv`, when
+> `--use-measured-*-efficiency` is set) **or** a flat `0.85` guess otherwise. This is the exact
+> mechanism that closed §9.7a's naive-method error from +69.6% to +19.2% against real
+> `JF04WVAW0381-TA` ground truth — using this baseline's own real telemetry instead of an
+> unexamined constant.
 
 §4's equation scales the **entire** `prefill_s` bucket by a single `compute_eff` ratio — i.e. it
 implicitly assumes 100% of prefill/TTFT time is compute-bound (NPU-MAC/iGPU-XeCore-limited) and
