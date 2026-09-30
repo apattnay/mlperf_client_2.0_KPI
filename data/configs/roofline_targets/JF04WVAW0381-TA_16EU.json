@@ -1,0 +1,13 @@
+{
+  "name": "JF04WVAW0381-TA_16EU_real_secondSUT",
+  "cpu_cores": 28,
+  "cpu_freq_ghz": 3.3,
+  "igpu_xecores": 16,
+  "igpu_freq_ghz": 2.0,
+  "npu_macs": 2048,
+  "npu_freq_ghz": 1.4,
+  "mem_channels": 2,
+  "mem_width_bits": 64,
+  "mem_freq_mts": 6400,
+  "notes": "REAL second SUT (companion project's JF04WVAW0381-TA, Nova Lake client, onboarded 2026-09-28) - NOT hypothetical, but no full agentic mlperf SWE-Agent/Data-Agent run exists on it yet, only a raw OpenVINO PERF_COUNT prefill/TTFT sweep + GEMM census + microbenchmark suite (see C:\\portable_agentic_soc_suite\\doc\\sut\\JF04WVAW0381-TA.md). cpu_cores=28 sums this machine's real 12 P-cores + 16 E-cores (this repo's Amdahl model has no P/E distinction, same limitation as elsewhere in the doc). igpu_xecores=16 is confirmed via OpenVINO's gpu_execution_units_count device query, not a guess. mem_freq_mts=6400 with mem_channels=2/mem_width_bits=64 gives the 102.4 GB/s DDR5 dual-channel THEORETICAL peak (this machine's own empirical bulk-copy figure was only 9.45 GB/s via the OpenVINO GPU plugin / 55.5 GB/s via native oneMKL - use whichever convention matches how you're comparing, they differ by >10x). igpu_freq_ghz/npu_macs/npu_freq_ghz are NOT independently verified for this machine - copied from this repo's own default placeholder pending real datasheet values."
+}

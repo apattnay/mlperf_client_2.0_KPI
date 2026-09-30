@@ -901,6 +901,87 @@ Tool-exec time here is a noticeably larger share of the total (16.3%→17.6%) th
 (11.7%→12.4%), reflecting Data Agent's heavier `execute` tool usage relative to SWE Agent's
 lighter `read_file`/`apply_patch` mix.
 
+### 9.6a Real second-SUT cross-check (2026-09-29) — prefill/TTFT only, not the full equation
+
+A genuinely different, useful validation question: instead of projecting onto a *hypothetical*
+256-EU/300-GB/s target, cross-check against a **real second machine** — the external project's
+`JF04WVAW0381-TA` (Nova Lake client, onboarded 2026-09-28): a real **16-EU** iGPU (confirmed via
+OpenVINO's `gpu_execution_units_count` device query, not a guess), **96 GB DDR5-6400** (2×48 GB),
+**28 total CPU cores** (12 P-cores + 16 E-cores — this repo's Amdahl model sums them into one
+`cpu_cores` count, same limitation noted elsewhere in this doc).
+
+**What real data actually exists there**: a raw OpenVINO `PERF_COUNT` prefill/TTFT sweep
+(`llama31_8b_perfcount_sweep_gpu.csv`, real measured `wall_ms(n)` at n=64…8192, matching the
+96-EU reference SUT's own measured `n` grid exactly) plus a GEMM census and microbenchmark suite.
+**No full agentic mlperf SWE-Agent/Data-Agent run has been executed there** — so `decode_s`/
+`tool_exec_gap_s`/`stage_overhead_s` (the other three-quarters of the Wall-Time(s) equation)
+cannot yet be cross-checked against real ground truth on this machine, only the prefill/TTFT
+bucket can.
+
+**Real-vs-real prefill/TTFT speedup** (16-EU actual `wall_ms(n)` vs. 96-EU actual `wall_ms_total(n)`,
+both real measurements, no fitting or extrapolation):
+
+| n | 16-EU actual (ms) | 96-EU actual (ms) | Real measured speedup (16→96 EU) |
+|---|---|---|---|
+| 64 | 189.24 | 91.40 | 2.07× |
+| 128 | 253.44 | 172.06 | 1.47× |
+| 256 | 465.84 | 341.05 | 1.37× |
+| 512 | 846.44 | 680.71 | 1.24× |
+| 1024 | 1,733.08 | 1,370.13 | 1.26× |
+| 2048 | 3,830.21 | 2,773.18 | 1.38× |
+| 4096 | 9,466.36 | 5,682.97 | 1.67× |
+| 8192 | 26,309.71 | 12,287.39 | 2.14× |
+
+Notably **non-monotonic** (dips to ~1.24× around n=512-1024, climbs back to >2× at both extremes)
+— a genuinely real, unexplained shape, not a modeling artifact, and a concrete demonstration of
+why a single flat `compute_efficiency_retention` ratio (§4) can't be right across all context
+lengths. **Important caveat on how to read this**: this exact 16-EU/96-EU pair is the SAME pair
+the external project's own `llama31_8b_compute`/`llama31_8b_attention` axis fractions (§9.1) were
+calibrated FROM — so this is a self-consistency check on real data, not independent held-out
+validation of that calibration (comparing a fitted model against its own training pair will
+always look good). It's still useful: it confirms the real numbers behind that calibration
+directly, in this repo's own docs, rather than trusting the external project's summary numbers
+un-inspected.
+
+**To close the loop for real** (validate the *whole* Wall-Time(s) equation, not just prefill),
+this repo would need someone to physically run `tools\run_kpi_preset.py --preset 6` (or a
+`roofline_calibration` preset) on `JF04WVAW0381-TA` itself and bring back its `kpi_runs/`
+directory — genuine ground truth for `decode_s`/`tool_exec_gap_s`/`stage_overhead_s` at this
+exact real spec. `data/configs/roofline_targets/JF04WVAW0381-TA_16EU.json` (16 EU, 28 cores
+12P+16E, 102.4 GB/s DDR5-6400 theoretical) has been added to this repo for exactly this.
+
+**Two advance PREDICTIONS generated now, before any real full-workflow run exists on that
+machine** (deliberately predict-then-verify, not fit-then-compare) — both project
+`preset6_roofline_20260923_141035` (this repo's real 96-EU baseline, 689.77s) onto that exact spec:
+
+```powershell
+# (1) Naive/existing method - prefill 100%-compute-scaled (scaling_engine.py, §4)
+.venv\Scripts\python.exe tools\run_roofline_projection.py --run kpi_runs\preset6_roofline_20260923_141035 `
+    --target-spec data\configs\roofline_targets\JF04WVAW0381-TA_16EU.json --efficiency-retention 0.85 --tool-parallel-fraction 0.5
+
+# (2) Corrected method - prefill uses this machine's own REAL measured TTFT ratio (§9.6a's table,
+# saved as data\configs\roofline_targets\JF04WVAW0381-TA_real_ttft_ratio.csv) via integrate_external_ttft.py
+.venv\Scripts\python.exe tools\roofline_projection\integrate_external_ttft.py --run kpi_runs\preset6_roofline_20260923_141035 `
+    --external-ttft-csv data\configs\roofline_targets\JF04WVAW0381-TA_real_ttft_ratio.csv `
+    --igpu-xecores 16 --mem-bw-gbs 102.4 --p-cores 12 --e-cores 16
+```
+
+| Method | Predicted wall time | Speedup | Reduction |
+|---|---|---|---|
+| Naive (100%-compute-bound prefill) | 1,320.13s | 0.52× (≈1.91× *slower*) | −91.4% |
+| Corrected (real per-n TTFT ratio) | 1,020.16s | 0.68× (≈1.48× *slower*) | −47.9% |
+
+Both correctly predict this weaker machine runs the SWE-Agent workflow *slower* (both a 16-EU
+iGPU and a 102.4 GB/s theoretical mem BW are below this repo's default 96-EU/136.5-GB/s baseline
+placeholder) — but they disagree by **~300s / ~45%** on *how much* slower, a real, falsifiable
+difference between the two methodologies that a genuine ground-truth run on `JF04WVAW0381-TA`
+would settle. Note the memory-domain speedup here is `0.788×` (i.e. `decode_s` gets *slower*, not
+faster) — this target's 102.4 GB/s theoretical DDR5-6400 dual-channel figure is genuinely below
+the 136.5 GB/s baseline placeholder, unlike the 256-EU/300-GB/s target used everywhere else in §9.
+**These are predictions only, not yet compared against reality** — the moment a real
+`kpi_runs/<...>` directory from an actual run on `JF04WVAW0381-TA` exists, re-run
+`baseline_extractor.py` on it directly and diff against the two numbers above.
+
 ### 9.6 §9.1-§9.5 only ever covers `prefill_s`/TTFT — the other three buckets rely on this repo's own §4.3 evidence
 
 Easy to lose track of, given how much of §9 is about the external project: **the external
