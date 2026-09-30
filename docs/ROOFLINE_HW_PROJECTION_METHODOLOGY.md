@@ -1136,6 +1136,26 @@ methodology (§9.1/§9.5) is built on. The DRAM-latency finding above doesn't ru
 — a genuinely rigorous root-cause would isolate memory config, driver version, and OpenVINO
 version as independent variables, which no run so far has done.
 
+**Why the page-hit rate/latency differs — a grounded (not guessed) architectural hypothesis**:
+this repo's own docs already record *why* these two machines' memory subsystems are physically
+different kinds of memory, not just different speed grades. `docs/KPI_HUB_INTEGRATION_NOTES.md`
+documents this dev box's real memory (via `Get-CimInstance Win32_PhysicalMemory`) as **8 channels
+× 16-bit × 8533 MT/s** — a many-narrow-channel layout characteristic of on-package LPDDR5X (typical
+of a mobile SoC). `JF04WVAW0381-TA`'s onboarding doc records **96 GB DDR5, 2×48 GB SK Hynix DIMMs,
+6400 MT/s** — a conventional 2-DIMM desktop/laptop DDR5 layout. These are two genuinely different
+memory *architectures* (many narrow interleaved channels vs. few wide channels), not just a clock-
+speed difference. It is a well-known, physically-motivated property of memory systems that
+many-narrow-channel designs (smaller row buffer per channel, finer address interleaving to
+maximize peak sequential bandwidth) can show *worse* row-buffer/page-hit behavior than fewer-wider-
+channel designs for workloads whose access stride doesn't align well with the narrower per-channel
+granularity — while still achieving similar or higher peak sequential bandwidth, exactly the
+pattern measured above (similar `dram_total_gbs`, very different `dram_page_hit_rate_rd`). **This
+is a reasoned hypothesis grounded in two already-documented, verifiable facts (the two real memory
+configs), not a new guess** — but it is still not proof: confirming it would require knowing each
+platform's actual physical row-buffer size and memory-controller page policy (open- vs
+closed-page), which neither machine's documentation currently states, and which this repo has no
+tooling to query directly.
+
 **Same-day control run, 2026-09-29 — rules out time-based drift as the explanation**: to check
 whether the 6-day gap between the original 96-EU run (2026-09-23) and the `JF04WVAW0381-TA` run
 (2026-09-29) could itself explain part of the anomaly (e.g. an OpenVINO/driver update landing on
