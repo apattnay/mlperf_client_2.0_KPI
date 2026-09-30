@@ -1088,19 +1088,53 @@ prediction. The only real prediction-vs-ground-truth comparison is the first tab
   the real result above, since the real result shows prefill got faster, not slower, which no
   variant of the naive model (EU-only or EU+memory) predicts.
 
-**Open question, not yet answered**: why does `JF04WVAW0381-TA`'s real 16-EU iGPU prefill 3.3×
-*faster* than this repo's 96-EU reference on the exact same input length, under the exact same
-`mlperf-windows.exe`/`openvino_genai` pipeline, when the companion project's own raw `PERF_COUNT`
-sweep on the same two chips shows the opposite direction? Leading candidates: a materially newer
-OpenVINO GPU-plugin/driver version on `JF04WVAW0381-TA` (see its `.md` onboarding doc — driver
-32.0.101.8907 vs the reference box's 32.0.101.8949, close but not identical; worth checking
-`openvino_genai`'s own version too) dominating over raw EU count for this specific kernel path;
-or `openvino_genai`'s prefill implementation using a fundamentally different, non-`PERF_COUNT`-
-comparable code path (e.g. different batching/kernel-fusion strategy) than the raw `ov.Core` sweep
-this whole external-ratio methodology (§9.1/§9.5) is built on. Until this is root-caused, **§9.5's
-`ttft_ratio(n)` borrowing should be treated as unvalidated for cross-machine prefill projection**,
-not merely "more physically defensible than the naive method" as earlier language in this doc
-claimed — that claim is now directly contradicted by real ground truth.
+**Open question — now with a strong, quantified candidate root cause (2026-09-29)**: why does
+`JF04WVAW0381-TA`'s real 16-EU iGPU prefill 3.3× *faster* than this repo's 96-EU reference on the
+exact same input length, under the exact same `mlperf-windows.exe`/`openvino_genai` pipeline, when
+the companion project's own raw `PERF_COUNT` sweep on the same two chips shows the opposite
+direction? Comparing both runs' real EMON hardware counters (`hw_samples.csv`, `bw_source=emon` on
+both — genuine IMC uncore counters, not the coarse ~1 Hz PDH sampler) points at **DRAM read
+latency and page-hit rate, not EU count, driver version, or raw bandwidth**:
+
+| Metric (during each run's own `n=8198` prefill stages, all 3 iterations) | `JF04WVAW0381-TA` (16-EU) | This repo's 96-EU box |
+|---|---|---|
+| `dram_rd_latency_ns` (mean/median across 3 stages) | ~21-21.5 / ~22.1-22.4 ns | ~48-51 / ~44-46 ns |
+| `dram_page_hit_rate_rd` | 0.940-0.950 | 0.611-0.672 |
+| `dram_total_gbs` achieved | 46-52 GB/s | 48-54 GB/s (similar!) |
+
+**The 16-EU machine's DRAM subsystem has dramatically better row-buffer locality (94-95% page-hit
+rate vs 61-67%) and correspondingly ~2.2× lower real read latency (~22ns vs ~45-51ns), while
+achieving essentially the *same* raw bandwidth during prefill** — this is a latency-bound, not
+bandwidth-bound, difference. This matters specifically for prefill because §9.1's own
+`attention_buffer`/`host_overhead` hypothesis is exactly this kind of scattered, less-sequential
+memory-access pattern (KV-cache population, attention-score-buffer writes) — a workload phase far
+more sensitive to per-access latency than to peak sequential bandwidth. The same pattern holds
+during decode too (`03_swe_agent_1`, `07_swe_agent_1`, `11_swe_agent_1`): the 96-EU box's page-hit
+rate degrades *further* under decode's heavier, more scattered access pattern (55-58%, latency up
+to ~63-68ns, bandwidth jumping to ~85-87 GB/s) while the 16-EU machine stays flat (~95%, ~22ns)
+across both phases — this looks like a systemic property of this repo's own dev box's memory
+subsystem/configuration, not a one-off artifact of one stage or one run.
+
+**This is a strong, quantified, testable correlation — not yet proven causal.** The ~2.2×
+latency/page-hit gap doesn't fully explain the observed ~3.3× TTFT gap on its own (pipelined GPU
+stalls can compound non-linearly, so this is plausible, not automatically the whole story), and no
+single-variable controlled experiment (same machine, only the memory config changed) has been run
+to confirm causation vs. correlation. It **is** a far more concrete, evidence-backed candidate than
+the earlier driver-version guess this section previously led with (kept below for completeness,
+now demoted to a secondary candidate). Until this is confirmed causal, **§9.5's `ttft_ratio(n)`
+borrowing should be treated as unvalidated for cross-machine prefill projection**, not merely
+"more physically defensible than the naive method" as earlier language in this doc claimed — that
+claim is now directly contradicted by real ground truth.
+
+**Secondary candidate, not yet ruled out**: a materially newer OpenVINO GPU-plugin/driver version
+on `JF04WVAW0381-TA` (see its `.md` onboarding doc — driver 32.0.101.8907 vs the reference box's
+32.0.101.8949, close but not identical; worth checking `openvino_genai`'s own version too)
+dominating over raw EU count for this specific kernel path; or `openvino_genai`'s prefill
+implementation using a fundamentally different, non-`PERF_COUNT`-comparable code path (e.g.
+different batching/kernel-fusion strategy) than the raw `ov.Core` sweep this whole external-ratio
+methodology (§9.1/§9.5) is built on. The DRAM-latency finding above doesn't rule these out either
+— a genuinely rigorous root-cause would isolate memory config, driver version, and OpenVINO
+version as independent variables, which no run so far has done.
 
 **Same-day control run, 2026-09-29 — rules out time-based drift as the explanation**: to check
 whether the 6-day gap between the original 96-EU run (2026-09-23) and the `JF04WVAW0381-TA` run
