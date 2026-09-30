@@ -318,6 +318,23 @@ compares it against the highest single stage's total projected package power and
 power no real chip would sustain. E.g. the same 96→384-EU projection above peaks at **142.2W**
 (stage `10_swe_agent_0`) with a `--power-budget-w 60` override - flagged, not silently accepted.
 
+**This is a modeled estimate, not the same thing as this repo's official Power KPI.** This repo
+separately has a real, submission-grade power measurement methodology -
+`tools/power/power_log_parser.py::CalculateEfficiency()` - built on a certified external Yokogawa
+power analyzer + SPEC PTDaemon (`tools/power/README_MLPerf-client_Power-measurements.md`), which
+computes Tokens/Joule via **trapezoidal-rule numerical integration of the real, instantaneous,
+externally-metered watts time series**: `E = Σᵢ [(wᵢ₋₁+wᵢ)/2] × Δtᵢ` (clipped to the exact
+inference interval), `Tokens/Joule = tokens / E`. That is a true `∫P(t)dt` over measured samples
+from a certified external meter - the most rigorous version of this equation possible. The
+roofline projection's Tokens/Joule above is a **different, much coarser, best-effort model**: the
+baseline side uses one **average** RAPL watts value per stage (internal SW/PDH counters, not a
+certified external meter) × that stage's wall time - a single "big rectangle" per stage, not
+per-sample trapezoids - and the projected side has no real time series to integrate at all, since
+the target hardware doesn't physically exist (power itself is a modeled scalar, not measured).
+**Don't conflate the two numbers**: `tools/power/`'s Tokens/Joule is a certified measurement for
+MLPerf submission; this tool's Tokens/Joule is a diagnostic what-if estimate. See §11's roadmap
+for concrete ways to narrow (not eliminate) that gap.
+
 
 ### 4.2 Calibration cross-check (`calibration.py`, `tools/calibrate_roofline_baseline.py`)
 
@@ -1551,3 +1568,45 @@ Method's core assumption is the physically better-motivated one (real telemetry 
 efficiency degrading at long context in a way pure compute-scaling can't explain, §9.3) but its
 current implementation borrows evidence from a confounded external source. The path forward is not
 "pick a winner" but close the Split-Prefill Method's specific confounds with first-party data.
+
+## 11. Roadmap — every known open gap, and the concrete step to close it
+
+Every gap below is already documented somewhere earlier in this doc (§8's numbered limitations,
+§9.6b/§9.7a's real-hardware findings, or §10's cheat-sheet) — this section is the single
+consolidated "what's left to do, and how" reference, split into gaps that mainly affect **accuracy**
+(the projected number could be materially wrong) vs. gaps that only affect **directional
+confidence** (the number is a reasonable estimate, just not independently proven). Ordered
+roughly by expected impact on closing the real +19-31% error still open against
+`JF04WVAW0381-TA` ground truth (§9.7a).
+
+### 11.1 Gaps affecting accuracy (the number itself could be materially wrong)
+
+| # | Gap | Current impact | Concrete mitigation step |
+|---|---|---|---|
+| 1 | **Split-Prefill Method's `ttft_ratio(n)` is borrowed from a confounded reference machine** (§9.6b: `JF04WVAW0867-TA` = this repo's own anomalous poor-DRAM-locality dev box). | Likely the single largest remaining source of the Split-Prefill Method's +24.6% error (§9.7a). | Run `tools/roofline_calibration/run_calibration.py --preset prefill_sweep --device GPU --run` **on `JF04WVAW0381-TA` itself** (command already given in §9.6b) to get a first-party, same-pipeline `ttft_ratio(n)` derived on real, non-anomalous hardware — replacing the external CSV in `integrate_external_ttft.py --external-ttft-csv` entirely. |
+| 2 | **The `PERF_COUNT`-vs-real-harness gap is itself ~7× machine-dependent** (§9.6b), not a fixed correction factor — recalibrating the external formula on a "cleaner" machine would still be a `PERF_COUNT`-to-`PERF_COUNT` ratio, silently assuming that gap is constant. | Caps how much gap #1's fix alone can help; the underlying cross-pipeline-borrowing approach has a structural ceiling. | Stop crossing measurement pipelines: derive the compute/memory prefill split **purely from same-pipeline** (`mlperf-windows.exe`/`openvino_genai`) `prefill_sweep` runs on 2+ real SUTs (already have one: `prefill_sweep_gpu_20260925_110109` on the 96-EU box; need the matching run on `JF04WVAW0381-TA` from #1) — never mix in the external raw `ov.Core` `PERF_COUNT` numbers again once this exists. |
+| 3 | **`compute_capability` (EU-count × frequency) is empirically off by ~15× directional miss** for the one real cross-chip pair checked so far (§9.6b: model predicts 96-EU box 4.5× faster; real is 3.3× *slower*). | Undermines the Naive Method's core scaling term for iGPU-bound prefill, and the `igpu_capability`/`npu_capability` proxy generally. | Run an independent GEMM-ceiling microbenchmark (real achieved GFLOPs/s at saturation, same technique §9.1's reference project used for its own compute-bound bracket) on 2+ real accelerators to derive a verified FLOPs-per-XeCore/MAC constant — replacing the linear count×freq assumption with an empirically-fit one, or at minimum quantifying its real error bounds instead of asserting linearity. |
+| 4 | **DRAM page-hit-rate/latency architecture hypothesis (§9.6b) is a strong correlation, not proven causation** — no single-variable controlled experiment has isolated memory config from driver/OpenVINO version. | Blocks knowing whether "fix the memory architecture mismatch" would actually close the remaining gap, or whether the secondary driver-version candidate matters more. | Either (a) get Level-Zero allocation-event tracing (real buffer sizes/strides) to directly test the `attention_buffer` padding hypothesis, or (b) run the identical driver/OpenVINO version on both machines (or the identical memory config on both, if physically possible) to isolate the two candidate variables independently. |
+| 5 | **Two independent efficiency-measurement methods (§4.1 telemetry vs. §4.2 calibration) disagree by -34.5% on the NPU run**, agree closely (+4.2%) on GPU. | Reduces confidence in `memory_efficiency_retention`'s measured value specifically for NPU-baseline runs. | Root-cause via: (a) recompute `bytes_per_weight` including quantization scale/zero-point metadata bytes, not just raw weight bytes; (b) check whether `dram_total_gbs` (OS-level counter) includes non-model DRAM traffic the calibration formula doesn't account for; (c) verify the NPU driver's KV-cache/activation memory traffic pattern against the "re-read full weight once per token" assumption `decode_achieved_gbs` makes. |
+| 6 | **Baseline energy uses one mean-watts value × stage duration** (a single "big rectangle"), not trapezoidal integration of the actual per-sample RAPL time series — unlike `tools/power/`'s certified methodology. | Baseline Tokens/Joule is a coarser approximation than it needs to be, given the raw samples already exist in `hw_samples.csv`. | Refactor `baseline_extractor.py::_load_power_lookup` to trapezoidally integrate the raw per-sample wattage within each stage's window (same equation as `tools/power/power_log_parser.py::CalculateEfficiency`) instead of `mean(watts) × duration` — a same-data, more-rigorous baseline energy number (still internal RAPL, not a certified external meter — see gap #11). |
+| 7 | **`fixed_overhead_s` (process startup/model load/shutdown) contributes ZERO energy** in both baseline and projected totals — it's real wall-clock time excluded entirely from the per-stage power/energy loop. | Tokens/Joule is a systematic (likely small) *underestimate* of true total energy for every run that has RAPL power data. | Capture an idle/startup RAPL power average from the samples between `hw_samples.csv`'s first row and the first stage's `start_iso`, and add `idle_power × fixed_overhead_s` to both baseline and projected energy totals (held fixed/unscaled, since it's a software cost not a hardware-compute one). |
+
+### 11.2 Gaps affecting directional confidence (the estimate is reasonable, but not independently proven)
+
+| # | Gap | Current impact | Concrete mitigation step |
+|---|---|---|---|
+| 8 | **Power scales by one global linear exponent** (`power_scaling_exponent`, default 1.0), unvalidated against any real chip's actual P-V-f curve. | Projected power for a large capability jump (e.g. the 384-EU/512-EU presets) could plausibly be over- or under-stated — direction of the error isn't even known without real data. | Collect vendor/datasheet power-vs-frequency curves for a specific real target chip family and fit `power_scaling_exponent` per chip class, or run a controlled frequency-sweep power measurement on available hardware (existing RAPL sampler at 2+ manually-set clock speeds) to derive one real, evidence-based exponent instead of the flat guess. |
+| 9 | **`soc`/uncore rail assumed exactly fixed** regardless of target scale, even for a target with a drastically different memory subsystem (e.g. the LPDDR6 persona). | Likely understates power for memory-bandwidth-heavy targets specifically; not tested against any real such chip yet. | If a platform's EMON/PDH ever exposes a separate DRAM-controller/PHY power rail (distinct from the generic `soc` aggregate), capture and scale it with the memory-bandwidth ratio instead of lumping it into the fixed `soc` bucket; until then, document the current behavior as a known conservative floor rather than a validated number. |
+| 10 | **Domain power scaling ignores whether that domain is the stage's actual bottleneck**, by default (fixed 2026-09-30, `--use-duty-cycle-power`, but still opt-in/off by default). | Non-bottleneck domains (e.g. CPU during a memory-bound decode stage) can still be over-scaled unless the flag is explicitly passed. | Once validated on more real runs/targets, consider flipping the default to on; extend the same duty-cycle weighting to the `soc` rail if/when a domain-specific power driver ever becomes available for it. |
+| 11 | **Internal RAPL/PDH software power counters are not the same instrument as the certified external Yokogawa/PTDaemon meter** `tools/power/` uses — a gap that can't be closed within this tool at all, only narrowed (gap #6). | This tool's Tokens/Joule should never be quoted as a certified/submission-grade power number. | Whenever a run has BOTH an official PTD power log (`tools/power/`) and RAPL telemetry (`hw_samples.csv`) for the same workload, cross-check the roofline projection's baseline Tokens/Joule against `tools/power/`'s certified number and document the observed gap size — no such paired run exists in this repo yet. |
+| 12 | **No current target-spec JSON declares a real `power_budget_w`** — the power-budget-exceeded warning (§4, "Power/energy") is a no-op for every preset in `docs/ROOFLINE_PROJECTION_PRESETS.md` today. | The new diagnostic exists but currently checks nothing real. | Fill in real datasheet TDP numbers for each `example_*`/`persona_*` target spec (`data/configs/roofline_targets/*.json`) so the warning has something meaningful to compare against. |
+| 13 | **No cross-resource contention modeling** for concurrent accelerator+CPU use (§8 limitation #12) — out of scope today because it never happens in this benchmark's measured data (strictly serial timeline). | None currently — flagged so it isn't silently reintroduced as a false assumption if the workload changes. | Only act on this if/when a future workload profile overlaps generation streaming with background tool execution in time; would need a new contention-aware macro-component, not a tweak to existing ones. |
+| 14 | **Tool-exec Amdahl parallel fraction (default 0.5) is a flat modeling assumption**, not measured per real tool (§8 limitation #4). | `tool_exec_gap_s` scaling is directional, not calibrated to this repo's actual `git apply`/`pytest`/file-IO mix. | Instrument real tool invocations to record wall-clock vs. CPU-time-consumed across 2+ different core-count machines (if/when a multi-core-count test bed becomes available), to derive a real per-tool-type parallel fraction instead of one shared guess. |
+
+**How to prioritize this list in practice**: gaps #1-#7 (§11.1) are the ones worth closing first if
+the goal is narrowing the still-open +19-31% real-hardware error (§9.7a) — they're the ones with a
+direct, already-quantified impact on a specific wrong number. Gaps #8-#14 (§11.2) matter more for
+being able to defend *how* a number was produced under scrutiny than for the number's accuracy
+itself — worth doing, but lower priority than #1-#7 for anyone whose immediate goal is "make the
+projection more accurate" rather than "make the methodology more rigorous end-to-end."
+
