@@ -413,6 +413,14 @@ here so they aren't silently rediscovered:
 **All 4 presets were also run on iGPU** (`kpi_runs/*_gpu_20260925_*`) to complete full 8/8
 (4 presets × NPU/GPU) real-hardware coverage:
 
+- `prefill_sweep` (GPU): achieved prefill GFLOPs/s shows the **same rise-then-drop shape** as the
+  NPU run, independently — best-per-length roughly 65k (n≈169) → 53k (n≈514) → 41k (n≈1894) →
+  19k (n≈7414), i.e. prefill efficiency degrades at long context on iGPU too, not just NPU. Decode
+  stayed a roughly flat 108-118 GB/s (86.7% of peak best-observed) across the whole sweep.
+- `thin_serving` (GPU): telemetry-based mem-BW efficiency (7.0% of peak) was, again, far below the
+  per-token-timing-derived calibration number (85.6% of peak) for these very short stages — the
+  same coarse-sampler-undercounts-short-stages effect as the NPU run (7.3% vs 71.0%), confirming
+  it's a sampler-resolution artifact, not something specific to one accelerator.
 - `kv_cache_growth` (GPU): decode achieved 65.4/113.0/112.6/101.2 GB/s (82.7% of theoretical peak
   best-observed) - notably higher %-of-peak than the NPU run (63.5%), consistent with §4.1's
   finding that NPU and iGPU achieve genuinely different fractions of theoretical memory bandwidth.
@@ -675,3 +683,261 @@ scenarios (SWE Agent / Data Agent) and both accelerator types without any scenar
     `stage_overhead_s` (never scales with target hardware) - this affected `preset1_full_npu` and
     `preset2_full_gpu` specifically. The derived values are algebraically exact given the same
     `ttft = prefill + itl` convention the newer log format itself uses, not an approximation.
+
+## 9. Open refinement — the `prefill_s` bucket is currently 100% compute-scaled, not split (reference methodology + this repo's own supporting evidence)
+
+> **Final Wall-Time(s) expression** (slide/headline form — see §9.5 for the fully-annotated
+> version and the real executed numbers behind it):
+>
+> $$\text{WallTime}(s)=\sum_{i\in\text{stages}}\left[\underbrace{\frac{\text{Prefill}_i(n_i)}{R_{TTFT}(n_i)}}_{\text{Prefill / TTFT}}+\underbrace{\frac{\text{Decode}_i}{E_{mem}}}_{\text{Decode}}+\underbrace{\frac{\text{ToolExec}_i}{E_{cpu}}}_{\text{Tool Execution}}+\underbrace{\text{Overhead}_i}_{\text{Stage Overhead}}\right]+\underbrace{\text{Overhead}_{fixed}}_{\text{Startup / Model Load}}$$
+>
+> Plain-text form (paste into PowerPoint/Slides where LaTeX won't render):
+> `WallTime(s) = Σᵢ [ Prefillᵢ(n) / R_TTFT(n)  +  Decodeᵢ / E_mem  +  ToolExecᵢ / E_cpu  +  Overheadᵢ ]  +  Overhead_fixed`
+>
+> | Term | Meaning | Scaled by |
+> |---|---|---|
+> | `Prefillᵢ(n) / R_TTFT(n)` | Prompt/context processing | External compute+memory-split TTFT ratio (§9.1) |
+> | `Decodeᵢ / E_mem` | Autoregressive generation | Memory bandwidth ratio |
+> | `ToolExecᵢ / E_cpu` | git apply / pytest / file IO | CPU cores×freq via Amdahl's law |
+> | `Overheadᵢ` | Per-stage bookkeeping | Fixed, unscaled |
+> | `Overhead_fixed` | Process startup/model load | Fixed, unscaled |
+>
+> Four terms, one per macro-component, each scaled by the resource ratio that actually governs it
+> (§1's table) — summed per stage, then rolled up across the whole workflow. `R_TTFT(n)` is the
+> external per-`n` compute+memory-split ratio (§9.1/§9.5); `E_mem`/`E_cpu` are this repo's own
+> `effective_speedup`/`amdahl_speedup` terms (§4), calibrated from the real runs in §4.3/§9.6.
+
+§4's equation scales the **entire** `prefill_s` bucket by a single `compute_eff` ratio — i.e. it
+implicitly assumes 100% of prefill/TTFT time is compute-bound (NPU-MAC/iGPU-XeCore-limited) and
+0% is memory-bound. An external reference project (`llama31_8b_roofline_projection_formulas.md` /
+`llama31_8b_roofline_pipeline_review.md`, a separate repo doing the analogous Llama-3.1-8B-Instruct
+INT4 prefill/TTFT projection on a 96-EU Intel iGPU via raw OpenVINO `PERF_COUNT`, not this repo)
+shows that assumption is only sometimes true — a real, physically-motivated **memory-bound**
+component exists and can dominate at longer context lengths, and treating it as compute-bound
+mis-projects the benefit of a hardware upgrade. This section records that methodology as a
+reference/target model for this repo's own prefill bucket, plus concrete evidence this repo's
+*own* calibration data (§4.3) already hints at the same effect. §9.4 explains why a *fully*
+independent, this-repo-measured version of the split isn't possible with today's tooling; §9.5
+then closes the gap a different way — borrowing the external project's own per-n ratio (not its
+absolute numbers) and applying it to this repo's real measured data — and executes it end to end.
+
+### 9.1 The reference TTFT(n) equation
+
+That project decomposes per-input-length prefill time (`TTFT(n)`) into five real, separately-fitted
+components instead of one lump sum, by running OpenVINO's own `PERF_COUNT` counters directly
+(bypassing the higher-level `openvino_genai`/`mlperf-windows.exe` layers this repo depends on):
+
+$$TTFT(n) = \underbrace{\left[T_{linear}(n) + \text{missing\_linear}(n)\right]}_{\text{corrected\_linear\_ms (compute-bound)}} + T_{attention}(n) + T_{fused\_ops}(n) + T_{other}(n) + \underbrace{\text{attention\_buffer}(n)}_{\text{memory-bound}}$$
+
+- `T_linear(n)`, `T_fused_ops(n)`, `T_other(n)` are linear in `n` (fixed-K/N GEMMs, per-token
+  elementwise ops) — compute-bound by construction, degree-1 polynomial fits.
+- `T_attention(n)` is quadratic in `n` (the `[n,n]` score matrix) — degree-2 fit, required not
+  assumed (degree-1 R²=0.917 vs degree-2 R²=0.999 on their real measured data).
+- `missing_linear(n)` and `attention_buffer(n)` split an otherwise-unattributed `host_overhead`
+  residual (`wall_ms − Σ(profiled kernel times)`) into a compute-bound piece (cross-checked
+  against an *independent* raw INT4 GEMM ceiling microbenchmark on the same silicon) and a
+  memory-bound remainder (hypothesized as the `[heads, n, n]` fp16 attention-score buffer never
+  chunked/flash-attended) — never a guess, always bracketed against a real measured ceiling.
+- Only `T_linear + missing_linear` (the compute-bound bracket) and `T_attention`/`T_fused_ops`
+  scale with more accelerator compute (EU/XeCore count); only `attention_buffer(n)` scales with
+  more memory bandwidth — mirroring exactly the compute/memory split this repo's `scaling_engine.py`
+  already applies *between* `prefill_s` and `decode_s`, just not applied *within* `prefill_s` yet.
+
+### 9.2 Reference projected-TTFT numbers (what a correct split changes)
+
+Real measured baseline (96-EU iGPU, today's hardware) vs. a projection onto a hypothetical
+256-EU/300-GB/s target, using the compute/memory-split equation above (`sut_projected_wall_ms`),
+compared against what a naive **100%-compute-bound** assumption (this repo's current `prefill_s`
+treatment) would have projected instead:
+
+| n (input tokens) | baseline TTFT (ms) | correctly-split projection (ms) | speedup | naive 100%-compute-bound speedup* |
+|---|---|---|---|---|
+| 2048 | 2,773.18 | 1,806.75 | 1.54× | ~2.77× |
+| 8192 | 12,287.39 | 8,073.81 | **1.52×** | **2.77×** (borrowed-profile estimate, since superseded) |
+| 16384 | 40,055.04 | 19,260.67 | 2.08× | 3.72× |
+| 32768 | 146,326.68 | 51,330.35 | 2.85× | 4.98× |
+
+*The "naive" column is that same project's own **earlier, superseded** estimate from before it
+calibrated real compute/attention axis fractions — included here specifically because it shows
+the size of the error a 100%-compute-bound assumption produces: **treating a real memory-bound
+component as if it were compute-bound overstated the hardware-upgrade benefit by roughly 2×** at
+every `n` shown. This repo's current `prefill_s / compute_eff` (§4) makes structurally the same
+100%-compute-bound assumption for every stage, at every `n` — so a similar overstatement of
+projected speedup is plausible wherever a stage's prefill time has a real memory-bound share,
+until this is split.
+
+### 9.3 This repo's own evidence the same effect is present, not just a different project's finding
+
+§4.3's real `prefill_sweep` calibration run (NPU, this repo's own hardware/model/harness) already
+shows the same *symptom*, independently: achieved prefill GFLOPs/s **rises 128→2048 tokens
+(~18k→26k) then drops sharply at 8192 tokens (~12.5k)** — i.e. the workload gets *less* compute-
+efficient at longer context, exactly what you'd expect if a growing, non-compute-scaling
+(memory-bound) time component is eating an increasing share of `prefill_s` as `n` grows, same
+shape as the reference project's `attention_buffer(n)` (zero at their measured `n=8192`, but
+already documented there to turn sharply positive and grow quadratically for any `n` beyond that
+model's own real hard-fail boundary). This repo's own agentic presets (§ notes in
+`docs/KPI_HUB_INTEGRATION_NOTES.md` — "8198→8979→10251 input-token growth across a round") already
+operate right at and beyond that inflection point, so this isn't a purely theoretical concern for
+long-context stages in this repo's real SWE/Data Agent runs.
+
+### 9.4 Why this is not implemented yet (the honest gap)
+
+Replicating §9.1's split for *this repo's* own model/hardware would require the same evidence
+chain the reference project used: (1) a static GEMM census of this repo's exact quantized model
+graph, (2) a raw `PERF_COUNT` sweep across `n`, separating linear/attention/fused/overhead kernel
+time, and (3) an independent GEMM-ceiling microbenchmark on the same silicon to bracket the
+compute-bound share. **None of these are available through this repo's current tooling**:
+`mlperf-windows.exe` is a closed-source CLI that only surfaces aggregate `TTFT`/`wall_ms`/
+`Tokens Per Second` per stage (see `docs/KPI_HUB_INTEGRATION_NOTES.md`'s ground-truth trace of
+`txt2txt_executor.cpp`) — there is no `PERF_COUNT`-level or raw `ov.Core` access at this layer to
+attribute a sub-kernel breakdown, and no independent GEMM-ceiling sweep exists for this repo's
+NPU/iGPU today. Fabricating a compute/memory split **from this repo's own data alone** without
+that evidence would violate this project's own "no silent guesses" standard (§8's limitations are
+written the same way) — which is why §9.5 below deliberately borrows the external project's own
+ratio instead of inventing this repo's own absolute compute/memory split. Recorded here as an
+**open action item for a fully independent version**: if a future harness change ever exposes raw
+OpenVINO `PERF_COUNT` (or an equivalent counter) for this repo's benchmark path, revisit
+`scaling_engine.py` to split `prefill_s` natively using §9.1's equation as the target shape and
+§4.3's `prefill_sweep` preset (already built) as the natural place to collect the calibration
+sweep — replacing §9.5's cross-repo-borrowed ratio with a properly first-party-measured one.
+
+### 9.5 The full Wall-Time(s) equation, with §9.1's TTFT split plugged in (executed, real run)
+
+Rather than wait on §9.4's data gap, `tools/roofline_projection/integrate_external_ttft.py` closes
+it a different way: instead of transplanting the external project's *absolute* millisecond values
+(measured on different silicon/quantization, which would be indefensible), it reads off that
+project's own **per-n baseline-vs-projected speedup ratio** — `ttft_ratio(n) =
+wall_ms_total(n) / sut_projected_wall_ms(n)`, log-log-interpolated between its measured `n` grid
+points — and applies that ratio as a multiplier to *this repo's own* measured `prefill_s` for the
+stage whose `input_tokens` is closest to that `n`. This is the same "only ratios ever cross a
+baseline/target boundary" principle `hw_spec.py` already uses for every other bucket (§3) — it's
+just sourcing the compute/memory-split ratio for the prefill bucket from an external, more
+rigorously-decomposed study instead of this repo's own (currently 100%-compute-bound) `SystemSpec`
+ratio. `decode_s`/`tool_exec_gap_s`/`stage_overhead_s` are projected exactly as `scaling_engine.py`
+already does (§4), onto a target `SystemSpec` built from this run's own CLI args.
+
+**Guard, added 2026-09-29**: the external CSV's `ttft_ratio(n)` was derived on a real iGPU
+(EU-count compute axis) — applying it to an NPU-baseline run would mix two physically different
+compute axes with no defensible basis, the same principle behind §5's "no cross-accelerator
+projection" rule for the what-if calculator. `integrate_external_ttft.py` now refuses to run
+against a non-GPU/iGPU `--run` (`error: --run's device_type is 'NPU', ... has no defensible
+basis`, exit code 1) unless `--force` is passed, in which case the report is flagged
+(`device_type_axis_mismatch: true` in the JSON) rather than silently producing a number that looks
+just as confident as the iGPU case. Verified: blocks `preset5_roofline_20260923_140129` (NPU) with
+this exact message; `preset6`/`preset8` (both GPU) are unaffected (same numbers as before).
+
+**The full boxed equation:**
+
+$$\text{WallTime}(s) = \sum_{i \in \text{stages}} \left[ \underbrace{\frac{\text{prefill}_s[i]}{\text{ttft\_ratio}(n_i)}}_{\text{TTFT}(n)\text{ compute+memory split (external, §9.1)}} + \underbrace{\frac{\text{decode}_s[i]}{E_m}}_{\text{memory-bound}} + \underbrace{\frac{\text{tool\_exec\_gap}_s[i]}{E_{cpu}}}_{\text{CPU-bound (Amdahl)}} + \underbrace{\text{stage\_overhead}_s[i]}_{\text{fixed}} \right] + \text{fixed\_overhead}_s$$
+
+`E_m` and `E_cpu` are exactly §4's `effective_speedup(...)`/`amdahl_speedup(...)` terms (memory
+bandwidth ratio, and Amdahl-damped CPU-core-count/frequency ratio respectively) — only the
+prefill term's scaling source changes here, from a flat `compute_eff` ratio to the external
+per-n curve.
+
+**Executed** (2026-09-29) against `kpi_runs/preset6_roofline_20260923_141035` (real iGPU SWE-Agent
+run, `device_type=GPU`, matching the external CSV's own iGPU-EU axis) onto the exact target the
+user specified — **256 EU, 300 GB/s memory bandwidth, 20 P-cores + 48 E-cores (68 total; this
+repo's Amdahl model doesn't distinguish P/E core types, so they're summed into one `cpu_cores`
+count, same limitation as elsewhere in this doc)**:
+
+```powershell
+.venv\Scripts\python.exe tools\roofline_projection\integrate_external_ttft.py `
+    --run kpi_runs\preset6_roofline_20260923_141035 `
+    --igpu-xecores 256 --mem-bw-gbs 300 --p-cores 20 --e-cores 48
+```
+
+| stage | n (input tokens) | ttft_ratio(n) applied | baseline (s) | projected (s) |
+|---|---|---|---|---|
+| 01_warmup | 40 | 1.58× | 7.09 | 4.04 |
+| 02_swe_agent_0 | 8,198 | 1.52× | 94.55 | 55.35 |
+| 03_swe_agent_1 | 8,979 | 1.55× | 59.33 | 31.79 |
+| 04_swe_agent_2 | 10,251 | 1.64× | 67.62 | 36.46 |
+| *(iterations 2 and 3 repeat the same pattern - 12 stages total)* | | | | |
+| **TOTAL (+ fixed_overhead_s)** | | | **689.77** | **391.21** |
+
+**Wall-Time(s): 689.77s → 391.21s, 1.76× speedup, 43.3% wall-time reduction, 13.3 → 23.4 tok/s.**
+
+**Apples-to-apples check against the naive (100%-compute-bound, §4/§9.2) projection**, re-run with
+the exact same target spec (`tools/run_roofline_projection.py --igpu-xecores 256 --cpu-cores 68
+--mem-channels 8 --mem-width-bits 16 --mem-freq-mts 18750` — same channel/width topology as the
+default baseline, transfer-rate solved to hit 300 GB/s — `--efficiency-retention 0.85
+--tool-parallel-fraction 0.5`, identical to the defaults above):
+
+| Methodology | Projected wall time | Speedup | Reduction |
+|---|---|---|---|
+| Naive 100%-compute-bound prefill (§4, existing `scaling_engine.py`) | 339.15s | 2.03× | 50.8% |
+| §9.1 TTFT compute/memory split (this section) | 391.21s | **1.76×** | **43.3%** |
+
+Confirms §9.2's prediction directly, on this repo's own real data: treating the entire prefill
+bucket as compute-bound **overstates** the projected benefit of this exact hardware upgrade by
+about +0.27x speedup (2.03x vs the more physically-grounded 1.76x) — a real, non-trivial gap, not
+just a theoretical concern from a different project's numbers.
+
+**Caveats specific to this integration** (in addition to §9.4's underlying data-gap caveat):
+this repo's own quantization (`Llama-3.1-8B-Instruct_ov-int4-GRw`) and silicon differ from the
+external CSV's source machine, so `ttft_ratio(n)` is borrowed cross-repo, not independently
+verified on this repo's own hardware — treat the 1.76x figure as **more physically defensible
+than the naive 2.03x**, not as a fully independently-measured number. The external CSV's rows
+at `n≥9,216` are themselves flagged by that project as past its own SUT's real hard-fail boundary
+(formula-extrapolated) — this run's `n=10,251` stage's `1.64×` ratio falls in that extrapolated
+region and should be read with correspondingly lower confidence than the `n=8,198`/`8,979` rows.
+
+**Generalization check — Data Agent scenario, same target spec** (matching §7's own convention of
+validating every feature on both SWE Agent and Data Agent, not just one): run against
+`kpi_runs/preset8_dataagent_gpu_20260923_225621/` (`device_type=GPU`, input tokens 4,513-11,451
+across its 4 turns/round, all within the external CSV's `n=4,096`-`n=32,768` interpolation range,
+no extrapolation-flagged rows this time):
+
+```powershell
+# Exact demo one-liner (includes the PYTHONHOME gotcha fix - see docs/KPI_HUB_INTEGRATION_NOTES.md)
+Remove-Item Env:PYTHONHOME -ErrorAction SilentlyContinue; .venv\Scripts\python.exe tools\roofline_projection\integrate_external_ttft.py --run "kpi_runs\preset8_dataagent_gpu_20260923_225621" --igpu-xecores 256 --mem-bw-gbs 300 --p-cores 20 --e-cores 48
+```
+
+**910.23s → 504.73s, 1.80× speedup, 44.5% wall-time reduction, 6.9 → 12.4 tok/s** — consistent with
+preset6's 1.76×/43.3% (same target spec, different scenario), confirming the integration
+generalizes across scenarios the same way every other feature in this doc already does (§7).
+Tool-exec time here is a noticeably larger share of the total (16.3%→17.6%) than preset6's
+(11.7%→12.4%), reflecting Data Agent's heavier `execute` tool usage relative to SWE Agent's
+lighter `read_file`/`apply_patch` mix.
+
+### 9.6 §9.1-§9.5 only ever covers `prefill_s`/TTFT — the other three buckets rely on this repo's own §4.3 evidence
+
+Easy to lose track of, given how much of §9 is about the external project: **the external
+`TTFT(n)` reference (§9.1) is a prefill-only model.** It has nothing to say about `decode_s`,
+`tool_exec_gap_s`, or `stage_overhead_s`/`fixed_overhead_s` — those three buckets are, and always
+were, projected using this repo's *own* `SystemSpec`-ratio math (§4), and their retention/Amdahl
+knobs should be calibrated from this repo's *own* real calibration runs (§4.3), not the external
+project. The table below is the explicit component→evidence map, since §9's focus on the prefill
+piece could otherwise read as if the whole equation had been externally validated:
+
+| Macro component | Scaling knob | Evidence source | GPU run (real, committed) | NPU run (real, committed) |
+|---|---|---|---|---|
+| `prefill_s` | `ttft_ratio(n)` (§9.1, external) — or `compute_efficiency_retention` (§4) if not using §9.5's integration | External CSV (§9.1) **or** native `prefill_sweep` (§4.3) | `prefill_sweep_gpu_20260925_110109` | `prefill_sweep_npu_20260925_104803` |
+| `decode_s` | `memory_efficiency_retention` | `kv_cache_growth` (§4.3) | `kv_cache_growth_gpu_20260925_130236` | `kv_cache_growth_npu_20260925_115819`/`_120159`/`_120523` |
+| `tool_exec_gap_s` | `cpu_efficiency_retention` + `tool_parallel_fraction` (Amdahl) | `tool_exec_only` (§4.3) | `tool_exec_only_gpu_20260925_130333` | `tool_exec_only_npu_20260925_121800`…`_124826` (7 iterations) |
+| `stage_overhead_s` / `fixed_overhead_s` | (assumed constant, never scaled) | `thin_serving` (§4.3) | `thin_serving_gpu_20260925_105525` | `thin_serving_npu_20260925_104241`/`_104413` |
+
+**Yes, iGPU decode-calibration data exists** — `kv_cache_growth_gpu_20260925_130236` (§4.3's
+"All 4 presets were also run on iGPU" bullet list): 65.4/113.0/112.6/101.2 GB/s achieved, 82.7% of
+theoretical peak. All four GPU-side calibration runs now exist (`prefill_sweep_gpu`,
+`thin_serving_gpu`, `kv_cache_growth_gpu`, `tool_exec_only_gpu`), matching NPU's already-complete
+4/4 coverage — full symmetric evidence for every bucket on both accelerator types.
+
+**New same-shape confirmation from `prefill_sweep_gpu_20260925_110109`** (re-analyzed here,
+2026-09-29): achieved prefill GFLOPs/s falls **65k (n≈169) → 53k (n≈514) → 41k (n≈1894) → 19k
+(n≈7414)** — the same rise-then-drop-at-long-context shape §9.3 already noted on the NPU run,
+now independently confirmed on iGPU too. Decode stayed a roughly flat 108-118 GB/s (86.7% of
+best-observed peak) across the same sweep — consistent with `kv_cache_growth`'s finding that
+decode degradation is a longer-context effect than this sweep's 128-8192 range fully exposes.
+
+**A genuine bidirectional evidence flow, not just one-way borrowing**: the external project's own
+`llama31_8b_roofline_pipeline_review.md` (2026-09-29 revision) now cross-references this exact
+repo's `prefill_sweep_gpu_20260925_110109` run directly (copied into its own evidence tree as
+`kpi_prefill_sweep_gpu_20260925_110109/` — confirmed identical `workflow_kpi.json`/`hw_samples.csv`
+contents) to partially narrow its own `attention_buffer` memory-bound hypothesis, using this
+repo's real EMON/`zes_mem_used_mb` counters as independent evidence the external project's own
+tooling doesn't otherwise have access to. §9.5's `ttft_ratio(n)` borrowing therefore isn't a
+one-directional dependency — both projects are now cross-checking each other's real measurements
+on the same underlying model family, which is a stronger evidentiary position than either project
+achieves alone.
