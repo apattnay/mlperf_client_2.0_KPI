@@ -1,0 +1,576 @@
+{
+  "baseline_spec": {
+    "name": "this_repo_96EU_devbox_REAL (2026-09-30, corrected via real measurement, not datasheet-only)",
+    "cpu_cores": 16,
+    "cpu_freq_ghz": 4.0,
+    "igpu_xecores": 96,
+    "igpu_freq_ghz": 1.8,
+    "npu_macs": 2048,
+    "npu_freq_ghz": 1.4,
+    "mem_channels": 8,
+    "mem_width_bits": 16,
+    "mem_freq_mts": 8533,
+    "power_budget_w": null,
+    "notes": "cpu_cores corrected 8->16 (this machine's real logical core count, confirmed via hw_samples.csv cpu_cores_csv column length across every run in this repo). igpu_freq_ghz corrected 2.0->1.8 (this run's own real measured l0_gpu_freq_mhz average was ~1800 MHz, not the 2000 MHz nameplate/guessed value - see docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md \u00a79.6b/\u00a79's new frequency-mismatch diagnostic, which flags exactly this gap). mem_channels/width/freq (8 x 16-bit x 8533 MT/s = 136.5 GB/s) and igpu_xecores=96 were already correct (confirmed via Get-CimInstance and OpenVINO device query respectively, docs/KPI_HUB_INTEGRATION_NOTES.md). cpu_freq_ghz=4.0 left as-is (measured cpu_freq_max_mhz ~3900-4300 MHz already agrees within ~5%, no real mismatch there). npu_macs/npu_freq_ghz remain unverified placeholders (not measurable from this repo's tooling for an NPU-device_type run) - only trust the igpu/cpu/mem fields here."
+  },
+  "target_spec": {
+    "name": "persona_future_igpu_workstation (LPDDR6, illustrative - real JEDEC speed grade, hypothetical SoC)",
+    "cpu_cores": 48,
+    "cpu_freq_ghz": 5.0,
+    "igpu_xecores": 256,
+    "igpu_freq_ghz": 2.8,
+    "npu_macs": 2048,
+    "npu_freq_ghz": 1.4,
+    "mem_channels": 14,
+    "mem_width_bits": 12,
+    "mem_freq_mts": 14400,
+    "power_budget_w": null,
+    "notes": "User-specified target: 48 CPU cores @ 5 GHz, 256-EU iGPU @ 2.8 GHz, ~300 GB/s memory via LPDDR6. LPDDR6 (JEDEC JESD209-6, published 9 July 2025) real spec: 10.6-14.4 Gbit/s/pin, 12-bit-wide channels (narrower per-channel than LPDDR5's 16-bit). Using the real JEDEC max speed grade (14,400 MT/s) with 14 channels x 12-bit gives 302.4 GB/s - a defensible real-spec configuration matching the requested ~300 GB/s, not a back-solved/fictional frequency. cpu_freq_ghz/igpu_freq_ghz/cpu_cores/igpu_xecores are exactly as specified by the user - illustrative future SoC, not a verified vendor spec."
+  },
+  "assumptions": {
+    "compute_efficiency_retention": 0.85,
+    "memory_efficiency_retention": 0.85,
+    "cpu_efficiency_retention": 0.85,
+    "tool_parallel_fraction": 0.5,
+    "power_scaling_exponent": 1.0,
+    "use_measured_compute_efficiency": true,
+    "use_measured_memory_efficiency": true,
+    "use_duty_cycle_power": true
+  },
+  "device_type": "GPU",
+  "model": "Llama-3.1-8B-Instruct_ov-int4-GRw",
+  "params_b": 8.355053568,
+  "stages": [
+    {
+      "name": "01_warmup",
+      "is_cold": true,
+      "input_tokens": 40,
+      "output_tokens": 53,
+      "baseline_wall_s": 7.085999990463257,
+      "projected_wall_s": 4.845069874086235,
+      "baseline": {
+        "prefill_s": 0.0992,
+        "decode_s": 1.9755749999999999,
+        "stage_overhead_s": 0.0012250000000002537,
+        "tool_exec_gap_s": 5.009999990463257
+      },
+      "projected": {
+        "prefill_s": 0.08149703331811958,
+        "decode_s": 1.8892295666673224,
+        "stage_overhead_s": 0.0012250000000002537,
+        "tool_exec_gap_s": 2.8731182741007926
+      },
+      "speedups": {
+        "compute": 1.2172222222222222,
+        "memory": 1.045704045107125,
+        "cpu_tool_exec": 1.74375
+      },
+      "baseline_ttft_ms": 136.5,
+      "projected_ttft_ms": 117.1428741986351,
+      "baseline_itl_ms": 37.275,
+      "projected_itl_ms": 35.64584088051552,
+      "tool_calls": {},
+      "baseline_power_w": {
+        "cpu": 11.351428571428572,
+        "igpu": 3.0300000000000002,
+        "npu": 0.36,
+        "soc": 19.88571428571429
+      },
+      "projected_power_w": {
+        "cpu": 16.59578857142857,
+        "igpu": 3.6881833333333334,
+        "npu": 0.36,
+        "soc": 19.88571428571429
+      }
+    },
+    {
+      "name": "02_swe_agent_0",
+      "is_cold": true,
+      "input_tokens": 8198,
+      "output_tokens": 1000,
+      "baseline_wall_s": 94.55299984550476,
+      "projected_wall_s": 51.03502606969834,
+      "baseline": {
+        "prefill_s": 49.4065,
+        "decode_s": 40.13,
+        "stage_overhead_s": 0.004499999999993065,
+        "tool_exec_gap_s": 5.011999845504761
+      },
+      "projected": {
+        "prefill_s": 20.40567259562679,
+        "decode_s": 27.75058832969606,
+        "stage_overhead_s": 0.004499999999993065,
+        "tool_exec_gap_s": 2.87426514437549
+      },
+      "speedups": {
+        "compute": 2.421213991769547,
+        "memory": 1.4460954673547106,
+        "cpu_tool_exec": 1.74375
+      },
+      "baseline_ttft_ms": 49446.6,
+      "projected_ttft_ms": 20433.423183956485,
+      "baseline_itl_ms": 40.13,
+      "projected_itl_ms": 27.75058832969606,
+      "tool_calls": {},
+      "baseline_power_w": {
+        "cpu": 6.989894736842109,
+        "igpu": 16.79852631578948,
+        "npu": 0.35884210526315785,
+        "soc": 30.389368421052634
+      },
+      "projected_power_w": {
+        "cpu": 9.363624156725152,
+        "igpu": 40.67282695689843,
+        "npu": 0.35884210526315785,
+        "soc": 30.389368421052634
+      }
+    },
+    {
+      "name": "03_swe_agent_1",
+      "is_cold": false,
+      "input_tokens": 8979,
+      "output_tokens": 1000,
+      "baseline_wall_s": 59.33099994087219,
+      "projected_wall_s": 30.993882137291628,
+      "baseline": {
+        "prefill_s": 9.065299999999999,
+        "decode_s": 40.349,
+        "stage_overhead_s": 0.004699999999999704,
+        "tool_exec_gap_s": 9.911999940872192
+      },
+      "projected": {
+        "prefill_s": 2.6282364349366736,
+        "decode_s": 22.676644660994558,
+        "stage_overhead_s": 0.004699999999999704,
+        "tool_exec_gap_s": 5.684301041360397
+      },
+      "speedups": {
+        "compute": 3.4491950113378684,
+        "memory": 1.7793196746343671,
+        "cpu_tool_exec": 1.74375
+      },
+      "baseline_ttft_ms": 9105.6,
+      "projected_ttft_ms": 2650.913079597668,
+      "baseline_itl_ms": 40.349,
+      "projected_itl_ms": 22.676644660994558,
+      "tool_calls": {
+        "read_file": 4
+      },
+      "baseline_power_w": {
+        "cpu": 10.021864406779663,
+        "igpu": 12.577627118644068,
+        "npu": 0.3866101694915253,
+        "soc": 31.151355932203387
+      },
+      "projected_power_w": {
+        "cpu": 13.52481280871671,
+        "igpu": 43.38268871209501,
+        "npu": 0.3866101694915253,
+        "soc": 31.151355932203387
+      }
+    },
+    {
+      "name": "04_swe_agent_2",
+      "is_cold": false,
+      "input_tokens": 10251,
+      "output_tokens": 1000,
+      "baseline_wall_s": 67.615000082016,
+      "projected_wall_s": 37.17182085909877,
+      "baseline": {
+        "prefill_s": 16.5604,
+        "decode_s": 40.685,
+        "stage_overhead_s": 0.005599999999994054,
+        "tool_exec_gap_s": 10.364000082015991
+      },
+      "projected": {
+        "prefill_s": 5.206481448947324,
+        "decode_s": 26.01622681831433,
+        "stage_overhead_s": 0.005599999999994054,
+        "tool_exec_gap_s": 5.943512591837128
+      },
+      "speedups": {
+        "compute": 3.1807277452891487,
+        "memory": 1.5638316918177955,
+        "cpu_tool_exec": 1.74375
+      },
+      "baseline_ttft_ms": 16601.1,
+      "projected_ttft_ms": 5232.497675765638,
+      "baseline_itl_ms": 40.685,
+      "projected_itl_ms": 26.01622681831433,
+      "tool_calls": {},
+      "baseline_power_w": {
+        "cpu": 9.409852941176473,
+        "igpu": 13.46220588235294,
+        "npu": 0.3875,
+        "soc": 30.867205882352938
+      },
+      "projected_power_w": {
+        "cpu": 12.741188510061924,
+        "igpu": 42.81961176279478,
+        "npu": 0.3875,
+        "soc": 30.867205882352938
+      }
+    },
+    {
+      "name": "05_warmup",
+      "is_cold": true,
+      "input_tokens": 40,
+      "output_tokens": 53,
+      "baseline_wall_s": 7.016000020980835,
+      "projected_wall_s": 4.784359485087801,
+      "baseline": {
+        "prefill_s": 0.0828,
+        "decode_s": 1.9298889999999997,
+        "stage_overhead_s": 0.00031100000000017225,
+        "tool_exec_gap_s": 5.003000020980835
+      },
+      "projected": {
+        "prefill_s": 0.02073984739197996,
+        "decode_s": 1.8942046830114714,
+        "stage_overhead_s": 0.00031100000000017225,
+        "tool_exec_gap_s": 2.8691039546843498
+      },
+      "speedups": {
+        "compute": 3.9923148148148146,
+        "memory": 1.0188386805864065,
+        "cpu_tool_exec": 1.74375
+      },
+      "baseline_ttft_ms": 119.2,
+      "projected_ttft_ms": 56.479558392196395,
+      "baseline_itl_ms": 36.413,
+      "projected_itl_ms": 35.73971100021644,
+      "tool_calls": {},
+      "baseline_power_w": {
+        "cpu": 7.302857142857144,
+        "igpu": 2.5985714285714283,
+        "npu": 0.3471428571428571,
+        "soc": 14.785714285714283
+      },
+      "projected_power_w": {
+        "cpu": 10.93785428571429,
+        "igpu": 10.37431521164021,
+        "npu": 0.3471428571428571,
+        "soc": 14.785714285714283
+      }
+    },
+    {
+      "name": "06_swe_agent_0",
+      "is_cold": true,
+      "input_tokens": 8198,
+      "output_tokens": 1000,
+      "baseline_wall_s": 94.51300009346008,
+      "projected_wall_s": 52.3304708739532,
+      "baseline": {
+        "prefill_s": 49.2887,
+        "decode_s": 40.215,
+        "stage_overhead_s": 0.007299999999993645,
+        "tool_exec_gap_s": 5.002000093460083
+      },
+      "projected": {
+        "prefill_s": 20.455804772991044,
+        "decode_s": 28.998835581415165,
+        "stage_overhead_s": 0.007299999999993645,
+        "tool_exec_gap_s": 2.8685305195470012
+      },
+      "speedups": {
+        "compute": 2.4095214315439035,
+        "memory": 1.3867798204205508,
+        "cpu_tool_exec": 1.74375
+      },
+      "baseline_ttft_ms": 49328.899999999994,
+      "projected_ttft_ms": 20484.80360857246,
+      "baseline_itl_ms": 40.215,
+      "projected_itl_ms": 28.998835581415165,
+      "tool_calls": {},
+      "baseline_power_w": {
+        "cpu": 6.789255319148933,
+        "igpu": 16.838829787234044,
+        "npu": 0.3582978723404254,
+        "soc": 30.241808510638297
+      },
+      "projected_power_w": {
+        "cpu": 9.090755659514699,
+        "igpu": 40.573521254460296,
+        "npu": 0.3582978723404254,
+        "soc": 30.241808510638297
+      }
+    },
+    {
+      "name": "07_swe_agent_1",
+      "is_cold": false,
+      "input_tokens": 8979,
+      "output_tokens": 1000,
+      "baseline_wall_s": 59.39899989128113,
+      "projected_wall_s": 31.30482293605882,
+      "baseline": {
+        "prefill_s": 9.0693,
+        "decode_s": 40.384,
+        "stage_overhead_s": 0.006700000000002149,
+        "tool_exec_gap_s": 9.938999891281128
+      },
+      "projected": {
+        "prefill_s": 2.6038704312577896,
+        "decode_s": 22.99446762091221,
+        "stage_overhead_s": 0.006700000000002149,
+        "tool_exec_gap_s": 5.699784883888819
+      },
+      "speedups": {
+        "compute": 3.483007407407407,
+        "memory": 1.7562485318543737,
+        "cpu_tool_exec": 1.74375
+      },
+      "baseline_ttft_ms": 9109.7,
+      "projected_ttft_ms": 2626.8648988787018,
+      "baseline_itl_ms": 40.384,
+      "projected_itl_ms": 22.99446762091221,
+      "tool_calls": {
+        "read_file": 4
+      },
+      "baseline_power_w": {
+        "cpu": 9.874237288135593,
+        "igpu": 12.524237288135595,
+        "npu": 0.3840677966101695,
+        "soc": 30.787966101694916
+      },
+      "projected_power_w": {
+        "cpu": 13.235921372881357,
+        "igpu": 43.62201124670433,
+        "npu": 0.3840677966101695,
+        "soc": 30.787966101694916
+      }
+    },
+    {
+      "name": "08_swe_agent_2",
+      "is_cold": false,
+      "input_tokens": 10251,
+      "output_tokens": 1000,
+      "baseline_wall_s": 66.84699998664857,
+      "projected_wall_s": 36.17711278959823,
+      "baseline": {
+        "prefill_s": 16.5347,
+        "decode_s": 40.59,
+        "stage_overhead_s": 0.00829999999999842,
+        "tool_exec_gap_s": 9.71399998664856
+      },
+      "projected": {
+        "prefill_s": 5.280830996457467,
+        "decode_s": 25.317229112625462,
+        "stage_overhead_s": 0.00829999999999842,
+        "tool_exec_gap_s": 5.570752680515303
+      },
+      "speedups": {
+        "compute": 3.1310791826309066,
+        "memory": 1.6032560206108082,
+        "cpu_tool_exec": 1.74375
+      },
+      "baseline_ttft_ms": 16575.3,
+      "projected_ttft_ms": 5306.148225570092,
+      "baseline_itl_ms": 40.59,
+      "projected_itl_ms": 25.317229112625462,
+      "tool_calls": {},
+      "baseline_power_w": {
+        "cpu": 9.737611940298505,
+        "igpu": 13.890000000000002,
+        "npu": 0.38865671641791044,
+        "soc": 31.742388059701497
+      },
+      "projected_power_w": {
+        "cpu": 13.02443372233659,
+        "igpu": 43.4906898467433,
+        "npu": 0.38865671641791044,
+        "soc": 31.742388059701497
+      }
+    },
+    {
+      "name": "09_warmup",
+      "is_cold": true,
+      "input_tokens": 40,
+      "output_tokens": 53,
+      "baseline_wall_s": 7.017999990463257,
+      "projected_wall_s": 4.739638348917729,
+      "baseline": {
+        "prefill_s": 0.0866,
+        "decode_s": 1.9205610000000002,
+        "stage_overhead_s": 0.0008389999999998121,
+        "tool_exec_gap_s": 5.009999990463257
+      },
+      "projected": {
+        "prefill_s": 0.0327421669875722,
+        "decode_s": 1.832938907829364,
+        "stage_overhead_s": 0.0008389999999998121,
+        "tool_exec_gap_s": 2.8731182741007926
+      },
+      "speedups": {
+        "compute": 2.6449074074074073,
+        "memory": 1.0478041530988076,
+        "cpu_tool_exec": 1.74375
+      },
+      "baseline_ttft_ms": 122.80000000000001,
+      "projected_ttft_ms": 67.32591996548473,
+      "baseline_itl_ms": 36.237,
+      "projected_itl_ms": 34.58375297791253,
+      "tool_calls": {},
+      "baseline_power_w": {
+        "cpu": 6.884285714285715,
+        "igpu": 2.5642857142857145,
+        "npu": 0.35000000000000003,
+        "soc": 14.205714285714285
+      },
+      "projected_power_w": {
+        "cpu": 8.872123214285716,
+        "igpu": 6.782298280423281,
+        "npu": 0.35000000000000003,
+        "soc": 14.205714285714285
+      }
+    },
+    {
+      "name": "10_swe_agent_0",
+      "is_cold": true,
+      "input_tokens": 8198,
+      "output_tokens": 1000,
+      "baseline_wall_s": 94.29700002098083,
+      "projected_wall_s": 51.37068454626357,
+      "baseline": {
+        "prefill_s": 49.254400000000004,
+        "decode_s": 40.035,
+        "stage_overhead_s": 0.004599999999996385,
+        "tool_exec_gap_s": 5.003000020980835
+      },
+      "projected": {
+        "prefill_s": 20.62811067810908,
+        "decode_s": 27.868869913470142,
+        "stage_overhead_s": 0.004599999999996385,
+        "tool_exec_gap_s": 2.8691039546843498
+      },
+      "speedups": {
+        "compute": 2.3877320016645855,
+        "memory": 1.4365491002794295,
+        "cpu_tool_exec": 1.74375
+      },
+      "baseline_ttft_ms": 49294.4,
+      "projected_ttft_ms": 20655.97954802255,
+      "baseline_itl_ms": 40.035,
+      "projected_itl_ms": 27.868869913470142,
+      "tool_calls": {},
+      "baseline_power_w": {
+        "cpu": 7.388085106382979,
+        "igpu": 17.0481914893617,
+        "npu": 0.36585106382978716,
+        "soc": 31.167659574468082
+      },
+      "projected_power_w": {
+        "cpu": 9.894638250059765,
+        "igpu": 40.70651238965476,
+        "npu": 0.36585106382978716,
+        "soc": 31.167659574468082
+      }
+    },
+    {
+      "name": "11_swe_agent_1",
+      "is_cold": false,
+      "input_tokens": 8979,
+      "output_tokens": 1000,
+      "baseline_wall_s": 59.26200005722046,
+      "projected_wall_s": 32.65853466423917,
+      "baseline": {
+        "prefill_s": 9.030700000000001,
+        "decode_s": 40.287,
+        "stage_overhead_s": 0.004300000000000637,
+        "tool_exec_gap_s": 9.940000057220459
+      },
+      "projected": {
+        "prefill_s": 2.5969192132203527,
+        "decode_s": 24.356956995265147,
+        "stage_overhead_s": 0.004300000000000637,
+        "tool_exec_gap_s": 5.700358455753668
+      },
+      "speedups": {
+        "compute": 3.4774666666666665,
+        "memory": 1.6540243515571982,
+        "cpu_tool_exec": 1.74375
+      },
+      "baseline_ttft_ms": 9071.0,
+      "projected_ttft_ms": 2621.2761702156176,
+      "baseline_itl_ms": 40.287,
+      "projected_itl_ms": 24.356956995265147,
+      "tool_calls": {
+        "read_file": 4
+      },
+      "baseline_power_w": {
+        "cpu": 8.810166666666667,
+        "igpu": 12.594333333333335,
+        "npu": 0.36333333333333323,
+        "soc": 29.724666666666668
+      },
+      "projected_power_w": {
+        "cpu": 11.882271783333334,
+        "igpu": 43.79637435555556,
+        "npu": 0.36333333333333323,
+        "soc": 29.724666666666668
+      }
+    },
+    {
+      "name": "12_swe_agent_2",
+      "is_cold": false,
+      "input_tokens": 10251,
+      "output_tokens": 1000,
+      "baseline_wall_s": 58.25754190063476,
+      "projected_wall_s": 31.118950054908474,
+      "baseline": {
+        "prefill_s": 16.5441,
+        "decode_s": 40.628,
+        "stage_overhead_s": 0.008899999999997021,
+        "tool_exec_gap_s": 1.0765419006347656
+      },
+      "projected": {
+        "prefill_s": 5.321291733632057,
+        "decode_s": 25.17138662198767,
+        "stage_overhead_s": 0.008899999999997021,
+        "tool_exec_gap_s": 0.6173716992887545
+      },
+      "speedups": {
+        "compute": 3.109038336582196,
+        "memory": 1.6140549032968527,
+        "cpu_tool_exec": 1.74375
+      },
+      "baseline_ttft_ms": 16584.7,
+      "projected_ttft_ms": 5346.463120254045,
+      "baseline_itl_ms": 40.628,
+      "projected_itl_ms": 25.17138662198767,
+      "tool_calls": {},
+      "baseline_power_w": {
+        "cpu": 8.13051724137931,
+        "igpu": 14.39689655172414,
+        "npu": 0.36120689655172405,
+        "soc": 30.17655172413793
+      },
+      "projected_power_w": {
+        "cpu": 10.92067540154265,
+        "igpu": 44.76050330711837,
+        "npu": 0.36120689655172405,
+        "soc": 30.17655172413793
+      }
+    }
+  ],
+  "baseline_wall_time_s": 689.77,
+  "projected_wall_time_s": 383.1058308186759,
+  "fixed_overhead_s": 14.575458179473912,
+  "total_output_tokens": 9159,
+  "baseline_tok_s": 13.278339156530437,
+  "projected_tok_s": 23.907232057595483,
+  "baseline_energy_j": 36073.26406295325,
+  "projected_energy_j": 30471.49402618361,
+  "baseline_tok_per_j": 0.2538999516100393,
+  "projected_tok_per_j": 0.30057600694373027,
+  "avg_baseline_ttft_ms": 24580.997980128835,
+  "avg_projected_ttft_ms": 9321.01100267701,
+  "avg_baseline_itl_ms": 40.302328310950976,
+  "avg_projected_itl_ms": 25.850811094244886,
+  "measured_accel_busy_pct": 59.89089007456527,
+  "measured_mem_bw_gbs": 61.237501507930965,
+  "measured_mem_bw_efficiency_pct": 44.85343776216671,
+  "peak_projected_power_w": 88.6461683451993,
+  "peak_projected_power_stage": "08_swe_agent_2",
+  "wall_time_speedup_x": 1.800468550755283,
+  "wall_time_reduction_pct": 44.45890212408833
+}

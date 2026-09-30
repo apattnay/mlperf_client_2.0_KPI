@@ -16,6 +16,26 @@ This mirrors the existing `tools/roofline_calibration/presets.py` pattern (named
 one-per-scenario) but for the *projection* step (`tools/run_roofline_projection.py`) instead of
 the *calibration* step.
 
+## Quick reference — all presets (Performance + Power KPIs)
+
+All four presets below share the same real baseline: SWE Agent, iGPU, 96-EU dev box
+(`kpi_runs/preset6_roofline_20260923_141035`, `current_baseline_REAL_96EU_devbox.json`) — baseline
+wall time 689.77s, 13.3 tokens/s, 0.25 tokens/J. Report artifacts are committed under each preset's
+`kpi_runs/preset6_roofline_20260923_141035/roofline_projection_<name>/` (linked below), so these
+numbers can be re-checked without re-running anything.
+
+| Preset | Target spec | Wall time | Speedup | Reduction | Tokens/s | Tokens/J | Peak package power | Report |
+|---|---|---|---|---|---|---|---|---|
+| 1 — Future iGPU workstation (LPDDR6) | 48 cores@5GHz, 256-EU@2.8GHz, ~300 GB/s | 383.11s | 1.80× | 44.5% | 23.9 | 0.30 | 88.6W | [report](../kpi_runs/preset6_roofline_20260923_141035/roofline_projection_persona_future_igpu/roofline_projection_report.html) |
+| 2 — Moderate upgrade | 12 cores@4.6GHz, 160-EU@2.2GHz, ~273 GB/s | 494.53s | 1.39× | 28.3% | 18.5 | 0.31 | 65.3W | [report](../kpi_runs/preset6_roofline_20260923_141035/roofline_projection_moderate_upgrade/roofline_projection_report.html) |
+| 3 — Heavy-duty workstation | 32 cores@5.0GHz, 384-EU@2.4GHz, ~563 GB/s | 289.04s | 2.39× | 58.1% | 31.7 | 0.37 | 98.5W | [report](../kpi_runs/preset6_roofline_20260923_141035/roofline_projection_heavy_duty_workstation/roofline_projection_report.html) |
+| 4 — Datacenter-class | 64 cores@3.8GHz, 512-EU@2.6GHz, ~1,229 GB/s (HBM-class) | 203.54s | 3.39× | 70.5% | 45.0 | 0.44 | 123.3W | [report](../kpi_runs/preset6_roofline_20260923_141035/roofline_projection_datacenter_class/roofline_projection_report.html) |
+
+All four used `--use-measured-compute-efficiency --use-measured-memory-efficiency
+--use-duty-cycle-power` (§9.7/Power section of the main doc). None of these target specs declare a
+`power_budget_w`, so no power-budget-exceeded warning fires for any of them (see main doc's Power
+section for what that check does).
+
 ## Preset 1 — "SWE Agent Developer (iGPU)" → "Future iGPU Workstation (LPDDR6)"
 
 **Persona**: a developer running the SWE-Agent agentic coding scenario on an Intel iGPU today,
