@@ -1,0 +1,13 @@
+{
+  "name": "persona_future_igpu_workstation (LPDDR6, illustrative - real JEDEC speed grade, hypothetical SoC)",
+  "notes": "User-specified target: 48 CPU cores @ 5 GHz, 256-EU iGPU @ 2.8 GHz, ~300 GB/s memory via LPDDR6. LPDDR6 (JEDEC JESD209-6, published 9 July 2025) real spec: 10.6-14.4 Gbit/s/pin, 12-bit-wide channels (narrower per-channel than LPDDR5's 16-bit). Using the real JEDEC max speed grade (14,400 MT/s) with 14 channels x 12-bit gives 302.4 GB/s - a defensible real-spec configuration matching the requested ~300 GB/s, not a back-solved/fictional frequency. cpu_freq_ghz/igpu_freq_ghz/cpu_cores/igpu_xecores are exactly as specified by the user - illustrative future SoC, not a verified vendor spec.",
+  "cpu_cores": 48,
+  "cpu_freq_ghz": 5.0,
+  "igpu_xecores": 256,
+  "igpu_freq_ghz": 2.8,
+  "npu_macs": 2048,
+  "npu_freq_ghz": 1.4,
+  "mem_channels": 14,
+  "mem_width_bits": 12,
+  "mem_freq_mts": 14400
+}

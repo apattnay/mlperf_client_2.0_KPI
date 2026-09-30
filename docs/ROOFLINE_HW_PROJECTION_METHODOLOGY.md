@@ -13,6 +13,10 @@ plots *this machine's own* measured (arithmetic intensity, achieved GFLOPs/s) po
 This tool answers a different question: "how would the *same measured behavior* change on
 *different* hardware?" — it is a projection/what-if tool, not a new measurement.
 
+> **Reusable, named projection presets** (persona workflow + target spec + exact command + last
+> real output, so a result can be reproduced/sanity-checked without re-deriving anything) live in
+> [docs/ROOFLINE_PROJECTION_PRESETS.md](ROOFLINE_PROJECTION_PRESETS.md).
+
 ## 1. Why bottom-up macro components, not a single wall-time multiplier
 
 A single "the CPU is N% faster so wall time is 1/N" multiplier is wrong for an agentic LLM
