@@ -1244,6 +1244,39 @@ integration borrows from it — carries a confound neither this repo's docs nor 
 the external project's own review docs previously flagged. Worth raising back to that project,
 given the bidirectional evidence-sharing relationship already established in §9.6.
 
+**A second, independent confound found 2026-09-30 — the `PERF_COUNT`-vs-real-harness gap is ITSELF
+machine-dependent, not just a fixed offset**: comparing each machine's own raw `PERF_COUNT` sweep
+value at `n=8192` against its own real full-harness `ttft_s` at `n=8198` (same machine both sides,
+no cross-machine borrowing involved yet):
+
+| Machine | Raw `PERF_COUNT` sweep (n=8192) | Real full-harness `ttft_s` (n=8198, avg of 3) | `real / PERF_COUNT` |
+|---|---|---|---|
+| 96-EU (`JF04WVAW0867-TA`) | 12,287.39 ms | 49,356.63 ms | **4.02×** (real is *slower*) |
+| 16-EU (`JF04WVAW0381-TA`) | 26,309.71 ms | 14,929.80 ms | **0.567×** (real is *faster*) |
+
+The ratio not only differs in magnitude but **flips direction** — a ~7.08× swing between the two
+real machines (`4.02 / 0.567`). This means the gap between `openvino_genai`/`mlperf-windows.exe`'s
+real pipeline and the companion project's raw `ov.Core` `PERF_COUNT` sweep is not a fixed,
+machine-independent correction factor — it is itself a real, machine-dependent confound, layered
+on top of (and separate from) the DRAM-locality/memory-architecture confound above. **Practical
+implication**: recalibrating the external `§9.1` formula on a "cleaner" reference machine (e.g.
+redoing its `PERF_COUNT` sweep + `host_overhead` decomposition on `JF04WVAW0381-TA` instead of
+`JF04WVAW0867-TA`) would likely help, but would **not** fully resolve this — the resulting ratio
+would still be a `PERF_COUNT`-to-`PERF_COUNT` ratio, silently assuming the `PERF_COUNT`-to-real-
+harness gap is the same on both ends, which this table directly falsifies. **The more robust fix
+is to stop crossing measurement pipelines at all**: derive the compute/memory split directly from
+this repo's own first-party `mlperf`/`openvino_genai` measurements on two real SUTs (already
+available on the 96-EU box via `prefill_sweep_gpu_20260925_110109`; would need the same preset run
+on `JF04WVAW0381-TA` to complete the pair) — same pipeline both sides, zero cross-methodology
+confound:
+
+```powershell
+# To run on JF04WVAW0381-TA itself, generating a first-party calibration point with zero
+# cross-methodology confound (same pipeline as this repo's own 96-EU prefill_sweep_gpu run)
+Remove-Item Env:PYTHONHOME -ErrorAction SilentlyContinue
+.venv\Scripts\python.exe tools\roofline_calibration\run_calibration.py --preset prefill_sweep --device GPU --run
+```
+
 **Same-day control run, 2026-09-29 — rules out time-based drift as the explanation**: to check
 whether the 6-day gap between the original 96-EU run (2026-09-23) and the `JF04WVAW0381-TA` run
 (2026-09-29) could itself explain part of the anomaly (e.g. an OpenVINO/driver update landing on
@@ -1417,3 +1450,36 @@ evidence-based tuning measurably narrows a real prediction-vs-ground-truth gap) 
 proof of correctness** — 19-25% off is a real, material error for a "final" number, and the honest
 state of this whole methodology remains: use directionally, cross-check with real hardware before
 trusting a specific number.
+
+## 10. Method comparison cheat-sheet (presentation Q&A reference)
+
+Two projection tools/methods exist side by side in this repo. Canonical short names for slides:
+
+- **Naive Method** (`tools/run_roofline_projection.py`) — a.k.a. "100%-compute-bound method"
+- **Split-Prefill Method** (`tools/roofline_projection/integrate_external_ttft.py`) — a.k.a.
+  "TTFT-decomposition method" (previously called "corrected method" earlier in this doc — same
+  tool, this is the name to use going forward in presentations)
+
+| | **Naive Method** | **Split-Prefill Method** |
+|---|---|---|
+| **One-line pitch** | Prefill scales 1:1 with target/baseline EU-count×frequency — a single flat ratio, same assumption decode/tool-exec already use for their own domains. | Prefill is *itself* split into a compute-bound part and a memory-bound part (per a real, physically-decomposed `TTFT(n)` measurement), each scaled by the resource that actually governs it. |
+| **Core assumption** | 100% of prefill time is compute-bound. | Some fraction of prefill is memory-bound (the `attention_buffer`/`host_overhead` term, §9.1) and should scale with memory bandwidth, not compute. |
+| **Prefill scaling term** | `prefill_s / compute_eff` (§4) — one ratio for the whole workflow. | `prefill_s / ttft_ratio(n)` (§9.5) — a *different* ratio per stage, keyed by that stage's own input length `n`. |
+| **Where the ratio/data comes from** | This repo's own `SystemSpec` (user-supplied baseline+target hardware counts/frequencies). | Borrowed from an external companion project's real `PERF_COUNT` sweep + `host_overhead` decomposition on a *different* pair of real machines. |
+| **Decode / tool-exec / overhead scaling** | Identical in both — §4's `mem_eff`/`cpu_eff`/unscaled overhead. | Identical in both — same code path, same knobs. |
+| **Error vs. real `JF04WVAW0381-TA` ground truth (778.62s), flat retention** | +69.6% too pessimistic | +31.0% too pessimistic |
+| **Error, with `--use-measured-*-efficiency` (§9.7)** | **+19.2%** (currently the more accurate of the two) | +24.6% |
+| **Known confound(s)** | `compute_capability` = EU-count×freq proxy empirically off by ~15× for this exact real pair (§9.6b). | (1) Its reference SUT is confirmed to be an anomalous poor-DRAM-locality machine (§9.6b); (2) the `PERF_COUNT`-to-real-harness gap it's built from is itself ~7× machine-dependent, not a fixed offset (§9.6b, 2026-09-30). |
+| **Why it's currently less accurate despite being "more correct"** | N/A | Both of its confounds are about *where the ratio came from*, not about whether prefill genuinely has a memory-bound component — real evidence (§9.3's rise-then-drop GFLOPs/s shape, present on both NPU and iGPU) says it does. |
+| **Long-term outlook** | A ceiling on accuracy — it structurally cannot represent a memory-bound prefill component, no matter how well its one ratio is calibrated. | Higher ceiling *if* recalibrated from first-party, same-measurement-pipeline data (§9.6b's proposed `prefill_sweep` run on `JF04WVAW0381-TA`) instead of a borrowed, cross-project, cross-pipeline ratio. |
+
+**If asked "why do you have two methods, and which one is right?"**: neither is "right" today —
+they're both real, running, validated-against-real-hardware tools that make different simplifying
+assumptions, and both have been checked against real ground truth (§9.7a) rather than merely
+theorized about. The Naive Method is currently the more accurate of the two in practice, but that's
+because its one confound (a bad EU×freq proxy) happens to partially cancel out on this specific
+real pair — not because its core assumption (100% compute-bound) is more correct. The Split-Prefill
+Method's core assumption is the physically better-motivated one (real telemetry shows prefill
+efficiency degrading at long context in a way pure compute-scaling can't explain, §9.3) but its
+current implementation borrows evidence from a confounded external source. The path forward is not
+"pick a winner" but close the Split-Prefill Method's specific confounds with first-party data.
