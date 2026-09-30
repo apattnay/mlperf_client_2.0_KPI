@@ -1430,6 +1430,27 @@ real target (`JF04WVAW0381-TA_16EU.json`) and the same real ground truth (778.62
 
 Real measured wall time: **778.62s**.
 
+**The exact mechanism, verified with real numbers** — `effective_speedup(raw, retention) = 1 +
+(raw - 1) × retention`. Because this projects *down* (weaker 16-EU target vs. 96-EU baseline),
+`raw < 1` for both domains, which flips the usual intuition about what "lower retention" does:
+
+| Domain | `raw` ratio | Flat retention (0.85) → `eff` | Measured retention → `eff` |
+|---|---|---|---|
+| Compute (`igpu_capability`) | `16×2.0 / 96×2.0` = 0.167 | 0.85 → **0.292** | real `accel_busy_pct`=59.9% → 0.599 → **0.501** |
+| Memory (`mem_bw_peak_gbs`) | `102.4 / 136.5` = 0.750 | 0.85 → **0.7875** | real `mem_bw_gbs`=61.2 GB/s → 0.448 → **0.888** |
+
+On a representative stage (`n=8198`, baseline `prefill_s`=49.41s, `decode_s`=40.13s): flat
+retention gives `prefill_target`=169.39s, `decode_target`=50.96s; EMON-informed gives
+`prefill_target`=98.63s, `decode_target`=45.20s — both notably smaller. **Why lower retention
+means *less* pessimistic here**: the flat `0.85` guess assumed this baseline machine was already
+running near-optimally (85% efficient), leaving little room to fall further on weaker hardware —
+so the predicted slowdown was severe. Real EMON telemetry shows this baseline machine actually
+only achieves 59.9% compute utilization and 44.8% of theoretical memory bandwidth in practice — it
+was never that efficient to begin with, so dropping to weaker hardware doesn't cost as much
+*relative* ground as the flat-retention math assumed. `0.85` overstated how much the baseline had
+to lose; the real telemetry showed less "efficiency cliff" to fall off of. Summed across all 12
+stages, this shifted the naive method's total from 1,320.13s → 928.31s.
+
 **No — it doesn't match exactly, but it gets much closer, and reveals which fix actually mattered
 more.** The naive method's error collapses from +69.6% to +19.2% — a bigger improvement than the
 "corrected" (external-ratio) method saw (+31.0% → +24.6%, only marginal). That's because
