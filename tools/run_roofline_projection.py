@@ -58,6 +58,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--cpu-efficiency-retention", type=float, help="0-1, how much of the ideal tool-exec (CPU, on top of Amdahl's law) speedup is realized - overrides --efficiency-retention for this domain only")
     p.add_argument("--tool-parallel-fraction", type=float, default=0.5, help="0-1, Amdahl parallel fraction for tool-execution time (default 0.5)")
     p.add_argument("--power-scaling-exponent", type=float, default=1.0, help="Exponent for power-vs-capability scaling (default 1.0 = linear)")
+    p.add_argument("--use-measured-compute-efficiency", action="store_true", help="Use each stage's own real measured accelerator busy%% (hw_samples.csv) as the compute-domain retention instead of --compute-efficiency-retention, falling back to it where no measurement exists")
+    p.add_argument("--use-measured-memory-efficiency", action="store_true", help="Use each stage's own real measured achieved-vs-theoretical-peak DRAM bandwidth (hw_samples.csv) as the memory-domain retention instead of --memory-efficiency-retention, falling back to it where no measurement exists - see docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md §9.6b for why this can matter a lot on real hardware")
     return p
 
 
@@ -108,6 +110,8 @@ def main(argv=None) -> int:
         cpu_efficiency_retention=args.cpu_efficiency_retention if args.cpu_efficiency_retention is not None else base_eff,
         tool_parallel_fraction=args.tool_parallel_fraction,
         power_scaling_exponent=args.power_scaling_exponent,
+        use_measured_compute_efficiency=args.use_measured_compute_efficiency,
+        use_measured_memory_efficiency=args.use_measured_memory_efficiency,
     )
 
     result = project(baseline_profile, baseline_spec, target_spec, assumptions)

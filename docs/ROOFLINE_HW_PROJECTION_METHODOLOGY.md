@@ -705,7 +705,9 @@ scenarios (SWE Agent / Data Agent) and both accelerator types without any scenar
 > Four terms, one per macro-component, each scaled by the resource ratio that actually governs it
 > (§1's table) — summed per stage, then rolled up across the whole workflow. `R_TTFT(n)` is the
 > external per-`n` compute+memory-split ratio (§9.1/§9.5); `E_mem`/`E_cpu` are this repo's own
-> `effective_speedup`/`amdahl_speedup` terms (§4), calibrated from the real runs in §4.3/§9.6.
+> `effective_speedup`/`amdahl_speedup` terms (§4), calibrated from the real runs in §4.3/§9.6, and
+> can optionally be seeded from each stage's own real EMON-measured achieved efficiency instead of
+> a flat guess (`--use-measured-memory-efficiency`/`--use-measured-compute-efficiency`, §9.7).
 
 §4's equation scales the **entire** `prefill_s` bucket by a single `compute_eff` ratio — i.e. it
 implicitly assumes 100% of prefill/TTFT time is compute-bound (NPU-MAC/iGPU-XeCore-limited) and
@@ -1218,3 +1220,53 @@ tooling doesn't otherwise have access to. §9.5's `ttft_ratio(n)` borrowing ther
 one-directional dependency — both projects are now cross-checking each other's real measurements
 on the same underlying model family, which is a stronger evidentiary position than either project
 achieves alone.
+
+### 9.7 EMON-informed efficiency retention (opt-in, 2026-09-29) — closing the loop from §9.6b's DRAM finding
+
+**Memory/iGPU/CPU frequency were already first-class inputs to the equation** — `mem_freq_mts`,
+`igpu_freq_ghz`, and `cpu_freq_ghz` feed directly into `mem_bw_peak_gbs`/`igpu_capability`/
+`cpu_capability` (§3), which drive the *raw* ratio inside each `E_domain = effective_speedup(raw,
+retention)` term (§4). What was **not** informed by real evidence was the `retention` half of that
+formula — `compute_efficiency_retention`/`memory_efficiency_retention` were flat, hand-picked
+constants (default `0.85`), not derived from any measurement. §9.6b's DRAM finding is exactly a
+case where that flat guess is wrong for this repo's own real hardware (measured memory efficiency
+is 44.9% of theoretical peak, not 85%) — so it's now wired into the projection as an opt-in
+refinement rather than left as a diagnostic-only footnote.
+
+**What changed**: `baseline_extractor.py` now also captures `dram_page_hit_rate_rd`/
+`dram_rd_latency_ns` per stage (`StageMacroProfile.measured_util`, alongside the pre-existing
+`accel_busy_pct`/`mem_bw_gbs`) when `hw_samples.csv` has those columns (EMON or PDH). Two new
+flags — `--use-measured-compute-efficiency` / `--use-measured-memory-efficiency` (both
+`tools/run_roofline_projection.py` and `tools/roofline_projection/integrate_external_ttft.py`) —
+replace the flat `*_efficiency_retention` constant with **each stage's own real measured
+achieved-vs-theoretical-peak fraction** (`accel_busy_pct/100` for compute; `mem_bw_gbs ÷
+baseline_spec.mem_bw_peak_gbs` for memory), falling back to the flat value for any stage where no
+measurement exists (`scaling_engine._resolve_retention`). Default behavior is unchanged (opt-in
+only, off by default) — this doesn't silently override the existing "never fed back" principle
+(§4.1), it gives an evidence-based alternative to reach for explicitly.
+
+**Validated, both tools, same 256-EU/300-GB/s target, same baseline run** (`preset6_roofline_
+20260923_141035`):
+
+| Tool | Flat retention (0.85) | EMON-informed (`--use-measured-*-efficiency`) |
+|---|---|---|
+| `run_roofline_projection.py` (naive) | 339.15s (2.03×) | 421.10s (1.64×) |
+| `integrate_external_ttft.py` (corrected) | 391.21s (1.76×) | 446.25s (1.55×) |
+
+Both projections become **more conservative** (lower speedup) once fed this dev box's real,
+measured memory efficiency — directly reflecting the poor DRAM page-hit rate found in §9.6b,
+instead of assuming an optimistic flat 85% retention that this specific hardware doesn't actually
+achieve. The memory-domain speedup also stops being one flat number and now varies per stage
+(1.019×-1.768× across the 12 stages in the corrected-method run), since each stage's own active
+window has its own real measured achieved bandwidth.
+
+**This still only measures the BASELINE's own achieved efficiency** — using it as a stand-in for
+what an unmeasured hypothetical target (e.g. 256 EU/300 GB/s) would itself achieve is still an
+assumption, same as §4.1 already states; there's no way to measure a machine that doesn't exist.
+What this closes is a narrower, real gap: for a *known baseline* (this repo's own dev box), the
+retention no longer has to be a blind guess — it can be read directly off real EMON telemetry.
+
+```powershell
+.venv\Scripts\python.exe tools\roofline_projection\integrate_external_ttft.py --run kpi_runs\preset6_roofline_20260923_141035 `
+    --igpu-xecores 256 --mem-bw-gbs 300 --p-cores 20 --e-cores 48 --use-measured-memory-efficiency
+```

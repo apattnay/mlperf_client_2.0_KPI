@@ -46,6 +46,18 @@ class ProjectionAssumptions:
     # Dynamic power ~ (resource_count x freq) ^ power_scaling_exponent. 1.0 = linear (common
     # simplifying assumption at iso process-node); has no effect if RAPL power wasn't measured.
     power_scaling_exponent: float = 1.0
+    # Opt-in ONLY (default off, preserving the existing "never fed back" behavior documented in
+    # docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md §4.1): when True, a stage's own real EMON/PDH-
+    # measured achieved-vs-theoretical-peak fraction (accel_busy_pct / mem_bw_gbs÷mem_bw_peak_gbs,
+    # from baseline_extractor.py's StageMacroProfile.measured_util) is used AS the retention value
+    # for that domain instead of the flat *_efficiency_retention guess above - falling back to the
+    # flat value for any stage/domain where no measurement exists. This directly captures
+    # real-machine effects (e.g. DRAM row-buffer/page-hit locality, see §9.6b) that a hand-picked
+    # constant cannot, at the cost of the retention now varying per-stage instead of being one
+    # fixed knob - still describes only the BASELINE's own achieved efficiency, never the target's
+    # (that remains an assumption regardless of this flag).
+    use_measured_compute_efficiency: bool = False
+    use_measured_memory_efficiency: bool = False
 
     def to_dict(self) -> dict:
         return self.__dict__.copy()
@@ -159,6 +171,20 @@ class ProjectionResult:
         }
 
 
+def _resolve_retention(measured_fraction: Optional[float], flat_retention: float, use_measured: bool) -> float:
+    """Pick the retention value to actually use for one domain on one stage.
+
+    Falls back to the flat assumption whenever `use_measured` is off, or no real measurement was
+    available for this stage (short stages / older hw_samples.csv formats commonly have gaps -
+    silently falling back, rather than erroring, keeps this an enhancement, not a new requirement).
+    Clamped to (0, 1] - a measured fraction can't sensibly exceed 100% of theoretical peak or be
+    <=0 without indicating a data problem, neither of which effective_speedup() is designed for.
+    """
+    if not use_measured or measured_fraction is None:
+        return flat_retention
+    return min(max(measured_fraction, 0.01), 1.0)
+
+
 def _project_stage(
     stage: StageMacroProfile,
     device_type: str,
@@ -168,12 +194,22 @@ def _project_stage(
 ) -> ProjectedStage:
     # ---- compute-bound prefill ----
     compute_raw = raw_speedup(target_spec.compute_capability(device_type), baseline_spec.compute_capability(device_type))
-    compute_eff = effective_speedup(compute_raw, assumptions.compute_efficiency_retention)
+    measured_busy_pct = stage.measured_util.get("accel_busy_pct")
+    measured_compute_fraction = (measured_busy_pct / 100.0) if measured_busy_pct is not None else None
+    compute_retention = _resolve_retention(
+        measured_compute_fraction, assumptions.compute_efficiency_retention, assumptions.use_measured_compute_efficiency,
+    )
+    compute_eff = effective_speedup(compute_raw, compute_retention)
     prefill_target = stage.prefill_s / compute_eff
 
     # ---- memory-bandwidth-bound decode ----
     mem_raw = raw_speedup(target_spec.mem_bw_peak_gbs, baseline_spec.mem_bw_peak_gbs)
-    mem_eff = effective_speedup(mem_raw, assumptions.memory_efficiency_retention)
+    measured_bw = stage.measured_util.get("mem_bw_gbs")
+    measured_mem_fraction = (measured_bw / baseline_spec.mem_bw_peak_gbs) if (measured_bw and baseline_spec.mem_bw_peak_gbs) else None
+    mem_retention = _resolve_retention(
+        measured_mem_fraction, assumptions.memory_efficiency_retention, assumptions.use_measured_memory_efficiency,
+    )
+    mem_eff = effective_speedup(mem_raw, mem_retention)
     decode_target = stage.decode_s / mem_eff
 
     # ---- CPU-bound tool execution (Amdahl) ----

@@ -95,6 +95,13 @@ class BaselineProfile:
     # diagnostic only (see above), None if hw_samples.csv/its columns were unavailable.
     measured_accel_busy_pct: Optional[float] = None
     measured_mem_bw_gbs: Optional[float] = None
+    # EMON-only (bw_source=="emon") row-buffer locality/latency diagnostics - None on runs whose
+    # hw_samples.csv predates EMON IMC-uncore sampling or used the coarser PDH sampler instead.
+    # See docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md §9.6b: a real cross-machine comparison found
+    # these correlate strongly with cross-machine prefill/decode speed differences that raw
+    # theoretical bandwidth/EU-count ratios alone do not predict.
+    measured_dram_page_hit_rate_rd: Optional[float] = None
+    measured_dram_rd_latency_ns: Optional[float] = None
 
     def total_output_tokens(self) -> int:
         return sum(s.output_tokens for s in self.stages)
@@ -191,7 +198,9 @@ def _load_utilization_lookup(run_dir: Path, device_type: str):
     )
     has_busy = busy_col in df.columns if busy_col else False
     has_bw = "dram_total_gbs" in df.columns
-    if not has_busy and not has_bw:
+    has_page_hit = "dram_page_hit_rate_rd" in df.columns
+    has_latency = "dram_rd_latency_ns" in df.columns
+    if not has_busy and not has_bw and not has_page_hit and not has_latency:
         return empty
 
     def lookup(start_iso: str, end_iso: str) -> Dict[str, float]:
@@ -208,6 +217,14 @@ def _load_utilization_lookup(run_dir: Path, device_type: str):
             vals = pd.to_numeric(window["dram_total_gbs"], errors="coerce").dropna()
             if len(vals):
                 out["mem_bw_gbs"] = float(vals.mean())
+        if has_page_hit:
+            vals = pd.to_numeric(window["dram_page_hit_rate_rd"], errors="coerce").dropna()
+            if len(vals):
+                out["page_hit_rate_rd"] = float(vals.mean())
+        if has_latency:
+            vals = pd.to_numeric(window["dram_rd_latency_ns"], errors="coerce").dropna()
+            if len(vals):
+                out["dram_rd_latency_ns"] = float(vals.mean())
         return out
 
     return lookup
@@ -360,4 +377,6 @@ def extract_baseline(run_dir: str) -> BaselineProfile:
         stages=stages,
         measured_accel_busy_pct=_active_weighted_avg("accel_busy_pct"),
         measured_mem_bw_gbs=_active_weighted_avg("mem_bw_gbs"),
+        measured_dram_page_hit_rate_rd=_active_weighted_avg("page_hit_rate_rd"),
+        measured_dram_rd_latency_ns=_active_weighted_avg("dram_rd_latency_ns"),
     )

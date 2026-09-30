@@ -38,6 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from tools.roofline_projection.baseline_extractor import extract_baseline
 from tools.roofline_projection.hw_spec import SystemSpec, raw_speedup, amdahl_speedup, effective_speedup
+from tools.roofline_projection.scaling_engine import _resolve_retention
 
 # The companion repo's real per-n TTFT projection for THIS exact target (256 EU / 300 GB/s),
 # measured on a real 96-EU Intel iGPU running Llama-3.1-8B-Instruct INT4-GRw (see
@@ -129,6 +130,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--memory-efficiency-retention", type=float, default=0.85, help="0-1, decode-bucket efficiency retention (default 0.85)")
     p.add_argument("--cpu-efficiency-retention", type=float, default=0.85, help="0-1, tool-exec-bucket efficiency retention on top of Amdahl's law (default 0.85)")
     p.add_argument("--tool-parallel-fraction", type=float, default=0.5, help="0-1, Amdahl parallel fraction for tool-execution time (default 0.5)")
+    p.add_argument("--use-measured-memory-efficiency", action="store_true", help="Use each stage's own real measured achieved-vs-theoretical-peak DRAM bandwidth (hw_samples.csv) as the memory-domain retention instead of --memory-efficiency-retention, falling back to it where no measurement exists - see docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md §9.6b")
     p.add_argument("--out", help="Output JSON path (default: <run>/roofline_projection/integrated_wall_time_report.json)")
     p.add_argument("--force", action="store_true", help="Proceed even if --run's device_type isn't GPU/iGPU (the external TTFT ratio is iGPU-EU-axis specific - see the warning this would otherwise print)")
     return p
@@ -165,7 +167,6 @@ def main(argv=None) -> int:
         )
 
     mem_raw = raw_speedup(target_spec.mem_bw_peak_gbs, baseline_spec.mem_bw_peak_gbs)
-    mem_eff = effective_speedup(mem_raw, args.memory_efficiency_retention)
     cores_ratio = raw_speedup(target_spec.cpu_cores, baseline_spec.cpu_cores)
     freq_ratio = raw_speedup(target_spec.cpu_freq_ghz, baseline_spec.cpu_freq_ghz)
     cpu_raw = amdahl_speedup(cores_ratio, freq_ratio, args.tool_parallel_fraction)
@@ -177,6 +178,10 @@ def main(argv=None) -> int:
     for stage in baseline_profile.stages:
         ttft_ratio = _interp_ratio(ttft_curve, max(stage.input_tokens, 1))
         prefill_target_s = stage.prefill_s / ttft_ratio if ttft_ratio > 0 else stage.prefill_s
+        measured_bw = stage.measured_util.get("mem_bw_gbs")
+        measured_mem_fraction = (measured_bw / baseline_spec.mem_bw_peak_gbs) if (measured_bw and baseline_spec.mem_bw_peak_gbs) else None
+        mem_retention = _resolve_retention(measured_mem_fraction, args.memory_efficiency_retention, args.use_measured_memory_efficiency)
+        mem_eff = effective_speedup(mem_raw, mem_retention)
         decode_target_s = stage.decode_s / mem_eff
         tool_target_s = stage.tool_exec_gap_s / cpu_eff
         overhead_target_s = stage.stage_overhead_s
@@ -191,6 +196,8 @@ def main(argv=None) -> int:
             "input_tokens": stage.input_tokens,
             "output_tokens": stage.output_tokens,
             "ttft_ratio_applied": ttft_ratio,
+            "mem_eff_applied": mem_eff,
+            "mem_retention_applied": mem_retention,
             "baseline": {
                 "prefill_s": stage.prefill_s, "decode_s": stage.decode_s,
                 "tool_exec_gap_s": stage.tool_exec_gap_s, "stage_overhead_s": stage.stage_overhead_s,
@@ -206,6 +213,10 @@ def main(argv=None) -> int:
     total_baseline_s += baseline_profile.fixed_overhead_s
     total_projected_s += baseline_profile.fixed_overhead_s
     total_output_tokens = baseline_profile.total_output_tokens()
+    mem_effs = [row["mem_eff_applied"] for row in stage_rows]
+    mem_eff_summary = {
+        "min": min(mem_effs), "max": max(mem_effs), "mean": sum(mem_effs) / len(mem_effs),
+    } if mem_effs else {}
 
     result = {
         "run": args.run,
@@ -215,7 +226,8 @@ def main(argv=None) -> int:
         "external_ttft_csv": args.external_ttft_csv,
         "baseline_spec": baseline_spec.to_dict(),
         "target_spec": target_spec.to_dict(),
-        "domain_speedups": {"memory": mem_eff, "cpu_tool_exec": cpu_eff},
+        "use_measured_memory_efficiency": args.use_measured_memory_efficiency,
+        "domain_speedups": {"memory": mem_eff_summary, "cpu_tool_exec": cpu_eff},
         "fixed_overhead_s": baseline_profile.fixed_overhead_s,
         "stages": stage_rows,
         "baseline_wall_time_s": total_baseline_s,
@@ -237,7 +249,11 @@ def main(argv=None) -> int:
     print(f"External TTFT curve: {args.external_ttft_csv}")
     print(f"Target: {target_spec.igpu_xecores:g} EU / {target_spec.mem_bw_peak_gbs:.1f} GB/s / "
           f"{args.p_cores:g}P+{args.e_cores:g}E ({target_spec.cpu_cores:g}) CPU cores")
-    print(f"Domain speedups applied -> memory: {mem_eff:.3f}x   cpu/tool-exec: {cpu_eff:.3f}x  (per-stage TTFT ratio varies with n)")
+    if args.use_measured_memory_efficiency:
+        print(f"Domain speedups applied -> memory: {mem_eff_summary['min']:.3f}x-{mem_eff_summary['max']:.3f}x "
+              f"(per-stage, from real measured DRAM bandwidth)   cpu/tool-exec: {cpu_eff:.3f}x  (per-stage TTFT ratio varies with n)")
+    else:
+        print(f"Domain speedups applied -> memory: {mem_eff_summary.get('mean', 1.0):.3f}x   cpu/tool-exec: {cpu_eff:.3f}x  (per-stage TTFT ratio varies with n)")
     print()
     # tool_exec_s columns made explicit here (base/proj) - previously only visible in the JSON,
     # not the console summary, which understated how much of the projected total it accounts for.
