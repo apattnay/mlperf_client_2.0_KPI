@@ -63,6 +63,43 @@ this is the **Naive Method** — its "100% compute-bound prefill" assumption is 
 real future SoC with this spec could plausibly land anywhere in roughly the 1.4×-2.2× range given
 the demonstrated error margin.
 
+## Presets 2-4 — "SWE Agent Developer (iGPU)" → illustrative upgrade tiers
+
+Same baseline persona/run/spec as Preset 1 (SWE Agent, iGPU, `preset6_roofline_20260923_141035`,
+`current_baseline_REAL_96EU_devbox.json`), projected onto three **illustrative, not-vendor-verified**
+target tiers already checked into `data/configs/roofline_targets/` (`example_moderate_upgrade.json`,
+`example_heavy_duty_workstation.json`, `example_datacenter_class.json` — each file's own `notes`
+field says so explicitly; edit them with real datasheet numbers before treating results as
+anything but a rough "what direction/magnitude would this kind of upgrade move the needle"
+sanity check). Same command pattern as Preset 1, only `--target-spec`/`--out` change:
+
+```powershell
+.venv\Scripts\python.exe tools\run_roofline_projection.py `
+    --run kpi_runs\preset6_roofline_20260923_141035 `
+    --baseline-spec data\configs\roofline_targets\current_baseline_REAL_96EU_devbox.json `
+    --target-spec data\configs\roofline_targets\<example_moderate_upgrade|example_heavy_duty_workstation|example_datacenter_class>.json `
+    --use-measured-compute-efficiency --use-measured-memory-efficiency `
+    --tool-parallel-fraction 0.5 --what-if `
+    --out kpi_runs\preset6_roofline_20260923_141035\roofline_projection_<moderate_upgrade|heavy_duty_workstation|datacenter_class>
+```
+
+**Last-known real output** (2026-09-30, baseline wall time 689.77s / 13.3 tokens/s / 0.25 tokens/J
+for all three):
+
+| Preset | Target spec | ~vs. baseline | Projected wall time | Speedup | Reduction | Tokens/s | Tokens/J |
+|---|---|---|---|---|---|---|---|
+| 2 — Moderate upgrade | `example_moderate_upgrade.json` (12 cores@4.6GHz, 160-EU@2.2GHz, 8ch×32-bit@8533MT/s ≈ 273 GB/s) | ~1.5-2x each resource | **494.53s** | **1.39×** | 28.3% | 18.5 | 0.28 |
+| 3 — Heavy-duty workstation | `example_heavy_duty_workstation.json` (32 cores@5.0GHz, 384-EU@2.4GHz, 8ch×64-bit@8800MT/s ≈ 563 GB/s) | ~4x each resource | **289.04s** | **2.39×** | 58.1% | 31.7 | 0.26 |
+| 4 — Datacenter-class | `example_datacenter_class.json` (64 cores@3.8GHz, 512-EU@2.6GHz, 16ch×64-bit@9600MT/s ≈ 1,229 GB/s, HBM-class) | ~8x+ each resource | **203.54s** | **3.39×** | 70.5% | 45.0 | 0.28 |
+
+Reports + `what_if_calculator.html` written to `kpi_runs/preset6_roofline_20260923_141035/roofline_projection_<moderate_upgrade|heavy_duty_workstation|datacenter_class>/`.
+
+Note the sub-linear scaling (~4x hardware → 2.39x speedup, ~8x+ hardware → only 3.39x speedup): this
+is Amdahl's-law behavior from the non-prefill stages (decode, tool-exec, fixed overhead — see §1-§2
+of the main doc) that don't scale with compute/bandwidth at all, and is expected, not a projection
+bug. Same accuracy caveats as Preset 1 apply (Naive Method, EMON-informed efficiency, +19.2% known
+error margin against the one real ground-truth cross-check available today).
+
 ## Adding a new preset
 
 1. Pick a real baseline run under `kpi_runs/` that represents the persona/workflow you care about
