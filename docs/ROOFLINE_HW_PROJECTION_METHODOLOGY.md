@@ -1102,6 +1102,28 @@ this whole external-ratio methodology (§9.1/§9.5) is built on. Until this is r
 not merely "more physically defensible than the naive method" as earlier language in this doc
 claimed — that claim is now directly contradicted by real ground truth.
 
+**Same-day control run, 2026-09-29 — rules out time-based drift as the explanation**: to check
+whether the 6-day gap between the original 96-EU run (2026-09-23) and the `JF04WVAW0381-TA` run
+(2026-09-29) could itself explain part of the anomaly (e.g. an OpenVINO/driver update landing on
+*either* machine in between), a fresh `--preset 6` was run on this repo's own 96-EU dev box the
+same day: `kpi_runs/preset6_sweagent_gpu_20260929_225911` — real wall time **723.6s**, `ttft_s` at
+`n=8198` across its 3 iterations: **55.38s / 55.18s / 50.88s**. This is close to (within normal
+day-to-day variance of) the original run's 49.3-49.4s, and nowhere near `JF04WVAW0381-TA`'s
+~15s — confirming **the anomaly is a real, specific property of `JF04WVAW0381-TA`, not a
+time-based software drift affecting every machine**:
+
+| Run | Date | Device | Wall time | `ttft_s` @ n=8198 (3 iterations) |
+|---|---|---|---|---|
+| `preset6_roofline_20260923_141035` | 2026-09-23 | this repo's 96-EU box | 689.77s | 49.4466 / 49.3289 / 49.2944 |
+| `preset6_sweagent_gpu_20260929_225911` | 2026-09-29 (same day) | this repo's 96-EU box | 723.6s | 55.3805 / 55.179 / 50.8779 |
+| `preset6_sweagent_gpu_20260929_211533` | 2026-09-29 (same day) | `JF04WVAW0381-TA`, 16-EU | 778.62s | 14.9501 / 14.8583 / 14.981 |
+
+This machine's own day-to-day TTFT variance (49.3-49.4s → 50.9-55.4s, roughly +3-12%) is normal
+run-to-run noise. `JF04WVAW0381-TA`'s ~15s is a categorically different result (~3.3-3.7×
+faster), not an extension of that noise band — reinforcing that this is worth root-causing on
+that specific machine (driver/OpenVINO version check, kernel-cache-clear rerun per the earlier
+recommendation) rather than dismissed as measurement drift.
+
 ### 9.6 §9.1-§9.5 only ever covers `prefill_s`/TTFT — the other three buckets rely on this repo's own §4.3 evidence
 
 Easy to lose track of, given how much of §9 is about the external project: **the external
