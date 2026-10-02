@@ -5,20 +5,20 @@ what-if dropdown calculator).
 Usage examples:
   # Quick projection with CLI overrides on top of the built-in default baseline spec
   .venv\\Scripts\\python.exe tools\\run_roofline_projection.py --run kpi_runs\\preset5_roofline_20260923_140129 ^
-      --target-spec data\\configs\\roofline_targets\\example_heavy_duty_workstation.json --what-if
+    --target-spec what-if\\data\\configs\\roofline_targets\\example_heavy_duty_workstation.json --what-if
 
   # Fully explicit baseline + target spec files (recommended: fill in your real baseline spec once)
   .venv\\Scripts\\python.exe tools\\run_roofline_projection.py --run kpi_runs\\preset5_roofline_20260923_140129 ^
-      --baseline-spec data\\configs\\roofline_targets\\current_baseline_TEMPLATE.json ^
-      --target-spec data\\configs\\roofline_targets\\example_heavy_duty_workstation.json ^
+    --baseline-spec what-if\\data\\configs\\roofline_targets\\current_baseline_TEMPLATE.json ^
+    --target-spec what-if\\data\\configs\\roofline_targets\\example_heavy_duty_workstation.json ^
       --out kpi_runs\\preset5_roofline_20260923_140129\\roofline_projection --what-if
 
   # Per-domain efficiency-retention overrides (compute/memory/cpu can differ - see the doc's §4.1)
   .venv\\Scripts\\python.exe tools\\run_roofline_projection.py --run kpi_runs\\preset5_roofline_20260923_140129 ^
-      --target-spec data\\configs\\roofline_targets\\example_heavy_duty_workstation.json ^
+    --target-spec what-if\\data\\configs\\roofline_targets\\example_heavy_duty_workstation.json ^
       --compute-efficiency-retention 0.9 --memory-efficiency-retention 0.75 --cpu-efficiency-retention 0.6
 
-See docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md for the full methodology.
+See what-if/docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md for the full methodology.
 """
 from __future__ import annotations
 
@@ -26,7 +26,8 @@ import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+WHAT_IF_ROOT = Path(__file__).resolve().parent.parent / "what-if"
+sys.path.insert(0, str(WHAT_IF_ROOT))
 
 from tools.roofline_projection.baseline_extractor import extract_baseline
 from tools.roofline_projection.hw_spec import SystemSpec
@@ -48,7 +49,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--target-spec", help="Path to a SystemSpec JSON describing the hypothetical target machine. Starts from the baseline spec, then CLI overrides below are applied on top.")
     p.add_argument("--out", help="Output directory for the report (default: <run>/roofline_projection/)")
     p.add_argument("--what-if", action="store_true", help="Also generate a standalone interactive what-if dropdown calculator (what_if_calculator.html)")
-    p.add_argument("--presets-dir", default="data/configs/roofline_targets", help="Directory of SystemSpec JSON files to offer as quick-pick presets in the what-if calculator")
+    default_presets_dir = WHAT_IF_ROOT / "data" / "configs" / "roofline_targets"
+    p.add_argument("--presets-dir", default=str(default_presets_dir), help="Directory of SystemSpec JSON files to offer as quick-pick presets in the what-if calculator")
 
     for field in _TARGET_OVERRIDE_FIELDS:
         p.add_argument(f"--{field.replace('_', '-')}", type=float, help=f"Override target_spec.{field}")
@@ -142,7 +144,7 @@ def main(argv=None) -> int:
         print(
             "warning: no --baseline-spec given, using a generic placeholder (CPU/iGPU/NPU counts are "
             "NOT auto-detectable). Projection ratios will be wrong unless you supply your real machine's "
-            "spec via --baseline-spec. See data/configs/roofline_targets/current_baseline_TEMPLATE.json.",
+            "spec via --baseline-spec. See what-if/data/configs/roofline_targets/current_baseline_TEMPLATE.json.",
             file=sys.stderr,
         )
 

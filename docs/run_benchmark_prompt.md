@@ -147,5 +147,5 @@ Override the mlperf installation directory if it's not at the default path:
   take tens of minutes, presets 5/6 (agentic, tool-execution) take roughly 10-15 minutes each.
 - After a run, project its wall time / throughput onto a hypothetical heavier-duty machine (more
   CPU cores / iGPU XeCores / NPU MACs / memory bandwidth) with
-  `tools\run_roofline_projection.py --run kpi_runs\<experiment> --what-if` - see
-  [docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md](ROOFLINE_HW_PROJECTION_METHODOLOGY.md).
+  `what-if\tools\run_roofline_projection.py --run kpi_runs\<experiment> --what-if` - see
+  [what-if/docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md](../what-if/docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md).

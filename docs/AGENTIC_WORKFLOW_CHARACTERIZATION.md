@@ -385,14 +385,14 @@ while the iGPU's memory subsystem sustains higher single-token streaming reads (
 ## 11. Projecting to different (hypothetical) hardware
 
 Sections 9-10 above characterize how efficiently *this run* uses *this machine's* hardware. A
-separate, complementary tool - `tools/roofline_projection/` (CLI: `tools/run_roofline_projection.py`)
+separate, complementary tool - `what-if/tools/roofline_projection/` (CLI: `what-if/tools/run_roofline_projection.py`)
 - answers a different question: given this run's measured behavior, how would wall time /
 tokens-per-second / tokens-per-Joule change on a **different, hypothetical** system (more CPU
 cores, iGPU XeCores, NPU MACs, memory bandwidth)? It decomposes each stage into compute-bound
 (prefill), memory-bound (decode), CPU-bound (tool execution), and fixed-overhead buckets, scales
 each independently by the relevant hardware ratio, and sums back up to a projected total - plus a
 standalone interactive dropdown "what-if" calculator (`what_if_calculator.html`). See
-[docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md](ROOFLINE_HW_PROJECTION_METHODOLOGY.md) for the full
+[what-if/docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md](../what-if/docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md) for the full
 methodology, equations, and a worked example on this same `preset5_roofline_20260923_140129` run.
 
 

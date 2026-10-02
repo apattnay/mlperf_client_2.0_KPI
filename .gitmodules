@@ -10,3 +10,6 @@
 [submodule "deps/minizip-ng"]
 	path = deps/minizip-ng
 	url = https://github.com/zlib-ng/minizip-ng.git
+[submodule "what-if"]
+	path = what-if
+	url = https://github.com/intel-sandbox/what-if.git

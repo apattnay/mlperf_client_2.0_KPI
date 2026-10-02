@@ -2,7 +2,7 @@
 many similar-shape stages) for a workload-native achieved compute/memory reference, and cross-
 check it against hw_samples.csv-telemetry-based diagnostics from the SAME run (if present).
 
-See docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md Sec 4.2 for the methodology and why this is a
+See what-if/docs/ROOFLINE_HW_PROJECTION_METHODOLOGY.md Sec 4.2 for the methodology and why this is a
 useful SECOND, independent measurement (not a replacement for either the telemetry-based
 diagnostic or the --*-efficiency-retention assumptions, which remain necessary for the
 hypothetical TARGET side of a projection).
@@ -10,7 +10,7 @@ hypothetical TARGET side of a projection).
 Usage:
   .venv\\Scripts\\python.exe tools\\calibrate_roofline_baseline.py ^
       --run kpi_runs\\preset1_full_npu_20260917_211825 --run kpi_runs\\preset2_full_gpu_20260917_213836 ^
-      --baseline-spec data\\configs\\roofline_targets\\current_baseline_TEMPLATE.json
+    --baseline-spec what-if\\data\\configs\\roofline_targets\\current_baseline_TEMPLATE.json
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "what-if"))
 
 from tools.roofline_projection.baseline_extractor import extract_baseline
 from tools.roofline_projection.calibration import build_calibration_profile
