@@ -24,7 +24,7 @@
 #>
 param(
     [string]$InstallDir = "C:\Applications\mlperf_client\mlperf_v2p0",
-    [string]$Proxy = $env:HTTPS_PROXY
+    [string]$Proxy = "http://proxy-dmz.intel.com:911/"
 )
 $ErrorActionPreference = "Stop"
 
