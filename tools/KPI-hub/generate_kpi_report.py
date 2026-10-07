@@ -22,6 +22,7 @@ import ctypes
 import json
 import math
 import os
+import re
 import shutil
 import struct
 import sys
@@ -86,6 +87,270 @@ def _embed_device_label(rkpi: dict | None) -> str:
 
 def _color_for(name):
     return PHASE_COLORS.get(name, DEFAULT_COLOR)
+
+
+def _decode_ms(stage: dict):
+    """Decode-only duration for a stage: wall time minus TTFT/prefill wait, in milliseconds."""
+    ttft = stage.get("ttft_s")
+    if ttft in (None, ""):
+        return None
+    return max(stage.get("wall_time_s", 0) - ttft, 0) * 1000.0
+
+
+def _iter_sort_key(name: str) -> int:
+    m = re.match(r"^(\d+)_", name)
+    return int(m.group(1)) if m else 0
+
+
+_CATEGORY_STATS_RE = re.compile(
+    r"([A-Za-z][A-Za-z0-9 _/-]*?):\s*Avg Expected Duration:\s*([\d.]+)\s*s,\s*Avg Tools Duration:\s*([\d.]+)\s*s"
+)
+
+
+def _parse_mlperf_category_stats(mlperf_stdout_text):
+    """Parse mlperf-windows.exe's end-of-run 'Benchmark Results' summary (captured verbatim in
+    mlperf_stdout.log) for each agentic category's self-reported 'Avg Expected Duration'
+    (decode-time budget; excludes warmup and tool-call time) and 'Avg Tools Duration'.
+
+    Returns {category: {"expected_duration_s": x, "tools_duration_s": y}}.
+    """
+    if not mlperf_stdout_text:
+        return {}
+    stats = {}
+    for m in _CATEGORY_STATS_RE.finditer(mlperf_stdout_text):
+        stats[m.group(1).strip()] = {
+            "expected_duration_s": float(m.group(2)),
+            "tools_duration_s": float(m.group(3)),
+        }
+    return stats
+
+
+def _compute_iteration_kpis(stages: dict):
+    """Group stages into iterations (an iteration starts at a '<n>_warmup' stage) and compute
+    the per-iteration decode / tool-call / gap KPIs used by the Agent KPIs, Tool-Call KPIs, and
+    Other KPIs report sections.
+
+    Returns a list of dicts, one per iteration:
+      {index, stage_names, agent_stage_names, decode_ms_total, tool_s_total, tool_calls_detail,
+       start_epoch, end_epoch, duration_s, gaps, gap_s_total}
+    `gaps` lists every inter-stage gap (next.start_epoch - current.end_epoch) owned by this
+    iteration; a gap is owned by the iteration containing the *earlier* stage of the pair, so the
+    gap leading out of an iteration into the next one's warmup is counted in the earlier iteration.
+    """
+    ordered_names = sorted(
+        (n for n, d in stages.items() if d.get("start_epoch")),
+        key=_iter_sort_key,
+    )
+    iterations = []
+    for name in ordered_names:
+        base = re.sub(r"^\d+_", "", name)
+        if base == "warmup" or not iterations:
+            iterations.append({"index": len(iterations) + 1, "stage_names": []})
+        iterations[-1]["stage_names"].append(name)
+
+    for it in iterations:
+        names = it["stage_names"]
+        it["agent_stage_names"] = [n for n in names if re.sub(r"^\d+_", "", n) != "warmup"]
+        decode_ms_total = 0.0
+        tool_s_total = 0.0
+        tool_calls_detail = []
+        for n in it["agent_stage_names"]:
+            d = stages[n]
+            decode_ms = _decode_ms(d)
+            if decode_ms is not None:
+                decode_ms_total += decode_ms
+            tool_exec_ms = d.get("tool_exec_ms")
+            if d.get("tool_calls"):
+                tool_calls_detail.append({
+                    "stage": n,
+                    "tool_calls": d.get("tool_calls", {}),
+                    "duration_ms": tool_exec_ms,
+                })
+            if tool_exec_ms:
+                tool_s_total += tool_exec_ms / 1000.0
+        it["decode_ms_total"] = decode_ms_total
+        it["tool_s_total"] = tool_s_total
+        it["tool_calls_detail"] = tool_calls_detail
+        first = stages[names[0]]
+        last = stages[names[-1]]
+        it["start_epoch"] = first.get("start_epoch")
+        it["end_epoch"] = last.get("end_epoch")
+        it["duration_s"] = (
+            (it["end_epoch"] - it["start_epoch"]) if it["start_epoch"] and it["end_epoch"] else 0.0
+        )
+        it["gaps"] = []
+
+    for idx, name in enumerate(ordered_names[:-1]):
+        nxt = ordered_names[idx + 1]
+        cur_end = stages[name].get("end_epoch")
+        nxt_start = stages[nxt].get("start_epoch")
+        if cur_end is None or nxt_start is None:
+            continue
+        gap_s = nxt_start - cur_end
+        for it in iterations:
+            if name in it["stage_names"]:
+                it["gaps"].append({"after": name, "before": nxt, "gap_s": gap_s})
+                break
+
+    for it in iterations:
+        it["gap_s_total"] = sum(g["gap_s"] for g in it["gaps"])
+
+    return iterations
+
+
+def _fmt_diff(actual, expected, unit="s", decimals=2):
+    """Return (abs_diff_str, pct_diff_str) comparing `actual` to an `expected` reference value."""
+    if expected in (None, 0):
+        return "-", "-"
+    diff = actual - expected
+    pct = diff / expected * 100
+    sign = "+" if diff >= 0 else ""
+    return f"{sign}{diff:.{decimals}f} {unit}", f"{sign}{pct:.1f}%"
+
+
+def _build_agent_decode_summary_html(iterations, category_stats):
+    """Per-iteration total decode time vs. mlperf's self-reported 'Avg Expected Duration'."""
+    if not iterations or not any(it["agent_stage_names"] for it in iterations):
+        return ""
+    rows = ""
+    decode_s_values = []
+    for it in iterations:
+        if not it["agent_stage_names"]:
+            continue
+        decode_s = it["decode_ms_total"] / 1000.0
+        decode_s_values.append(decode_s)
+        rows += (f'<tr><td>Iteration {it["index"]}</td>'
+                 f'<td>{html.escape(", ".join(it["agent_stage_names"]))}</td>'
+                 f'<td class="num">{it["decode_ms_total"]:,.0f}</td>'
+                 f'<td class="num">{decode_s:.3f}</td></tr>')
+    if not decode_s_values:
+        return ""
+    avg_s = sum(decode_s_values) / len(decode_s_values)
+    rows += (f'<tr style="font-weight:600;border-top:2px solid var(--border)">'
+             f'<td>Average / iteration</td><td></td>'
+             f'<td class="num">{avg_s*1000:,.0f}</td><td class="num">{avg_s:.3f}</td></tr>')
+
+    expected_html = ""
+    category_name = next(iter(category_stats.keys()), None)
+    entry = category_stats.get(category_name) if category_name else None
+    if entry is not None:
+        expected_s = entry["expected_duration_s"]
+        abs_diff, pct_diff = _fmt_diff(avg_s, expected_s, unit="s", decimals=3)
+        expected_html = f"""
+        <table style="margin-top:12px">
+            <tr><th>Comparison vs. mlperf_stdout.log ({html.escape(category_name)})</th><th style="text-align:right">Value</th></tr>
+            <tr><td>Avg Expected Duration (mlperf-reported)</td><td class="num">{expected_s:.3f} s</td></tr>
+            <tr><td>Avg Total Decode Time (measured, this report)</td><td class="num">{avg_s:.3f} s</td></tr>
+            <tr><td>Absolute Difference</td><td class="num">{abs_diff}</td></tr>
+            <tr><td>Percent Difference</td><td class="num">{pct_diff}</td></tr>
+        </table>"""
+    return f"""
+    <h3 style="font-size:1rem; color:var(--text2); margin:16px 0 10px">Decode Time per Iteration</h3>
+    <table>
+        <tr><th>Iteration</th><th>Agent Stages</th><th style="text-align:right">Total Decode (ms)</th><th style="text-align:right">Total Decode (s)</th></tr>
+        {rows}
+    </table>
+    {expected_html}"""
+
+
+def _build_tool_call_kpis_html(iterations, category_stats):
+    """Per tool-call duration, per-iteration totals, vs. mlperf's 'Avg Tools Duration'."""
+    if not iterations or not any(it["tool_calls_detail"] for it in iterations):
+        return ""
+    call_rows = ""
+    for it in iterations:
+        for call in it["tool_calls_detail"]:
+            tool_summary = ", ".join(f"{n}\u00d7{c}" for n, c in sorted(call["tool_calls"].items()))
+            dur = call["duration_ms"]
+            dur_cell = f"{dur:,.1f}" if dur is not None else "-"
+            call_rows += (f'<tr><td>Iteration {it["index"]}</td><td>{html.escape(call["stage"])}</td>'
+                          f'<td>{html.escape(tool_summary)}</td><td class="num">{dur_cell}</td></tr>')
+
+    iter_rows = ""
+    tool_s_values = []
+    for it in iterations:
+        if not it["agent_stage_names"]:
+            continue
+        tool_s_values.append(it["tool_s_total"])
+        iter_rows += (f'<tr><td>Iteration {it["index"]}</td>'
+                      f'<td class="num">{it["tool_s_total"]*1000:,.0f}</td>'
+                      f'<td class="num">{it["tool_s_total"]:.3f}</td></tr>')
+    avg_s = sum(tool_s_values) / len(tool_s_values) if tool_s_values else 0.0
+    iter_rows += (f'<tr style="font-weight:600;border-top:2px solid var(--border)">'
+                  f'<td>Average / iteration</td>'
+                  f'<td class="num">{avg_s*1000:,.0f}</td><td class="num">{avg_s:.3f}</td></tr>')
+
+    expected_html = ""
+    category_name = next(iter(category_stats.keys()), None)
+    entry = category_stats.get(category_name) if category_name else None
+    if entry is not None:
+        expected_s = entry["tools_duration_s"]
+        abs_diff, pct_diff = _fmt_diff(avg_s, expected_s, unit="s", decimals=3)
+        expected_html = f"""
+        <table style="margin-top:12px">
+            <tr><th>Comparison vs. mlperf_stdout.log ({html.escape(category_name)})</th><th style="text-align:right">Value</th></tr>
+            <tr><td>Avg Tools Duration (mlperf-reported)</td><td class="num">{expected_s:.3f} s</td></tr>
+            <tr><td>Avg Total Tool-Call Duration (measured, this report)</td><td class="num">{avg_s:.3f} s</td></tr>
+            <tr><td>Absolute Difference</td><td class="num">{abs_diff}</td></tr>
+            <tr><td>Percent Difference</td><td class="num">{pct_diff}</td></tr>
+        </table>"""
+
+    return f"""
+    <div class="section">
+        <h2>Tool-Call KPIs</h2>
+        <table>
+            <tr><th>Iteration</th><th>Agent Stage</th><th>Tool Calls</th><th style="text-align:right">Duration (ms)</th></tr>
+            {call_rows}
+        </table>
+        <h3 style="font-size:1rem; color:var(--text2); margin:16px 0 10px">Tool-Call Duration per Iteration</h3>
+        <table>
+            <tr><th>Iteration</th><th style="text-align:right">Total Tool Duration (ms)</th><th style="text-align:right">Total Tool Duration (s)</th></tr>
+            {iter_rows}
+        </table>
+        {expected_html}
+    </div>"""
+
+
+def _build_other_kpis_html(iterations):
+    """Iteration wall-clock duration and the idle gaps between consecutive operations."""
+    if not iterations or not any(it["agent_stage_names"] for it in iterations):
+        return ""
+    iter_rows = ""
+    gap_totals = []
+    for it in iterations:
+        if not it["agent_stage_names"]:
+            continue
+        gap_badges = "".join(
+            f'<span class="tool-badge" title="{html.escape(g["after"])} \u2192 {html.escape(g["before"])}">'
+            f'{html.escape(g["after"])}\u2192{html.escape(g["before"])}: {g["gap_s"]:.1f}s</span>'
+            for g in it["gaps"]
+        ) or "-"
+        gap_totals.append(it["gap_s_total"])
+        iter_rows += (f'<tr><td>Iteration {it["index"]}</td>'
+                      f'<td class="num">{it["duration_s"]:.1f}</td>'
+                      f'<td>{gap_badges}</td>'
+                      f'<td class="num">{it["gap_s_total"]:.1f}</td></tr>')
+    avg_gap_s = sum(gap_totals) / len(gap_totals) if gap_totals else 0.0
+    total_gap_s = sum(gap_totals)
+    iter_rows += (f'<tr style="font-weight:600;border-top:2px solid var(--border)">'
+                  f'<td>Average / iteration</td><td></td><td></td>'
+                  f'<td class="num">{avg_gap_s:.1f}</td></tr>')
+    iter_rows += (f'<tr style="font-weight:600"><td>Total (all iterations)</td><td></td><td></td>'
+                  f'<td class="num">{total_gap_s:.1f}</td></tr>')
+    return f"""
+    <div class="section">
+        <h2>Other KPIs</h2>
+        <p style="color:var(--text2);font-size:0.8rem;">Gaps are the idle wall-clock time between
+        the end of one LLM/tool operation and the start of the next (visible as empty space on the
+        Workflow Timeline); they are not captured by mlperf's own "Avg Expected Duration" or
+        "Avg Tools Duration" metrics and typically reflect harness overhead (prompt/context
+        loading, logging, iteration bookkeeping).</p>
+        <table>
+            <tr><th>Iteration</th><th style="text-align:right">Iteration Duration (s)</th>
+                <th>Gaps Between Operations</th><th style="text-align:right">Total Gap Duration (s)</th></tr>
+            {iter_rows}
+        </table>
+    </div>"""
 
 
 def _fmt_time(iso):
@@ -942,11 +1207,13 @@ def _build_startup_timing_html(exp_meta, rkpi):
     return html
 
 
-def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss=None):
+def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss=None, mlperf_stdout_text=None):
     if exp_meta is None:
         exp_meta = {}
     stages = wkpi.get("stages", {})
     totals = wkpi.get("totals", {})
+    category_stats = _parse_mlperf_category_stats(mlperf_stdout_text)
+    iterations = _compute_iteration_kpis(stages)
     model = wkpi.get("model", "unknown")
     backend = wkpi.get("backend", "unknown")
     wall_time = wkpi.get("workflow_wall_time_s", 0)
@@ -1093,6 +1360,7 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
             "color": _color_for(name),
             "ttft_s": s.get("ttft_s", ""),
             "prefill_ms_est": s.get("prefill_ms_est", ""),
+            "decode_ms": _decode_ms(s),
             "avg_itl_ms": s.get("avg_itl_ms", ""),
             "itl_stddev_ms": s.get("itl_stddev_ms", ""),
             "p50_itl_ms": s.get("p50_itl_ms", ""),
@@ -1119,6 +1387,7 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
                 "color": _color_for(name),
                 "ttft_s": s.get("ttft_s", ""),
                 "prefill_ms_est": s.get("prefill_ms_est", ""),
+                "decode_ms": _decode_ms(s),
                 "avg_itl_ms": s.get("avg_itl_ms", ""),
                 "itl_stddev_ms": s.get("itl_stddev_ms", ""),
                 "p50_itl_ms": s.get("p50_itl_ms", ""),
@@ -1270,6 +1539,7 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
     for r in table_rows:
         ttft_cell = f"{r['ttft_s']}" if r.get('ttft_s') != '' else "-"
         prefill_cell = f"{r['prefill_ms_est']:,.0f}" if r.get('prefill_ms_est') != '' else "-"
+        decode_cell = f"{r['decode_ms']:,.0f}" if r.get('decode_ms') is not None else "-"
         itl_cell = f"{r['avg_itl_ms']}" if r.get('avg_itl_ms') != '' else "-"
         if r.get('avg_itl_ms') != '' and r.get('itl_stddev_ms') != '':
             itl_cell = f"{r['avg_itl_ms']} \u00b1{r['itl_stddev_ms']}"
@@ -1316,6 +1586,7 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
                 <td class="num">{tok_s_cell}</td>
                 <td class="num">{ttft_cell}</td>
                 <td class="num">{prefill_cell}</td>
+                <td class="num">{decode_cell}</td>
                 <td class="num">{itl_cell}</td>
                 <td class="num" title="p50 / p99">{p50_cell} / {p99_cell}</td>{f'<td>{tools_cell}</td>' if has_tool_calls else ''}
             </tr>"""
@@ -1332,6 +1603,9 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
     peak_rss_html = _build_peak_rss_html(peak_rss)
     model_weight_html = _build_model_weight_html(exp_meta)
     startup_html = _build_startup_timing_html(exp_meta, rkpi)
+    agent_decode_summary_html = _build_agent_decode_summary_html(iterations, category_stats)
+    tool_call_kpis_html = _build_tool_call_kpis_html(iterations, category_stats)
+    other_kpis_html = _build_other_kpis_html(iterations)
 
     # ---- Assemble full HTML ----
     report_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1456,7 +1730,7 @@ code {{ background: rgba(110,118,129,0.2); padding: 2px 6px; border-radius: 4px;
 {timeline_html}
 
 <div class="section">
-    <h2>Per-Agent KPIs</h2>
+    <h2>Agent KPIs</h2>
     <table>
         <thead>
             <tr>
@@ -1470,6 +1744,7 @@ code {{ background: rgba(110,118,129,0.2); padding: 2px 6px; border-radius: 4px;
                 <th style="text-align:right">Tok/s</th>
                 <th style="text-align:right">TTFT (s)</th>
                 <th style="text-align:right">Prefill (ms)</th>
+                <th style="text-align:right">Decode (ms)</th>
                 <th style="text-align:right">Avg ITL (ms)</th>
                 <th style="text-align:right">p50/p99 ITL (ms)</th>
                 {'<th>Tools</th>' if has_tool_calls else ''}
@@ -1485,11 +1760,16 @@ code {{ background: rgba(110,118,129,0.2); padding: 2px 6px; border-radius: 4px;
                 <td class="num">{totals.get('total_tokens', 0):,}</td>
                 <td class="num">{wall_time:.1f}</td>
                 <td class="num">{total_out_tps}</td>
-                <td></td><td></td><td></td><td></td>{'<td></td>' if has_tool_calls else ''}
+                <td></td><td></td><td></td><td></td><td></td>{'<td></td>' if has_tool_calls else ''}
             </tr>
         </tbody>
     </table>
+    {agent_decode_summary_html}
 </div>
+
+{tool_call_kpis_html}
+
+{other_kpis_html}
 
 {rag_html}
 
@@ -1589,7 +1869,16 @@ def main():
         if peak_rss:
             break
 
-    html_content = build_html(wkpi, rkpi, sys_state, kpi_dir_name, exp_meta, peak_rss)
+    # Load mlperf-windows.exe's captured stdout/stderr (has the end-of-run 'Avg Expected
+    # Duration' / 'Avg Tools Duration' summary used by the Agent/Tool-Call KPI sections).
+    mlperf_stdout_text = load_text(os.path.join(actual_dir, "mlperf_stdout.log"))
+    if not mlperf_stdout_text:
+        for d in search_dirs:
+            mlperf_stdout_text = load_text(os.path.join(d, "mlperf_stdout.log"))
+            if mlperf_stdout_text:
+                break
+
+    html_content = build_html(wkpi, rkpi, sys_state, kpi_dir_name, exp_meta, peak_rss, mlperf_stdout_text)
 
     # Output path
     if args.output:
