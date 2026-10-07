@@ -1476,6 +1476,90 @@ directly motivated by this exact confound:
    on hand — the whole point of a projection is to predict behavior on the target class of
    hardware, and this confound shows that class can matter as much as raw specs.
 
+### 9.6d The crux mechanism, isolated to the prefill/KV-cache-write phase specifically, and confirmation KV-cache placement is contiguous, not paged (2026-09-30)
+
+§9.6b/§9.6c's page-hit-rate/latency finding was measured on **whole prefill-stage windows**
+(`ttft_s`) without separating *why* — specifically, without checking whether the effect is a
+property of KV-cache *placement* (scattered/paged vs. contiguous) or of the *hardware channel
+topology* underneath an already-contiguous access pattern. Both are real, separate hypotheses a
+reader could take from §9.6b/§9.6c's wording; this subsection closes that ambiguity and names the
+single mechanism that unifies every asymmetry already documented in this section.
+
+**KV-cache placement is contiguous, not paged/block-sparse — confirmed by config audit, not
+assumption.** A vLLM/PagedAttention-style scheduler would require explicit opt-in
+(`scheduler_config`/`block_size`/`num_kv_blocks`/`cache_size`) in this repo's own scenario configs
+— none exist anywhere in `data/configs/` (checked `Intel_NativeOpenVINO_GPU.json` and the whole
+`data/configs/` tree by grep). This benchmark runs one conversation at a time per stage (not
+multi-tenant serving, the only case PagedAttention exists to solve), which is exactly the case
+OpenVINO GenAI's default **stateful** pipeline targets — KV cache backed by `ov::VariableState`,
+one contiguous, monotonically-growing tensor per layer, identical in shape/growth behavior on
+both machines. **This one fact is the reason the mechanism below can't be "different placement
+strategy" — placement is identical on both machines; only the hardware underneath it differs.**
+
+**Phase-segmented (not whole-stage) confirmation — new data this session.** `workflow_kpi.json`
+records each stage's real `start_iso` + `prefill_ms_est`, giving an absolute prefill-window
+`[start_iso, start_iso + prefill_ms_est]` per stage — precise enough to split `hw_samples.csv`'s
+own `timestamp` column into genuine prefill-only vs. decode-only row sets, instead of relying on
+whole-`ttft_s`-stage aggregates. Splitting both machines' `preset6` runs this way
+(`tools/tools_sandbox/prefill_decode_mem_rca.py`, committed):
+
+```powershell
+Remove-Item Env:PYTHONHOME -ErrorAction SilentlyContinue
+.venv\Scripts\python.exe tools\tools_sandbox\prefill_decode_mem_rca.py `
+    kpi_runs\preset6_roofline_20260923_141035 kpi_runs\preset6_sweagent_gpu_20260929_225751
+```
+
+| Metric | 96-EU, LPDDR5X 8ch×16-bit — **prefill** | 96-EU — **decode** | 16-EU, DDR5 2ch×64-bit — **prefill** | 16-EU — **decode** |
+|---|---|---|---|---|
+| `dram_write_gbs` (KV-cache write bandwidth) | mean 3.39 / median 3.33 | mean 1.64 / median 1.13 | mean 1.56 / median 1.01 | mean 1.32 / median 1.13 |
+| `dram_page_hit_rate_wr` | 0.63 | 0.45 | 0.81 | 0.71 |
+| `dram_rd_latency_ns` | mean 62.11 / median 45.80 | mean 78.76 / median 67.60 | mean 17.34 / median 16.10 | mean 21.11 / median 22.10 |
+| `dram_page_hit_rate_rd` | 0.72 | 0.62 | 0.92 | 0.95 |
+| `imc_freq_ghz` | 2.13 (steady) | 2.14 (steady) | 2.73 (variable) | 1.86 (variable) |
+
+**The crux mechanism — channel *count*, not per-channel bit width, governs the tradeoff, and it
+explains both the read side (already in §9.6b/§9.6c) and the write/KV-cache-creation side (new
+here) with one unified explanation**: a contiguous sequential burst (KV-cache write during
+prefill, or the weight/KV-cache re-read stream during decode) gets striped across physical
+channels by the memory controller. With 8 channels, consecutive cachelines round-robin across 8
+independent channels — more parallelism, higher achievable aggregate bandwidth, but each channel
+only receives every 8th transaction from the stream, so its own row buffer sees a sparser, less
+locally-repeated slice → lower page-hit rate, higher per-access latency. With 2 channels, each
+channel receives every-other transaction from the same stream — only 2-way parallelism (lower
+bandwidth ceiling), but each channel's row buffer sees a denser, more row-local slice of the
+stream → **higher hit rate, lower latency**. This is a single, consistent, direction-correct
+explanation for every asymmetry recorded in §9.6b/§9.6c/here: 96-EU's higher prefill KV-cache
+write bandwidth (3.39 vs 1.56 GB/s) and higher decode read bandwidth (§9.6b: ~85-87 GB/s vs
+~46-52 GB/s) alongside its *lower* page-hit rate and *higher* latency in both phases, on both the
+read and write side — not two separate stories requiring two separate causes.
+
+**What this means for this methodology's future — a genuine reference-machine-selection
+criterion, not just a diagnostic footnote.** Because placement (contiguous, monotonic) is fixed by
+the inference pipeline and not workload-tunable from this repo's side, the channel-count-vs-
+locality tradeoff above is a **property of the target hardware class**, not of any one workload —
+meaning it generalizes beyond this specific SWE-Agent run to any future KV-cache-heavy (long-
+context prefill, large-batch decode) target on either memory-architecture family. Concretely, for
+any future performance-projection/hardware-selection exercise built on this methodology:
+- A **write-bandwidth-sensitive** projection (prefill/KV-cache-creation-dominated workloads, e.g.
+  long-context-heavy agentic scenarios) should weight *channel count* more heavily than raw
+  per-channel width or clock speed when comparing candidate target SKUs — exactly the axis §3's
+  `mem_bw_peak_gbs = mem_channels × (mem_width_bits/8) × mem_freq_mts` already multiplies together
+  into one number, which this finding shows can hide a real tradeoff (a high-channel-count/narrow-
+  width part and a low-channel-count/wide-width part can show the *same* theoretical peak while
+  behaving oppositely on latency/hit-rate for identical access patterns).
+- Confirms and extends §9.7/§9.7a's existing design choice **not** to add
+  `dram_page_hit_rate_*`/`dram_rd_latency_ns` as a second explicit scaling term — the mechanism is
+  now understood well enough to confirm achieved `dram_total_gbs` (already used by
+  `--use-measured-memory-efficiency`) legitimately captures its net effect on both the read and
+  write side, for a *known, measured* baseline. It remains unmeasurable for a hypothetical target
+  (§8 limitation #1) — this subsection sharpens *why* that gap exists rather than closing it.
+- **Still not proven causal in the strict sense** (same caveat as §9.6b): confirming the exact
+  interleave granularity this reasoning assumes (cacheline-level round-robin) would need either a
+  vendor memory-controller datasheet (not available for either SoC at this detail level) or a
+  targeted stride-pattern microbenchmark (write at fixed strides of 1/2/4/8 cachelines and observe
+  which stride collapses page-hit rate on each machine) — recorded here as the concrete next step
+  if a rigorous, vendor-independent confirmation is ever required.
+
 ### 9.6 §9.1-§9.5 only ever covers `prefill_s`/TTFT — the other three buckets rely on this repo's own §4.3 evidence
 
 Easy to lose track of, given how much of §9 is about the external project: **the external
