@@ -113,6 +113,8 @@ _ITL_STDDEV_RE = re.compile(r"Average 2nd\+ Token Latency:.*\(\+-([\d.]+)\)")
 # this turn (sum of every "Tool call:"/"...result:" pair) - ground truth, unlike the inter-stage
 # timestamp gap previously used as a stand-in when this line wasn't parsed.
 _TOOLS_TIME_RE = re.compile(r"Tools time: ([\d.]+)")
+_ORCHESTRATOR_EVENT_RE = re.compile(r"orchestrator_event:\s*(?P<fields>.*)$")
+_ORCHESTRATOR_FIELD_RE = re.compile(r"(?P<key>[a-zA-Z_]+)=(?P<value>[^,]*)")
 
 
 def parse_executor_log(path: Path, start_offset: int) -> dict:
@@ -175,6 +177,8 @@ def parse_executor_log(path: Path, start_offset: int) -> dict:
             entry["itl_stddev_ms"] = stage["itl_stddev_ms"]
         if "tool_exec_ms" in stage:
             entry["tool_exec_ms"] = stage["tool_exec_ms"]
+        if stage.get("orchestrator_events"):
+            entry["orchestrator_events"] = stage["orchestrator_events"]
         if task_idx < len(task_queue):
             meta = task_queue[task_idx]
             entry["is_cold"] = meta["is_cold"]
@@ -202,6 +206,29 @@ def parse_executor_log(path: Path, start_offset: int) -> dict:
                     category = detected
                 capturing_prompt = False
                 prompt_buf = []
+            event_match = _ORCHESTRATOR_EVENT_RE.search(msg)
+            if event_match:
+                fields = {
+                    match.group("key"): match.group("value").strip()
+                    for match in _ORCHESTRATOR_FIELD_RE.finditer(event_match.group("fields"))
+                }
+                event_name = fields.get("name")
+                if event_name:
+                    try:
+                        duration_s = max(float(fields.get("duration_ms", 0.0)) / 1000.0, 0.0)
+                    except ValueError:
+                        duration_s = 0.0
+                    event = {
+                        "name": event_name,
+                        "timestamp": ts,
+                        "duration_s": round(duration_s, 3),
+                        "details": fields,
+                        "source": "native_executor_log",
+                    }
+                    target = open_stage if open_stage is not None else closing_stage
+                    if target is not None:
+                        target.setdefault("orchestrator_events", []).append(event)
+                continue
             if msg.startswith("Category:"):
                 category = msg.split(":", 1)[1].strip()
             elif msg.startswith("User prompt:"):
@@ -284,22 +311,171 @@ def parse_executor_log(path: Path, start_offset: int) -> dict:
 
 
 def build_workflow_kpi(name: str, stages: dict, run_start: float, run_end: float, model: str, backend: str) -> dict:
-    out_tok = sum(s["output_tokens"] for s in stages.values())
-    in_tok = sum(s["input_tokens"] for s in stages.values())
-    tot_tok = sum(s["total_tokens"] for s in stages.values())
+    leaf_stages = {name: stage for name, stage in stages.items() if name != "task_agent"}
+    out_tok = sum(s["output_tokens"] for s in leaf_stages.values())
+    in_tok = sum(s["input_tokens"] for s in leaf_stages.values())
+    tot_tok = sum(s["total_tokens"] for s in leaf_stages.values())
     wall = run_end - run_start
+    task_agent = {
+        "input_tokens": in_tok,
+        "output_tokens": out_tok,
+        "total_tokens": tot_tok,
+        "wall_time_s": round(wall, 3),
+        "output_tokens_per_s": round(out_tok / wall, 2) if out_tok and wall else 0,
+        "start_epoch": run_start,
+        "end_epoch": run_end,
+        "start_iso": datetime.fromtimestamp(run_start).isoformat(timespec="milliseconds"),
+        "end_iso": datetime.fromtimestamp(run_end).isoformat(timespec="milliseconds"),
+        "is_orchestrator": True,
+    }
     totals = {"input_tokens": in_tok, "output_tokens": out_tok, "total_tokens": tot_tok}
     if out_tok and wall:
         totals["output_tokens_per_s"] = round(out_tok / wall, 2)
+    orchestrator = build_orchestrator_trace(leaf_stages, run_start, run_end)
     return {
         "model": model,
         "backend": backend,
-        "stages": stages,
+        "stages": {"task_agent": task_agent, **leaf_stages},
         "totals": totals,
         "workflow_wall_time_s": round(wall, 2),
         "workflow_start_iso": datetime.fromtimestamp(run_start).isoformat(timespec="milliseconds"),
         "workflow_end_iso": datetime.fromtimestamp(run_end).isoformat(timespec="milliseconds"),
         "timeline": {"workflow_name": name, "start_epoch": run_start, "end_epoch": run_end, "phases": []},
+        "orchestrator": orchestrator,
+    }
+
+
+def _percentile(values: list[float], percentile: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    rank = (len(ordered) - 1) * percentile / 100.0
+    lower = int(rank)
+    upper = min(lower + 1, len(ordered) - 1)
+    return ordered[lower] + (ordered[upper] - ordered[lower]) * (rank - lower)
+
+
+def build_orchestrator_trace(stages: dict, run_start: float, run_end: float) -> dict:
+    """Build an explainable orchestration trace from executor timestamps.
+
+    Explicit harness events can be added later without changing this schema. For now,
+    tool time is measured from MLPerf's log and the remaining gap is clearly marked as
+    inferred rather than presented as a measured activity.
+    """
+    ordered = sorted(
+        ((name, data) for name, data in stages.items()
+         if name != "task_agent" and data.get("start_epoch") and data.get("end_epoch")),
+        key=lambda item: item[1]["start_epoch"],
+    )
+    events = []
+    gaps = []
+    gap_durations = []
+    measured_tool_s = 0.0
+    unclassified_s = 0.0
+
+    for name, data in ordered:
+        events.append({
+            "name": "stage_completed",
+            "category": "orchestrator",
+            "start_epoch": data["end_epoch"],
+            "end_epoch": data["end_epoch"],
+            "duration_s": 0.0,
+            "stage": name,
+            "status": "completed",
+            "source": "executor_log",
+        })
+
+    for (from_name, from_data), (to_name, to_data) in zip(ordered, ordered[1:]):
+        gap_start = from_data["end_epoch"]
+        gap_end = to_data["start_epoch"]
+        gap_s = max(gap_end - gap_start, 0.0)
+        if gap_s <= 0:
+            continue
+        sub_events = []
+        measured_s = 0.0
+        native_tool_s = 0.0
+        for event in from_data.get("orchestrator_events", []):
+            duration_s = max(float(event.get("duration_s", 0.0)), 0.0)
+            event_end = float(event.get("timestamp", gap_start))
+            event_start = event_end - duration_s
+            if duration_s <= 0 or event_end <= gap_start or event_start >= gap_end:
+                continue
+            clipped_start = max(event_start, gap_start)
+            clipped_end = min(event_end, gap_end)
+            clipped_duration = max(clipped_end - clipped_start, 0.0)
+            if clipped_duration <= 0:
+                continue
+            event_name = event.get("name", "orchestrator_activity")
+            sub_events.append({
+                "name": event_name,
+                "category": "tool" if event_name == "tool_end" else "orchestrator",
+                "start_epoch": clipped_start,
+                "end_epoch": clipped_end,
+                "duration_s": round(clipped_duration, 3),
+                "source": event.get("source", "native_executor_log"),
+                "confidence": "measured",
+                "details": event.get("details", {}),
+            })
+            measured_s += clipped_duration
+            if event_name == "tool_end":
+                native_tool_s += clipped_duration
+
+        tool_s = min(max(from_data.get("tool_exec_ms", 0.0) / 1000.0, 0.0), gap_s)
+        if native_tool_s > 0:
+            tool_s = min(native_tool_s, gap_s)
+        elif tool_s:
+            sub_events.append({
+                "name": "tool_execution",
+                "category": "tool",
+                "start_epoch": gap_start,
+                "end_epoch": gap_start + tool_s,
+                "duration_s": round(tool_s, 3),
+                "source": "executor_log",
+                "confidence": "measured",
+            })
+            measured_s += tool_s
+        measured_tool_s += tool_s
+        remainder_s = max(gap_s - min(measured_s, gap_s), 0.0)
+        if remainder_s:
+            reason = "next_warmup_scheduling" if re.search(r"warmup$", to_name) else "next_stage_scheduling"
+            sub_events.append({
+                "name": "orchestrator_wait",
+                "category": "orchestrator",
+                "start_epoch": gap_end - remainder_s,
+                "end_epoch": gap_end,
+                "duration_s": round(remainder_s, 3),
+                "reason": reason,
+                "source": "stage_timestamp_gap",
+                "confidence": "inferred",
+            })
+            unclassified_s += remainder_s
+        gap_durations.append(gap_s)
+        gaps.append({
+            "from_stage": from_name,
+            "to_stage": to_name,
+            "start_epoch": gap_start,
+            "end_epoch": gap_end,
+            "duration_s": round(gap_s, 3),
+            "classification": "measured" if sub_events and not remainder_s else "mixed" if sub_events else "unclassified",
+            "source": "executor_log",
+            "sub_events": sub_events,
+            "unaccounted_s": round(remainder_s, 3),
+        })
+
+    return {
+        "events": events,
+        "gaps": gaps,
+        "metrics": {
+            "stage_count": len(ordered),
+            "gap_count": len(gaps),
+            "gap_total_s": round(sum(gap_durations), 3),
+            "measured_tool_s": round(measured_tool_s, 3),
+            "unclassified_s": round(unclassified_s, 3),
+            "gap_p50_s": round(_percentile(gap_durations, 50), 3),
+            "gap_p95_s": round(_percentile(gap_durations, 95), 3),
+            "gap_p99_s": round(_percentile(gap_durations, 99), 3),
+            "workflow_wall_time_s": round(max(run_end - run_start, 0.0), 3),
+        },
     }
 
 
@@ -390,6 +566,7 @@ def main():
         sampler_cmd, stdout=sampler_log, stderr=subprocess.STDOUT,
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
     )
+    sampler_start_epoch = time.time()
     time.sleep(args.sampler_warmup_s)
 
     # 2. Run the benchmark, only capturing executor-log lines appended during this run.
@@ -398,9 +575,10 @@ def main():
     exe_cmd = [str(mlperf_exe), "-c", str(config_path), "-p", "false", "-n", "false", "-b", args.download_behaviour] + args.extra_args
     print(f"Running: {' '.join(exe_cmd)} (cwd={mlperf_dir})")
     run_start_epoch = time.time()
-    proc = subprocess.run(exe_cmd, cwd=str(mlperf_dir), capture_output=True, text=True)
+    proc = subprocess.Popen(exe_cmd, cwd=str(mlperf_dir), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    stdout, stderr = proc.communicate()
     run_end_epoch = time.time()
-    (out_dir / "mlperf_stdout.log").write_text(proc.stdout + "\n" + proc.stderr, encoding="utf-8")
+    (out_dir / "mlperf_stdout.log").write_text(stdout + "\n" + stderr, encoding="utf-8")
     print(f"mlperf-windows.exe exit code: {proc.returncode}")
 
     # 3. Stop the sampler gracefully (CTRL_BREAK triggers its KeyboardInterrupt cleanup path).
@@ -409,6 +587,7 @@ def main():
         sampler_proc.wait(timeout=15)
     except Exception:
         sampler_proc.terminate()
+    sampler_end_epoch = time.time()
     sampler_log.close()
 
     # 4. Build workflow_kpi.json + experiment.json from the executor log.
@@ -424,6 +603,26 @@ def main():
             stages[name]["tool_call_count"] = sum(tool_calls.values())
 
     workflow_kpi = build_workflow_kpi(args.name, stages, run_start_epoch, run_end_epoch, model_name, ep_name)
+    workflow_kpi["processes"] = [
+        {
+            "name": "mlperf-windows.exe",
+            "role": "orchestrator",
+            "pid": proc.pid if hasattr(proc, "pid") else None,
+            "start_epoch": run_start_epoch,
+            "end_epoch": run_end_epoch,
+            "wall_time_s": round(run_end_epoch - run_start_epoch, 3),
+            "exit_code": proc.returncode,
+        },
+        {
+            "name": "sample_utilization_fast.py",
+            "role": "background_telemetry",
+            "pid": sampler_proc.pid,
+            "start_epoch": sampler_start_epoch,
+            "end_epoch": sampler_end_epoch,
+            "wall_time_s": round(sampler_end_epoch - sampler_start_epoch, 3),
+            "exit_code": sampler_proc.returncode,
+        },
+    ]
     (out_dir / "workflow_kpi.json").write_text(json.dumps(workflow_kpi, indent=2), encoding="utf-8")
 
     experiment = build_experiment_meta(model_name, ep_name, device_type, model_dir, proc.returncode, run_end_epoch - run_start_epoch, model_source)

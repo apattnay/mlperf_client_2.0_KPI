@@ -29,3 +29,4 @@ mlperf-public-patch.diff
 !src/CIL/IHV/Diffusers/tools/standalone.spec
 src/CIL/IHV/Diffusers/tools/dist/
 src/CIL/IHV/MLX/src/swift/Package.swift
+/build-custom/

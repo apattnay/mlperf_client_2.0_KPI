@@ -438,12 +438,17 @@ std::vector<cil::infer::ToolDispatchResult> cil::infer::RunTools(
     std::string name = block.value("name", "<unknown>");
 
     LOG4CXX_DEBUG(log, "Tool call: " << name << " (id=" << id << ")");
+    LOG4CXX_DEBUG(log, "orchestrator_event: name=tool_start, tool=" << name
+                                    << ", id=" << id);
 
     if (std::string validation_error = ValidateToolBlock(block);
         !validation_error.empty()) {
       LOG4CXX_WARN(log, "Tool validation failed for "
                             << name << " (id=" << id
                             << "): " << validation_error);
+                      LOG4CXX_DEBUG(log, "orchestrator_event: name=tool_end, tool=" << name
+                                            << ", id=" << id
+                                            << ", duration_ms=0, success=false");
       results.emplace_back(
           MakeErrorResult("Validation failed: " + validation_error),
           MillisecDuration{0});
@@ -459,6 +464,12 @@ std::vector<cil::infer::ToolDispatchResult> cil::infer::RunTools(
       LOG4CXX_ERROR(log, "Tool " << name << " (id=" << id << ") failed: "
                                  << dispatch.result.json_result);
     }
+                  LOG4CXX_DEBUG(log, "orchestrator_event: name=tool_end, tool=" << name
+                                                  << ", id=" << id
+                                                  << ", duration_ms="
+                                                  << dispatch.duration.count()
+                                                  << ", success="
+                                                  << (dispatch.result.success ? "true" : "false"));
     results.emplace_back(std::move(dispatch));
     if (failed) {
       break;

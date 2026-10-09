@@ -19,6 +19,7 @@ Produces:
 
 import argparse
 import ctypes
+import csv
 import json
 import math
 import os
@@ -44,6 +45,48 @@ def load_text(path):
         return None
     with open(path, encoding="utf-8", errors="replace") as f:
         return f.read()
+
+
+def load_hw_samples(path, start_epoch=None, end_epoch=None):
+    """Load sampled DRAM bandwidth for the workflow interval, if available."""
+    if not path or not os.path.exists(path):
+        return {}
+    values = []
+    try:
+        with open(path, newline="", encoding="utf-8", errors="replace") as f:
+            for row in csv.DictReader(f):
+                try:
+                    timestamp = datetime.fromisoformat(row.get("timestamp", "")).timestamp()
+                except (TypeError, ValueError):
+                    timestamp = None
+                if start_epoch is not None and timestamp is not None and timestamp < start_epoch:
+                    continue
+                if end_epoch is not None and timestamp is not None and timestamp > end_epoch:
+                    continue
+                total = row.get("dram_total_gbs", "")
+                if total in (None, ""):
+                    try:
+                        total = float(row.get("dram_read_gbs", 0) or 0) + float(row.get("dram_write_gbs", 0) or 0)
+                    except (TypeError, ValueError):
+                        total = 0
+                try:
+                    total = float(total)
+                except (TypeError, ValueError):
+                    continue
+                if total >= 0:
+                    values.append(total)
+    except OSError:
+        return {}
+    if not values:
+        return {}
+    ordered = sorted(values)
+    p95_index = min(len(ordered) - 1, int(round((len(ordered) - 1) * 0.95)))
+    return {
+        "count": len(values),
+        "mean_gbs": sum(values) / len(values),
+        "peak_gbs": max(values),
+        "p95_gbs": ordered[p95_index],
+    }
 
 
 # --- Color palette for agent phases ---
@@ -138,7 +181,7 @@ def _compute_iteration_kpis(stages: dict):
     gap leading out of an iteration into the next one's warmup is counted in the earlier iteration.
     """
     ordered_names = sorted(
-        (n for n, d in stages.items() if d.get("start_epoch")),
+        (n for n, d in stages.items() if n != "task_agent" and d.get("start_epoch")),
         key=_iter_sort_key,
     )
     iterations = []
@@ -196,6 +239,54 @@ def _compute_iteration_kpis(stages: dict):
         it["gap_s_total"] = sum(g["gap_s"] for g in it["gaps"])
 
     return iterations
+
+
+def _build_orchestrator_html(orchestrator: dict):
+    """Render measured and inferred activity between MLPerf stages."""
+    if not orchestrator:
+        return ""
+    metrics = orchestrator.get("metrics", {})
+    gaps = orchestrator.get("gaps", [])
+    gap_rows = ""
+    for gap in gaps:
+        activities = []
+        for event in gap.get("sub_events", []):
+            label = event.get("name", "activity").replace("_", " ")
+            details = event.get("details", {})
+            if event.get("name") in {"tool_start", "tool_end"} and details.get("tool"):
+                label = f"{label}: {details['tool']}"
+            elif details.get("reason"):
+                label = f"{label}: {details['reason']}"
+            confidence = event.get("confidence", "inferred")
+            activities.append(f"{html.escape(label)} ({event.get('duration_s', 0):.3f}s, {confidence})")
+        gap_rows += (
+            f"<tr><td>{html.escape(str(gap.get('from_stage', '-')))}</td>"
+            f"<td>{html.escape(str(gap.get('to_stage', '-')))}</td>"
+            f"<td class=\"num\">{gap.get('duration_s', 0):.3f}</td>"
+            f"<td>{'; '.join(activities) or 'unclassified'}</td>"
+            f"<td class=\"num\">{gap.get('unaccounted_s', 0):.3f}</td></tr>"
+        )
+    if not gap_rows:
+        gap_rows = '<tr><td colspan="5" class="no-data">No inter-stage gaps were recorded.</td></tr>'
+    return f"""
+<div class="section">
+    <h2>Orchestrator Activity</h2>
+    <p style="color:var(--text2);font-size:0.8rem;">Measured tool time comes from MLPerf's executor log. Remaining time between stages is inferred from timestamps and is intentionally labeled as unclassified or scheduling time until the harness emits finer-grained markers.</p>
+    <table>
+        <tr><th>Metric</th><th style="text-align:right">Value</th></tr>
+        <tr><td>Stages observed</td><td class="num">{metrics.get('stage_count', 0)}</td></tr>
+        <tr><td>Inter-stage gaps</td><td class="num">{metrics.get('gap_count', 0)}</td></tr>
+        <tr><td>Total gap time</td><td class="num">{metrics.get('gap_total_s', 0):.3f}s</td></tr>
+        <tr><td>Measured tool time</td><td class="num">{metrics.get('measured_tool_s', 0):.3f}s</td></tr>
+        <tr><td>Inferred / unclassified time</td><td class="num">{metrics.get('unclassified_s', 0):.3f}s</td></tr>
+        <tr><td>Gap p50 / p95 / p99</td><td class="num">{metrics.get('gap_p50_s', 0):.3f}s / {metrics.get('gap_p95_s', 0):.3f}s / {metrics.get('gap_p99_s', 0):.3f}s</td></tr>
+    </table>
+    <h3 style="font-size:1rem; color:var(--text2); margin:16px 0 10px">Inter-Stage Gap Attribution</h3>
+    <table>
+        <tr><th>After</th><th>Before</th><th style="text-align:right">Gap (s)</th><th>Observed activity</th><th style="text-align:right">Unaccounted (s)</th></tr>
+        {gap_rows}
+    </table>
+</div>"""
 
 
 def _fmt_diff(actual, expected, unit="s", decimals=2):
@@ -992,7 +1083,7 @@ def _build_roofline_html(wkpi, exp_meta, hw_info=None):
 {rows_html}</table></div>"""
 
 
-def _build_efficiency_html(wkpi, exp_meta, hw_info=None):
+def _build_efficiency_html(wkpi, exp_meta, hw_info=None, hw_samples=None):
     """Derive and render compute efficiency metrics — adapts to NPU, GPU (integrated), or NVIDIA (Ollama)."""
     backend = exp_meta.get("backend", "ovms")
     is_nvidia = backend == "ollama"
@@ -1014,7 +1105,9 @@ def _build_efficiency_html(wkpi, exp_meta, hw_info=None):
             decode_seconds += wall - ttft
 
     # Wall-clock aggregate (for reference row)
-    total_output_tokens = sum(s.get("output_tokens", 0) for s in stages.values())
+    # The orchestrator row aggregates the leaf stages; use top-level totals to avoid
+    # counting those tokens twice when task_agent is present.
+    total_output_tokens = wkpi.get("totals", {}).get("output_tokens", 0)
     total_wall_s = wkpi.get("workflow_wall_time_s", 0)
     e2e_tok_per_s = total_output_tokens / total_wall_s if total_wall_s else 0
 
@@ -1073,18 +1166,24 @@ def _build_efficiency_html(wkpi, exp_meta, hw_info=None):
                 (f"{device_label} Theoretical Peak (FP16 FMA)", f"{IGPU_PEAK_TFLOPS_FP16:.2f} TFLOPS"),
             ]
         ddr5_peak_bw_gbs, bw_detected = _dram_bw_gbs(hw_info)
+        sampled_mean_gbs = (hw_samples or {}).get("mean_gbs")
         if model_weight_mb > 0:
             mem_read_per_token_gb = model_weight_mb / 1024
             achieved_bw_gbs = decode_tok_per_s * mem_read_per_token_gb
             mem_bw_utilization_pct = (achieved_bw_gbs / ddr5_peak_bw_gbs) * 100
         else:
-            achieved_bw_gbs = 0.0
-            mem_bw_utilization_pct = 0.0
+            achieved_bw_gbs = sampled_mean_gbs or 0.0
+            mem_bw_utilization_pct = (achieved_bw_gbs / ddr5_peak_bw_gbs) * 100 if ddr5_peak_bw_gbs else 0.0
         rows += [
             ("DRAM BW Achieved", f"{achieved_bw_gbs:.1f} GB/s"),
             ("DRAM BW Peak" + (" (measured)" if bw_detected else " (DDR5 assumption)"), f"{ddr5_peak_bw_gbs:.1f} GB/s"),
             ("Memory BW Utilization", f"{mem_bw_utilization_pct:.1f}%"),
         ]
+        if hw_samples:
+            rows += [
+                ("Sampled DRAM BW (mean)", f"{hw_samples['mean_gbs']:.1f} GB/s ({hw_samples['count']} samples)"),
+                ("Sampled DRAM BW (p95 / peak)", f"{hw_samples['p95_gbs']:.1f} / {hw_samples['peak_gbs']:.1f} GB/s"),
+            ]
         section_title = f"{device_label} Efficiency Analysis"
         section_note = (
             f'LLM decode is memory-bandwidth-bound: each token reads the full model weight from DRAM. '
@@ -1207,7 +1306,7 @@ def _build_startup_timing_html(exp_meta, rkpi):
     return html
 
 
-def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss=None, mlperf_stdout_text=None):
+def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss=None, mlperf_stdout_text=None, hw_samples=None):
     if exp_meta is None:
         exp_meta = {}
     stages = wkpi.get("stages", {})
@@ -1240,6 +1339,15 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
         if rag_end and rag_end > t_max:
             t_max = rag_end
 
+        # Include wrapper-owned background processes in the visible time range.
+        for process in wkpi.get("processes", []):
+            process_start = process.get("start_epoch")
+            process_end = process.get("end_epoch")
+            if process_start and process_start < t0_epoch:
+                t0_epoch = process_start
+            if process_end and process_end > t_max:
+                t_max = process_end
+
         total_span = t_max - t0_epoch if t_max > t0_epoch else 1
 
         # Inject RAG Setup (Phase 0) as a background bar if we have timing
@@ -1262,6 +1370,33 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
                 "hw": PHASE_HW.get("rag_setup", "").replace("EMBED_DEVICE", _embed_device_label(rkpi)),
                 "is_background": True,
                 "extra_tooltip": f"{docs} docs @ {tput} docs/s",
+            })
+
+        # Render wrapper-owned processes separately from inference stages. The
+        # orchestrator process is represented by task_agent in the agent timeline;
+        # background processes remain visible without entering agent totals.
+        for process in wkpi.get("processes", []):
+            if process.get("role") != "background_telemetry":
+                continue
+            process_start = process.get("start_epoch")
+            process_end = process.get("end_epoch")
+            if not process_start or not process_end:
+                continue
+            left_pct = (process_start - t0_epoch) / total_span * 100
+            width_pct = max((process_end - process_start) / total_span * 100, 0.5)
+            timeline_rows.append({
+                "name": process.get("name", "background_process"),
+                "left_pct": round(left_pct, 2),
+                "width_pct": round(width_pct, 2),
+                "start_time": _fmt_time(datetime.fromtimestamp(process_start).isoformat(timespec='milliseconds')),
+                "end_time": _fmt_time(datetime.fromtimestamp(process_end).isoformat(timespec='milliseconds')),
+                "duration_s": process.get("wall_time_s", 0),
+                "color": "#607D8B",
+                "tokens": 0,
+                "tok_s": 0,
+                "hw": "CPU telemetry",
+                "is_background": True,
+                "extra_tooltip": f"{process.get('role', 'background')} (exit {process.get('exit_code', '?')})",
             })
 
         # Build RAG query markers from rkpi epochs
@@ -1598,7 +1733,7 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
     sut_html = _build_sut_html(hw_info, sw_info)
 
     # ---- New KPI sections ----
-    efficiency_html = _build_efficiency_html(wkpi, exp_meta, hw_info)
+    efficiency_html = _build_efficiency_html(wkpi, exp_meta, hw_info, hw_samples)
     roofline_html = _build_roofline_html(wkpi, exp_meta, hw_info)
     peak_rss_html = _build_peak_rss_html(peak_rss)
     model_weight_html = _build_model_weight_html(exp_meta)
@@ -1606,6 +1741,7 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
     agent_decode_summary_html = _build_agent_decode_summary_html(iterations, category_stats)
     tool_call_kpis_html = _build_tool_call_kpis_html(iterations, category_stats)
     other_kpis_html = _build_other_kpis_html(iterations)
+    orchestrator_html = _build_orchestrator_html(wkpi.get("orchestrator", {}))
 
     # ---- Assemble full HTML ----
     report_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1771,6 +1907,8 @@ code {{ background: rgba(110,118,129,0.2); padding: 2px 6px; border-radius: 4px;
 
 {other_kpis_html}
 
+{orchestrator_html}
+
 {rag_html}
 
 {efficiency_html}
@@ -1869,6 +2007,17 @@ def main():
         if peak_rss:
             break
 
+    hw_samples = {}
+    for d in search_dirs:
+        sample_path = os.path.join(d, "hw_samples.csv")
+        hw_samples = load_hw_samples(
+            sample_path,
+            start_epoch=wkpi.get("workflow_start_iso") and datetime.fromisoformat(wkpi["workflow_start_iso"]).timestamp(),
+            end_epoch=wkpi.get("workflow_end_iso") and datetime.fromisoformat(wkpi["workflow_end_iso"]).timestamp(),
+        )
+        if hw_samples:
+            break
+
     # Load mlperf-windows.exe's captured stdout/stderr (has the end-of-run 'Avg Expected
     # Duration' / 'Avg Tools Duration' summary used by the Agent/Tool-Call KPI sections).
     mlperf_stdout_text = load_text(os.path.join(actual_dir, "mlperf_stdout.log"))
@@ -1878,7 +2027,7 @@ def main():
             if mlperf_stdout_text:
                 break
 
-    html_content = build_html(wkpi, rkpi, sys_state, kpi_dir_name, exp_meta, peak_rss, mlperf_stdout_text)
+    html_content = build_html(wkpi, rkpi, sys_state, kpi_dir_name, exp_meta, peak_rss, mlperf_stdout_text, hw_samples)
 
     # Output path
     if args.output:

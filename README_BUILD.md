@@ -14,6 +14,73 @@ However, if you wish to build the libraries, the following scripts are available
 - Use 'build_log4cxx.py' to create the Log4cxx.
 - To build OpenSSL, run 'build_openssl.py'.
 
+## Simple Windows Source-Build and KPI Test
+
+Use this checklist if you are new to the repository and want to build the native MLPerf client,
+create the Python environment used by the KPI scripts, and run preset 5.
+
+### 1. Open PowerShell in the repository
+
+```powershell
+Set-Location C:\Users\mdashiq\workspace\mlperf_client_2.0_KPI
+Set-ExecutionPolicy -Scope Process Bypass
+```
+
+### 2. Build MLPerf from source
+
+This script checks for CMake and the Visual Studio 2022 C++ Build Tools. The optional switch installs
+the missing prerequisites with `winget`. If App Installer/WinGet is unavailable, it tries Chocolatey
+and then the official Microsoft Visual Studio Build Tools bootstrapper. The full Visual Studio IDE
+is not required.
+
+```powershell
+.\tools\setup_mlperf_v2_from_source.ps1 -InstallPrerequisites -CleanBuild
+```
+
+The Visual Studio Build Tools installer may request administrator permission. It installs only the
+C++ build tools workload and Windows SDK, not the complete Visual Studio IDE.
+
+The source build is staged by default at:
+
+```text
+C:\Applications\mlperf_client\mlperf_v2p0_custom
+```
+
+### 3. Create or recreate the Python virtual environment
+
+The native executable does not use `.venv`. The KPI collection and report scripts do.
+
+```powershell
+if (Test-Path .\.venv) { Remove-Item .\.venv -Recurse -Force }
+.\tools\setup_kpi_hub_env.ps1
+```
+
+If the environment already exists and only needs its packages refreshed:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r .\tools\KPI-hub\requirements.txt
+```
+
+### 4. Run preset 5 against the source-built client
+
+Pass `--mlperf-dir` explicitly because the preset launcher otherwise uses the prebuilt installation.
+
+```powershell
+.\.venv\Scripts\python.exe .\tools\run_kpi_preset.py `
+  --preset 5 `
+  --mlperf-dir C:\Applications\mlperf_client\mlperf_v2p0_custom
+```
+
+The run creates a timestamped directory under `kpi_runs` containing `workflow_kpi.json`,
+`hw_samples.csv`, `kpi_report.html`, and the captured MLPerf logs.
+
+### Scripts used
+
+1. `tools/setup_mlperf_v2_from_source.ps1` — installs native prerequisites, builds, and stages MLPerf.
+2. `tools/setup_kpi_hub_env.ps1` — creates or updates `.venv` and installs KPI dependencies.
+3. `tools/run_kpi_preset.py` — starts the selected benchmark preset.
+4. `tools/run_kpi_workflow.py` — collects workflow and hardware KPIs for the run.
+
 
 ## Table of Contents
 - [MLPerf Client benchmark](#mlperf-client-benchmark)

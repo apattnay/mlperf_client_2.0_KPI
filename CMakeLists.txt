@@ -11,6 +11,7 @@ if(APPLE)
 endif()
 
 include(FetchContent)
+include(ExternalProject)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 

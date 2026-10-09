@@ -33,6 +33,11 @@ using ResultIter = ResultSpan::iterator;
 
 using PromptWithTokensPair = std::pair<std::string, std::vector<uint32_t>>;
 
+void LogOrchestratorEvent(const log4cxx::LoggerPtr& logger,
+                          std::string_view name, std::string_view details) {
+  LOG4CXX_DEBUG(logger, "orchestrator_event: name=" << name << ", " << details);
+}
+
 /**
  * @brief Represents a prompt and its tokens.
  * It doesn't own the containers for the prompt and the tokens.
@@ -664,11 +669,38 @@ void Txt2TxtExecutor::RunScenario(EP ep, const nlohmann::json& settings) {
       //    to make sure the context is cleared and reset before
       //    running the next agentic flow.
       if (!model_initialized) {
+        const auto activity_start = std::chrono::steady_clock::now();
         inference->Init(model_config);
+        const auto activity_end = std::chrono::steady_clock::now();
+        LogOrchestratorEvent(
+            executor_logger_, "model_init",
+            "group=" + std::to_string(group_idx) +
+                ", duration_ms=" +
+                std::to_string(std::chrono::duration_cast<MillisecDuration>(
+                                   activity_end - activity_start)
+                                   .count()));
         last_model_config = model_config;
       } else if (model_config != last_model_config || is_agentic_) {
+        auto activity_start = std::chrono::steady_clock::now();
         inference->Deinit();
+        auto activity_end = std::chrono::steady_clock::now();
+        LogOrchestratorEvent(
+            executor_logger_, "model_deinit",
+            "group=" + std::to_string(group_idx) +
+                ", duration_ms=" +
+                std::to_string(std::chrono::duration_cast<MillisecDuration>(
+                                   activity_end - activity_start)
+                                   .count()));
+        activity_start = std::chrono::steady_clock::now();
         inference->Init(model_config);
+        activity_end = std::chrono::steady_clock::now();
+        LogOrchestratorEvent(
+            executor_logger_, "model_init",
+            "group=" + std::to_string(group_idx) +
+                ", duration_ms=" +
+                std::to_string(std::chrono::duration_cast<MillisecDuration>(
+                                   activity_end - activity_start)
+                                   .count()));
         last_model_config = model_config;
       }
 
@@ -709,6 +741,16 @@ void Txt2TxtExecutor::RunScenario(EP ep, const nlohmann::json& settings) {
       for (; task_iter < infer_tasks.size(); ++task_iter) try {
           auto& task = infer_tasks[task_iter];
 
+            LogOrchestratorEvent(
+              executor_logger_, "turn_start",
+              "group=" + std::to_string(group_idx) +
+                ", task=" + std::to_string(task_iter) +
+                ", warmup=" + (task.is_warmup ? "true" : "false") +
+                ", history_tokens=" +
+                std::to_string(task.history_prompt.tokens.size()) +
+                ", user_tokens=" +
+                std::to_string(task.user_prompt.tokens.size()));
+
           if (task.is_warmup && !is_agentic_) {
             LOG4CXX_DEBUG(executor_logger_,
                           "Prompt: " + std::string{task.user_prompt.prompt});
@@ -722,10 +764,30 @@ void Txt2TxtExecutor::RunScenario(EP ep, const nlohmann::json& settings) {
             return;
           }
 
-          inference->Prepare();
+            auto activity_start = std::chrono::steady_clock::now();
+            inference->Prepare();
+            auto activity_end = std::chrono::steady_clock::now();
+            LogOrchestratorEvent(
+              executor_logger_, "prepare",
+              "group=" + std::to_string(group_idx) +
+                ", task=" + std::to_string(task_iter) +
+                ", duration_ms=" +
+                std::to_string(std::chrono::duration_cast<MillisecDuration>(
+                         activity_end - activity_start)
+                         .count()));
           if (check_error()) break;
 
+            activity_start = std::chrono::steady_clock::now();
           std::this_thread::sleep_for(inference_delay_);
+            activity_end = std::chrono::steady_clock::now();
+            LogOrchestratorEvent(
+              executor_logger_, "inference_delay",
+              "group=" + std::to_string(group_idx) +
+                ", task=" + std::to_string(task_iter) +
+                ", duration_ms=" +
+                std::to_string(std::chrono::duration_cast<MillisecDuration>(
+                         activity_end - activity_start)
+                         .count()));
 
           // Run inference with appropriate tokens for agentic and legacy tasks
           task.result = [&]() {
@@ -784,7 +846,17 @@ void Txt2TxtExecutor::RunScenario(EP ep, const nlohmann::json& settings) {
           }
 
           bool infer_error = check_error();
+            activity_start = std::chrono::steady_clock::now();
           inference->Reset();
+            activity_end = std::chrono::steady_clock::now();
+            LogOrchestratorEvent(
+              executor_logger_, "reset",
+              "group=" + std::to_string(group_idx) +
+                ", task=" + std::to_string(task_iter) +
+                ", duration_ms=" +
+                std::to_string(std::chrono::duration_cast<MillisecDuration>(
+                         activity_end - activity_start)
+                         .count()));
           if (infer_error || check_error()) break;
 
           std::string decoded_output;
@@ -808,6 +880,14 @@ void Txt2TxtExecutor::RunScenario(EP ep, const nlohmann::json& settings) {
                 is_agentic_ ? std::string{task.history_prompt.prompt}
                             : std::string{});
           }
+
+            LogOrchestratorEvent(
+              executor_logger_, "turn_end",
+              "group=" + std::to_string(group_idx) +
+                ", task=" + std::to_string(task_iter) +
+                ", output_tokens=" +
+                std::to_string(task.result.tokens.size()) +
+                ", success=true");
 
           ++current_session_index;
           progress_ = current_session_index * 100 / sessions_count;
