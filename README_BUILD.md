@@ -210,7 +210,7 @@ These steps will ensure you have all the necessary tools and components to build
 
 2. Clone the repository and navigate to the directory:
    ```
-   git clone --recurse-submodules https://github.com/mlcommons/mlperf_client.git
+  git clone https://github.com/mlcommons/mlperf_client.git
    cd mlperf_client
    ```
 ### macOS Build Instructions
@@ -278,11 +278,11 @@ lsb_release -a
 
 sudo apt install -y git curl wget build-essential cmake git-lfs clang-tidy libapr1-dev libapr1t64
 
-git clone --recurse-submodules https://github.com/mlcommons/mlperf_client.git
+git clone https://github.com/mlcommons/mlperf_client.git
 cd mlperf_client
 
 git-lfs pull
-git submodule update --remote --recursive --init
+git submodule update --init --recursive -- deps/cpp-httplib deps/JSON deps/JSONSchema deps/minizip-ng
 ```
 
 #### Linux CLI Build

@@ -131,6 +131,9 @@ def parse_executor_log(path: Path, start_offset: int) -> dict:
     category = "unknown"
     open_stage = None
     closing_stage = None
+    pending_orchestrator_events = []
+    last_emitted_name = None
+    last_log_epoch = None
     idx = 0
     capturing_prompt = False
     prompt_buf = []
@@ -144,7 +147,7 @@ def parse_executor_log(path: Path, start_offset: int) -> dict:
     agent_turn_counters = {}
 
     def _emit(stage):
-        nonlocal idx, task_idx
+        nonlocal idx, task_idx, last_emitted_name
         idx += 1
         slug = _slug(stage.get("category", "unknown"))
         if slug == "warmup":
@@ -186,6 +189,7 @@ def parse_executor_log(path: Path, start_offset: int) -> dict:
             entry["turn_new_tokens"] = meta["turn_new_tokens"]
         task_idx += 1
         stages[name] = entry
+        last_emitted_name = name
 
     with open(path, "r", encoding="utf-8", errors="replace") as f:
         f.seek(start_offset)
@@ -196,6 +200,7 @@ def parse_executor_log(path: Path, start_offset: int) -> dict:
                     prompt_buf.append(line)
                 continue
             ts = _parse_ts(m.group("ts"))
+            last_log_epoch = ts
             msg = m.group("msg")
             if capturing_prompt:
                 # Any bracketed log line ends the (possibly multi-line, unbracketed) prompt body.
@@ -221,13 +226,25 @@ def parse_executor_log(path: Path, start_offset: int) -> dict:
                     event = {
                         "name": event_name,
                         "timestamp": ts,
-                        "duration_s": round(duration_s, 3),
+                        "duration_s": round(duration_s, 6),
+                        "duration_ms": round(duration_s * 1000.0, 3),
                         "details": fields,
                         "source": "native_executor_log",
                     }
-                    target = open_stage if open_stage is not None else closing_stage
+                    # power_end closes the inference window, but the executor's
+                    # reset/turn_end can be logged just after that boundary. Keep
+                    # those completion events with the stage that just finished;
+                    # turn_start/prepare and other new-turn events belong next.
+                    if open_stage is not None and not open_stage.get("power_closed"):
+                        target = open_stage
+                    elif open_stage is not None and event_name in {"reset", "turn_end", "model_deinit"}:
+                        target = open_stage
+                    else:
+                        target = None
                     if target is not None:
                         target.setdefault("orchestrator_events", []).append(event)
+                    else:
+                        pending_orchestrator_events.append(event)
                 continue
             if msg.startswith("Category:"):
                 category = msg.split(":", 1)[1].strip()
@@ -255,9 +272,13 @@ def parse_executor_log(path: Path, start_offset: int) -> dict:
                 if open_stage is not None and "end_epoch" in open_stage and closing_stage is None:
                     closing_stage = open_stage
                 open_stage = {"start_epoch": ts, "category": category}
+                if pending_orchestrator_events:
+                    open_stage["orchestrator_events"] = pending_orchestrator_events
+                    pending_orchestrator_events = []
             elif msg == "power_end":
                 if open_stage is not None:
                     open_stage["end_epoch"] = ts
+                    open_stage["power_closed"] = True
             elif msg.startswith("Ran inference and got"):
                 target = open_stage if open_stage is not None else closing_stage
                 if target is not None:
@@ -307,6 +328,23 @@ def parse_executor_log(path: Path, start_offset: int) -> dict:
                         closing_stage = None
                     else:
                         open_stage = None
+    # A final model_deinit or other lifecycle event can arrive after the last
+    # stage has been emitted and therefore has no following power_begin.
+    if pending_orchestrator_events:
+        if closing_stage is not None:
+            closing_stage.setdefault("orchestrator_events", []).extend(pending_orchestrator_events)
+        elif open_stage is not None:
+            open_stage.setdefault("orchestrator_events", []).extend(pending_orchestrator_events)
+        elif last_emitted_name is not None:
+            stages[last_emitted_name].setdefault("orchestrator_events", []).extend(pending_orchestrator_events)
+
+    # Preserve partial stages when the executor fails before its final KPI line.
+    # Use the last log timestamp as the best available end time.
+    for partial_stage in (closing_stage, open_stage):
+        if partial_stage is None or "start_epoch" not in partial_stage:
+            continue
+        partial_stage.setdefault("end_epoch", last_log_epoch or partial_stage["start_epoch"])
+        _emit(partial_stage)
     return stages
 
 
@@ -368,12 +406,35 @@ def build_orchestrator_trace(stages: dict, run_start: float, run_end: float) -> 
         key=lambda item: item[1]["start_epoch"],
     )
     events = []
+    native_events = []
+    native_event_summary = {}
     gaps = []
     gap_durations = []
     measured_tool_s = 0.0
     unclassified_s = 0.0
 
     for name, data in ordered:
+        for event in data.get("orchestrator_events", []):
+            event_name = event.get("name", "orchestrator_activity")
+            duration_s = max(float(event.get("duration_s", 0.0)), 0.0)
+            native_events.append({
+                "name": event_name,
+                "stage": name,
+                "timestamp": event.get("timestamp"),
+                "duration_s": round(duration_s, 6),
+                "duration_ms": round(duration_s * 1000.0, 3),
+                "details": event.get("details", {}),
+                "source": event.get("source", "native_executor_log"),
+            })
+            summary = native_event_summary.setdefault(event_name, {
+                "count": 0,
+                "total_duration_ms": 0.0,
+                "stages": [],
+            })
+            summary["count"] += 1
+            summary["total_duration_ms"] += duration_s * 1000.0
+            if name not in summary["stages"]:
+                summary["stages"].append(name)
         events.append({
             "name": "stage_completed",
             "category": "orchestrator",
@@ -464,6 +525,16 @@ def build_orchestrator_trace(stages: dict, run_start: float, run_end: float) -> 
 
     return {
         "events": events,
+        "native_events": native_events,
+        "native_event_summary": [
+            {
+                "name": name,
+                "count": data["count"],
+                "total_duration_ms": round(data["total_duration_ms"], 3),
+                "stages": data["stages"],
+            }
+            for name, data in sorted(native_event_summary.items())
+        ],
         "gaps": gaps,
         "metrics": {
             "stage_count": len(ordered),
@@ -479,7 +550,7 @@ def build_orchestrator_trace(stages: dict, run_start: float, run_end: float) -> 
     }
 
 
-def resolve_model(mlperf_dir: Path, config_path: Path):
+def resolve_model(mlperf_dir: Path, config_path: Path) -> tuple[str, str, Path | None, str, str]:
     cfg = json.loads(config_path.read_text(encoding="utf-8-sig"))
     try:
         model = cfg["Scenarios"][0]["Models"][0]
@@ -488,7 +559,7 @@ def resolve_model(mlperf_dir: Path, config_path: Path):
         device_type = ep.get("Config", {}).get("device_type", "")
         scenario_name = cfg["Scenarios"][0].get("Name", "")
     except (KeyError, IndexError):
-        return "", "", None, ""
+        return "", "", None, "", ""
     file_path = model.get("FilePath", "")
     model_dir = None
     if file_path.startswith("file://"):
@@ -586,7 +657,11 @@ def main():
         sampler_proc.send_signal(signal.CTRL_BREAK_EVENT)
         sampler_proc.wait(timeout=15)
     except Exception:
-        sampler_proc.terminate()
+        try:
+            sampler_proc.terminate()
+            sampler_proc.wait(timeout=5)
+        except Exception:
+            pass
     sampler_end_epoch = time.time()
     sampler_log.close()
 

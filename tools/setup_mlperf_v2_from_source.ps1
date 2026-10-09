@@ -177,7 +177,7 @@ function Install-VsBuildToolsFallback {
     $installer = Join-Path $env:TEMP "vs_buildtools.exe"
     Write-Host "WinGet/App Installer is unavailable; downloading the official Visual Studio Build Tools bootstrapper."
     Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vs_buildtools.exe" -OutFile $installer
-    $arguments = "--wait --passive --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+    $arguments = "--wait --passive --norestart --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.ATL --includeRecommended"
     $process = Start-Process -FilePath $installer -ArgumentList $arguments -Verb RunAs -Wait -PassThru
     Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
     if ($process.ExitCode -ne 0) {
@@ -198,7 +198,7 @@ function Get-VsWherePath {
     return $null
 }
 
-function Get-VsCppBuildToolsPath {
+function Get-VsToolsInstallationPath {
     $vswhere = Get-VsWherePath
     if (-not $vswhere) {
         return $null
@@ -210,6 +210,43 @@ function Get-VsCppBuildToolsPath {
     return ($path | Select-Object -First 1).Trim()
 }
 
+function Get-VsCppBuildToolsPath {
+    $vswhere = Get-VsWherePath
+    if (-not $vswhere) {
+        return $null
+    }
+    $path = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 Microsoft.VisualStudio.Component.VC.ATL -property installationPath 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $path) {
+        return $null
+    }
+    return ($path | Select-Object -First 1).Trim()
+}
+
+function Install-VsAtlComponent {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$InstallationPath
+    )
+
+    $installer = Join-Path ([Environment]::GetEnvironmentVariable("ProgramFiles(x86)")) "Microsoft Visual Studio\Installer\vs_installer.exe"
+    if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
+        throw "Visual Studio Installer was not found at $installer. Install the ATL component manually with Visual Studio Installer."
+    }
+
+    Write-Host "Adding Visual Studio C++ ATL support to $InstallationPath"
+    $quotedInstallationPath = '"' + $InstallationPath + '"'
+    $arguments = @(
+        "modify", "--installPath", $quotedInstallationPath,
+        "--add", "Microsoft.VisualStudio.Component.VC.ATL",
+        "--passive", "--norestart"
+    )
+    $process = Start-Process -FilePath $installer -ArgumentList $arguments -Verb RunAs -Wait -PassThru
+    if ($process.ExitCode -ne 0) {
+        throw "Visual Studio Installer failed to add ATL with exit code $($process.ExitCode). Run the installer manually and select C++ ATL support."
+    }
+    Refresh-ProcessPath
+}
+
 function Ensure-Prerequisites {
     $cmake = Get-Command cmake.exe -ErrorAction SilentlyContinue
     $clangTidy = Get-Command clang-tidy.exe -ErrorAction SilentlyContinue
@@ -217,7 +254,7 @@ function Ensure-Prerequisites {
     $missing = @()
     if (-not $cmake) { $missing += "CMake" }
     if (-not $clangTidy) { $missing += "clang-tidy (LLVM)" }
-    if (-not $vsPath) { $missing += "Visual Studio 2022 C++ Build Tools + Windows SDK" }
+    if (-not $vsPath) { $missing += "Visual Studio C++ Build Tools + Windows SDK + ATL" }
 
     if ($missing.Count -eq 0) {
         Write-Host "Prerequisites found: CMake $(& cmake.exe --version | Select-Object -First 1); clang-tidy at $($clangTidy.Source); VS Build Tools at $vsPath"
@@ -251,15 +288,20 @@ function Ensure-Prerequisites {
         }
     }
     if (-not $vsPath) {
-        try {
-            Install-WingetPackage -Id "Microsoft.VisualStudio.2022.BuildTools" -Override "--wait --passive --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
-        } catch {
-            Write-Warning $_.Exception.Message
+        $vsToolsPath = Get-VsToolsInstallationPath
+        if ($vsToolsPath) {
+            Install-VsAtlComponent -InstallationPath $vsToolsPath
+        } else {
             try {
-                Install-ChocoPackage -Id "visualstudio2022buildtools" -PackageParameters "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive --norestart"
+                Install-WingetPackage -Id "Microsoft.VisualStudio.2022.BuildTools" -Override "--wait --passive --norestart --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.ATL --includeRecommended"
             } catch {
                 Write-Warning $_.Exception.Message
-                Install-VsBuildToolsFallback
+                try {
+                    Install-ChocoPackage -Id "visualstudio2022buildtools" -PackageParameters "--add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.ATL --includeRecommended --passive --norestart"
+                } catch {
+                    Write-Warning $_.Exception.Message
+                    Install-VsBuildToolsFallback
+                }
             }
         }
     }

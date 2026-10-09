@@ -38,6 +38,8 @@ void LogOrchestratorEvent(const log4cxx::LoggerPtr& logger,
   LOG4CXX_DEBUG(logger, "orchestrator_event: name=" << name << ", " << details);
 }
 
+using MillisecDuration = cil::infer::LLMInference::MillisecDuration;
+
 /**
  * @brief Represents a prompt and its tokens.
  * It doesn't own the containers for the prompt and the tokens.

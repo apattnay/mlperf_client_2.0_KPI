@@ -6,6 +6,7 @@ providing command line interface.
 
 ## Table of Contents
 - [Features](#features)
+- [Executor Lifecycle Events](#executor-lifecycle-events)
 - [Running the Application](#running-the-application)
   - [macOS Users](#macos-users)
   - [Windows Users](#windows-users)
@@ -36,6 +37,14 @@ The MLPerf Client benchmark measures the performance of inference tasks on pers
 - The client bundles all enabled/active paths from the EP list (see below)
 - Configure hardware and inference parameters using a JSON configuration file.
 - The final build product is a single binary for Windows and MacOS, with model and data files downloaded as needed.
+
+## Executor Lifecycle Events
+
+Native KPI runs can record high-level executor and orchestrator lifecycle events such as model initialization,
+turn boundaries, inference preparation, tool execution, and reset operations. These events describe orchestration
+boundaries, not individual CPU, GPU, or NPU kernel calls. Collecting them requires the instrumented source-built
+runtime; the precompiled/default runtime does not emit them. See the [Executor and Orchestrator Lifecycle Events](docs/executor-orchestrator-lifecycle-events.md)
+reference, the [source-build guide](README_BUILD.md), and [tools/setup_mlperf_v2_from_source.ps1](tools/setup_mlperf_v2_from_source.ps1).
 
 ## Running the Application
 

@@ -241,7 +241,7 @@ def _compute_iteration_kpis(stages: dict):
     return iterations
 
 
-def _build_orchestrator_html(orchestrator: dict):
+def _build_orchestrator_html(orchestrator: dict, stages=None):
     """Render measured and inferred activity between MLPerf stages."""
     if not orchestrator:
         return ""
@@ -268,10 +268,41 @@ def _build_orchestrator_html(orchestrator: dict):
         )
     if not gap_rows:
         gap_rows = '<tr><td colspan="5" class="no-data">No inter-stage gaps were recorded.</td></tr>'
+    native_summary = orchestrator.get("native_event_summary", [])
+    if not native_summary and stages:
+        summary_by_name = {}
+        for stage_name, stage in stages.items():
+            for event in stage.get("orchestrator_events", []):
+                event_name = event.get("name", "orchestrator_activity")
+                summary = summary_by_name.setdefault(event_name, {
+                    "name": event_name,
+                    "count": 0,
+                    "total_duration_ms": 0.0,
+                    "stages": [],
+                })
+                summary["count"] += 1
+                summary["total_duration_ms"] += float(
+                    event.get("duration_ms", event.get("duration_s", 0.0) * 1000.0)
+                )
+                if stage_name not in summary["stages"]:
+                    summary["stages"].append(stage_name)
+        native_summary = sorted(summary_by_name.values(), key=lambda item: item["name"])
+
+    native_rows = ""
+    for event in native_summary:
+        stages = ", ".join(event.get("stages", []))
+        native_rows += (
+            f"<tr><td>{html.escape(str(event.get('name', '-')))}</td>"
+            f"<td class=\"num\">{event.get('count', 0)}</td>"
+            f"<td class=\"num\">{event.get('total_duration_ms', 0):.3f}</td>"
+            f"<td>{html.escape(stages)}</td></tr>"
+        )
+    if not native_rows:
+        native_rows = '<tr><td colspan="4" class="no-data">No native executor events were parsed.</td></tr>'
     return f"""
 <div class="section">
     <h2>Orchestrator Activity</h2>
-    <p style="color:var(--text2);font-size:0.8rem;">Measured tool time comes from MLPerf's executor log. Remaining time between stages is inferred from timestamps and is intentionally labeled as unclassified or scheduling time until the harness emits finer-grained markers.</p>
+    <p style="color:var(--text2);font-size:0.8rem;">Native executor events are parsed from the MLPerf executor log. Gap timing remains inferred where no measured event covers the interval.</p>
     <table>
         <tr><th>Metric</th><th style="text-align:right">Value</th></tr>
         <tr><td>Stages observed</td><td class="num">{metrics.get('stage_count', 0)}</td></tr>
@@ -280,6 +311,11 @@ def _build_orchestrator_html(orchestrator: dict):
         <tr><td>Measured tool time</td><td class="num">{metrics.get('measured_tool_s', 0):.3f}s</td></tr>
         <tr><td>Inferred / unclassified time</td><td class="num">{metrics.get('unclassified_s', 0):.3f}s</td></tr>
         <tr><td>Gap p50 / p95 / p99</td><td class="num">{metrics.get('gap_p50_s', 0):.3f}s / {metrics.get('gap_p95_s', 0):.3f}s / {metrics.get('gap_p99_s', 0):.3f}s</td></tr>
+    </table>
+    <h3 style="font-size:1rem; color:var(--text2); margin:16px 0 10px">Native Executor Events</h3>
+    <table>
+        <tr><th>Event</th><th style="text-align:right">Count</th><th style="text-align:right">Total (ms)</th><th>Stages</th></tr>
+        {native_rows}
     </table>
     <h3 style="font-size:1rem; color:var(--text2); margin:16px 0 10px">Inter-Stage Gap Attribution</h3>
     <table>
@@ -1324,6 +1360,7 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
     # ---- Build timeline data (only if we have timestamps) ----
     timeline_rows = []
     rag_query_markers = []  # sub-event markers for RAG queries
+    native_event_rows = []
     if has_timestamps:
         # Find earliest start for relative positioning
         all_starts = [s["start_epoch"] for s in stages.values() if s.get("start_epoch")]
@@ -1347,6 +1384,17 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
                 t0_epoch = process_start
             if process_end and process_end > t_max:
                 t_max = process_end
+
+        # Native events can begin before the first stage (for example model_init)
+        # and can have a measurable duration, so include their full span in the axis.
+        for stage_data in stages.values():
+            for event in stage_data.get("orchestrator_events", []):
+                event_start = event.get("timestamp")
+                if event_start is None:
+                    continue
+                event_end = event_start + max(event.get("duration_s", 0) or 0, 0)
+                t0_epoch = min(t0_epoch, event_start)
+                t_max = max(t_max, event_end)
 
         total_span = t_max - t0_epoch if t_max > t0_epoch else 1
 
@@ -1423,6 +1471,22 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
         generic_llm_label = device_type or backend
 
         for i, (name, data) in enumerate(ordered):
+            for event in data.get("orchestrator_events", []):
+                event_name = event.get("name", "native_event")
+                timestamp = event.get("timestamp")
+                if timestamp is None:
+                    continue
+                duration_ms = event.get("duration_ms", event.get("duration_s", 0) * 1000) or 0
+                duration_s = max(duration_ms / 1000.0, 0)
+                native_event_rows.append({
+                    "timestamp": timestamp,
+                    "stage": name,
+                    "event_name": event_name,
+                    "left_pct": round((timestamp - t0_epoch) / total_span * 100, 3),
+                    "width_pct": round(max(duration_s / total_span * 100, 0.12), 3),
+                    "duration_ms": duration_ms,
+                    "details": event.get("details", {}),
+                })
             left_pct = (data["start_epoch"] - t0_epoch) / total_span * 100
             width_pct = (data["end_epoch"] - data["start_epoch"]) / total_span * 100
             width_pct = max(width_pct, 0.5)  # minimum visibility
@@ -1600,8 +1664,55 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
             first_time = "0s"
             last_time = f"{wall_time:.0f}s"
 
+        native_colors = {
+            "model_init": "#56d364",
+            "model_deinit": "#f85149",
+            "prepare": "#79c0ff",
+            "inference_delay": "#d29922",
+            "reset": "#bc8cff",
+            "turn_start": "#3fb950",
+            "turn_end": "#ff7b72",
+            "tool_start": "#58a6ff",
+            "tool_end": "#39c5cf",
+        }
+        # Add native events to the same sequence as phases. Native wins ties so
+        # an event at T is shown before a phase that also starts at T.
+        native_event_rows.sort(key=lambda row: (row["timestamp"], row["event_name"], row["stage"]))
+        for sequence, marker in enumerate(native_event_rows, 1):
+            event_name = marker["event_name"]
+            details = marker["details"]
+            detail_text = ", ".join(
+                f"{key}={value}" for key, value in details.items()
+                if key not in {"name", "duration_ms"}
+            )
+            title = (
+                f"{event_name}: {marker['stage']} "
+                f"({marker['duration_ms']:.3f}ms"
+                f"{', ' + detail_text if detail_text else ''})"
+            )
+            timeline_rows.append({
+                "name": f"{sequence:02d} native: {event_name}",
+                "left_pct": marker["left_pct"],
+                "width_pct": marker["width_pct"],
+                "start_time": _fmt_time(datetime.fromtimestamp(marker["timestamp"]).isoformat(timespec="milliseconds")),
+                "end_time": _fmt_time(datetime.fromtimestamp(marker["timestamp"] + marker["duration_ms"] / 1000.0).isoformat(timespec="milliseconds")),
+                "duration_s": marker["duration_ms"] / 1000.0,
+                "color": native_colors.get(event_name, "#8b949e"),
+                "tokens": 0,
+                "tok_s": 0,
+                "hw": "",
+                "is_background": True,
+                "extra_tooltip": title,
+                "row_type": "native",
+                "stage": marker["stage"],
+            })
+
         bars_html = ""
-        for i, row in enumerate(timeline_rows):
+        ordered_timeline_rows = sorted(
+            timeline_rows,
+            key=lambda row: (row["left_pct"], 0 if row.get("row_type") == "native" else 1),
+        )
+        for i, row in enumerate(ordered_timeline_rows):
             hw_badge = ""
             if row.get("hw"):
                 hw_badge = f'<span class="gantt-hw">{html.escape(row["hw"])}</span>'
@@ -1610,6 +1721,13 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
             label_suffix = ""
             if row["name"] == "rag_setup":
                 label_suffix = ' <span style="font-size:0.7rem;opacity:0.6">(background)</span>'
+            if row.get("row_type") == "native":
+                label_suffix = f' <span class="native-event-stage">{html.escape(row["stage"])}</span>'
+                bar_class = "native-event-bar"
+                bar_text = ""
+            else:
+                bar_class = f"gantt-bar{bg_class}"
+                bar_text = f'<span class="gantt-bar-text">{row["duration_s"]}s</span>'
             bars_html += f"""
             <div class="gantt-row">
                 <div class="gantt-label">
@@ -1617,9 +1735,9 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
                     {html.escape(row['name'])}{label_suffix}
                 </div>
                 <div class="gantt-track">
-                    <div class="gantt-bar{bg_class}" style="left:{row['left_pct']}%;width:{row['width_pct']}%;background:{row['color']}"
+                    <div class="{bar_class}" style="left:{row['left_pct']}%;width:{row['width_pct']}%;background:{row['color']}"
                          title="{row['name']}: {row['start_time']} - {row['end_time']} ({row['duration_s']}s, {row['tokens']} tokens, {row['tok_s']} tok/s{extra_tip})">
-                        <span class="gantt-bar-text">{row['duration_s']}s</span>
+                        {bar_text}
                         {hw_badge}
                     </div>
                 </div>
@@ -1655,8 +1773,8 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
                 {rag_markers_html}
             </div>
             <div class="timeline-legend">
-                <em>Hover bars for detail. Concurrent bars (summary_agent_1/2) show parallel execution.</em>
-                <br><em style="font-size:0.72rem">HW badges show responsible hardware. ★ rag_query marks {_rag_embed_label} embedding + HNSW vector search events.</em>
+                <em>Read rows from left to right, then top to bottom. Native rows are chronological; aligned bars indicate overlap.</em>
+                <br><em style="font-size:0.72rem">Hover bars for detail. HW badges show responsible hardware. ★ rag_query marks {_rag_embed_label} embedding + HNSW vector search events.</em>
             </div>
         </div>"""
     else:
@@ -1741,7 +1859,7 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
     agent_decode_summary_html = _build_agent_decode_summary_html(iterations, category_stats)
     tool_call_kpis_html = _build_tool_call_kpis_html(iterations, category_stats)
     other_kpis_html = _build_other_kpis_html(iterations)
-    orchestrator_html = _build_orchestrator_html(wkpi.get("orchestrator", {}))
+    orchestrator_html = _build_orchestrator_html(wkpi.get("orchestrator", {}), stages)
 
     # ---- Assemble full HTML ----
     report_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1799,6 +1917,10 @@ code {{ background: rgba(110,118,129,0.2); padding: 2px 6px; border-radius: 4px;
 .rag-marker {{ position: absolute; top: 2px; height: 12px; background: #FF9800; border-radius: 2px;
                opacity: 0.9; min-width: 4px; cursor: default; }}
 .rag-marker:hover {{ opacity: 1; box-shadow: 0 0 6px rgba(255,152,0,0.5); }}
+.native-event-stage {{ color: var(--text2); font-size: 0.65rem; margin-left: 4px; }}
+.native-event-bar {{ position: absolute; top: 3px; height: 10px; min-width: 3px; border-radius: 2px;
+                     opacity: 0.9; cursor: help; }}
+.native-event-bar:hover {{ opacity: 1; box-shadow: 0 0 6px rgba(255,255,255,0.55); }}
 .tool-badge {{ display: inline-block; font-size: 0.68rem; padding: 1px 6px; margin: 1px 2px; border-radius: 3px;
                background: rgba(88,166,255,0.15); color: #79b8ff; white-space: nowrap; }}
 .tool-badge-exec {{ background: rgba(63,185,80,0.18); color: #56d364; }}
