@@ -11,8 +11,11 @@ Output lands under `kpi_runs/<preset-name>_<timestamp>/` (gitignored).
 ## Quickstart (fresh machine)
 
 ```powershell
-git clone <this-repo>
+git clone --recurse-submodules <this-repo>
 cd mlperf_client_2.0_KPI
+
+# For an existing clone, initialize KPI-Hub before setup:
+git submodule update --init --recursive
 
 # 1. Python env for KPI-hub instrumentation (creates .venv + installs deps)
 .\tools\setup_kpi_hub_env.ps1

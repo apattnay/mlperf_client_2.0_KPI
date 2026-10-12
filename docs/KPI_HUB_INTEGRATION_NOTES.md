@@ -5,55 +5,30 @@ migration, and the KPI instrumentation built on top of it in this repo. This doc
 git (not in any external/AI-assistant-specific memory store) so it survives regardless of what
 tooling is used to work on this repo in the future.
 
-## 1. Vendoring model
+-## 1. Submodule model (since 2026-10-12)
 
-- `tools/KPI-hub` is a **vendored snapshot** (plain files), **not** a git submodule — so
-  contributors cloning this repo without access to `intel-sandbox/KPI-hub` still get everything
-  needed to build and run. Provenance is recorded in `tools/KPI-hub/.vendor-snapshot.json`
-  (source repo, commit SHA, date, and any outstanding local patches).
-- To pull a newer KPI-hub snapshot (requires access to the source repo): run
-  `tools\sync_kpi_hub.ps1`, review `git diff tools/KPI-hub`, then commit.
-- **GOTCHA**: `sync_kpi_hub.ps1` does `Get-ChildItem $dest -Force | Remove-Item -Recurse -Force`
-  then copies in the fresh clone — this **wipes the entire `tools/KPI-hub` directory**, including
-  any `tools/KPI-hub/upstream/*.patch` files and doc-only local edits not yet upstreamed (e.g. a
-  `DATA_SOURCES.md` section that was never part of an upstreamed commit). Always regenerate any
-  needed patch files from git history **after** running the sync (not before — the sync deletes
-  them), reapply, restore any wiped doc-only sections via `git checkout -- <file>`, and update
-  `.vendor-snapshot.json`'s `local_patches`/`vendored_commit`/`vendored_at` fields.
+`tools/KPI-hub` is a Git submodule of `https://github.com/intel-sandbox/KPI-hub`, pinned by the
+parent repository's gitlink. Clone with `git clone --recurse-submodules`; for an existing clone,
+run `git submodule update --init --recursive`. KPI-Hub is required by benchmark setup and workflow
+scripts, and contributors need access to the upstream repository.
+
+KPI-Hub source changes belong in the standalone repository, not in a second copy under this
+project. Once a change is pushed upstream, run `tools\sync_kpi_hub.ps1` and commit the resulting
+gitlink update here. The script updates the submodule checkout without deleting or copying files.
 - **GOTCHA**: `py_compile` run against a file inside a temp clone creates a `__pycache__/*.pyc`
   that `git add -A` will happily stage — `git reset` it back out before committing.
 
-## 2. Upstreaming process (this repo owns `intel-sandbox/KPI-hub`)
+## 2. Updating KPI-Hub
 
-Since the repo owner (`apattnay`) also owns `intel-sandbox/KPI-hub`, local patches are merged
-directly (fast-forward, no PR needed) rather than opened as pull requests:
+1. Implement and test source changes in a KPI-Hub checkout.
+2. Commit and push them to `intel-sandbox/KPI-hub` (normally `main`).
+3. In this repository, run `tools\sync_kpi_hub.ps1` to update the submodule to the pushed ref.
+4. Review `git diff --submodule=log -- tools/KPI-hub` and commit the parent repository's gitlink
+  update.
 
-1. Clone KPI-hub fresh into a temp dir, create a feature branch.
-2. Generate a clean patch for just the relevant file(s):
-   `git diff <commit>^ <commit> --output="<path>.patch" -- tools/KPI-hub/<file>`
-   — **use `--output=`, not a shell pipe** (`| Out-File` / `>`). Piping a `git diff` through
-   PowerShell corrupts unicode characters (`→`, `─`, `—`, `▲`, `●`) in unrelated context lines
-   elsewhere in the diff, which then makes `git apply` fail with a confusing
-   `"patch does not apply"` error at a seemingly-unrelated line. `--output=` writes the file
-   directly via git, bypassing shell pipe encoding entirely.
-3. Apply patches in the KPI-hub clone with `git apply -p3 <patch>` (the `-p3` strips the
-   `a/tools/KPI-hub/` prefix baked into patches diffed from inside this vendoring repo, since they
-   need to apply at the KPI-hub repo root instead).
-4. Set the correct git identity in the clone (`git config user.name/user.email` —
-   `Aurodeepta Pattnayak <aurodeepta.pattnayak@intel.com>`), commit via `git commit -F <msgfile>`
-   (a message **file**, not `-m "..."` with embedded literal double quotes — that broke PowerShell
-   parsing once and produced a bogus, unrelated error).
-5. Check `git rev-parse origin/main` still matches the clone's base commit (fast-forward safe),
-   then `git push origin <branch>:main`, then delete the feature branch.
-6. Back in this repo: run `tools/sync_kpi_hub.ps1` to pull the newly-merged commit, restore any
-   wiped doc-only sections, and trim `.vendor-snapshot.json`'s `local_patches` to only what's
-   still genuinely not upstreamed.
-
-As of 2026-09-23, **all** local patches from this project (title rename, device_type-aware
-efficiency, KV-cache estimate panel + its `DATA_SOURCES.md` docs, tool-call+CPU-timeline,
-cold/warm+Prefill/ITL columns, Roofline projection) are upstreamed to `intel-sandbox/KPI-hub`
-main (commit `f94664c`) — `.vendor-snapshot.json`'s `local_patches` is an empty array, a clean 1:1
-mirror of upstream.
+The 2026-10-12 migration upstreamed the IMC-frequency hover tooltip and iteration/tool-call report
+KPIs before replacing the vendored snapshot. The parent repository now records the exact KPI-Hub
+commit it uses, so new clones can reproduce the same implementation.
 
 ## 3. Git / GitHub gotchas hit in this repo
 

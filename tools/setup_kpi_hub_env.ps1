@@ -6,6 +6,14 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $venvPath = Join-Path $repoRoot ".venv"
+$kpiHubRequirements = Join-Path $repoRoot "tools\KPI-hub\requirements.txt"
+
+if (-not (Test-Path -LiteralPath $kpiHubRequirements)) {
+    git -C $repoRoot submodule update --init --recursive -- tools/KPI-hub
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to initialize the KPI-Hub submodule. Check repository access and retry."
+    }
+}
 
 # Set proxy variables for pip without changing machine-wide WinHTTP settings.
 . (Join-Path $PSScriptRoot "set_proxy_env.ps1") -Proxy $Proxy -ProcessOnly

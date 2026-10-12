@@ -1,33 +1,37 @@
-# Refreshes the vendored tools/KPI-hub snapshot from its source repo.
-# Requires access to the KPI-hub repo. Review `git diff tools/KPI-hub` and commit after running.
+# Updates the tools/KPI-hub submodule to the requested upstream branch.
+# Review and commit the resulting gitlink change in the parent repository.
 # Usage: .\tools\sync_kpi_hub.ps1 [-Ref main]
 param(
-    [string]$Ref = "main",
-    [string]$RepoUrl = "https://github.com/intel-sandbox/KPI-hub"
+    [string]$Ref = "main"
 )
 $ErrorActionPreference = "Stop"
 
-$dest = Join-Path $PSScriptRoot "KPI-hub"
-$tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("kpi-hub-sync-" + [guid]::NewGuid())
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+$submodulePath = Join-Path $repoRoot "tools\KPI-hub"
+$relativeSubmodulePath = "tools/KPI-hub"
 
-git clone --depth 1 --branch $Ref $RepoUrl $tmp
-$commit = git -C $tmp rev-parse --short HEAD
-$subject = git -C $tmp log -1 --format=%s
-Remove-Item (Join-Path $tmp ".git") -Recurse -Force
+if (-not (Test-Path -LiteralPath (Join-Path $submodulePath ".git"))) {
+    git -C $repoRoot submodule update --init --recursive -- $relativeSubmodulePath
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to initialize the KPI-Hub submodule."
+    }
+}
 
-Get-ChildItem $dest -Force | Remove-Item -Recurse -Force
-Get-ChildItem $tmp -Force | Copy-Item -Destination $dest -Recurse -Force
-Remove-Item $tmp -Recurse -Force
+$dirty = git -C $submodulePath status --porcelain
+if ($dirty) {
+    throw "KPI-Hub has local changes. Commit or preserve them before updating the submodule."
+}
 
-$snapshotInfo = @{
-    source_repo           = $RepoUrl
-    vendored_ref          = $Ref
-    vendored_commit       = $commit
-    vendored_commit_subject = $subject
-    vendored_at           = (Get-Date -Format "yyyy-MM-dd")
-    note                  = "This directory is a vendored snapshot, not a git submodule. Contributors without access to the source repo do not need it to build or run this project. To pull a newer snapshot (requires access to the source repo), run tools/sync_kpi_hub.ps1 and commit the resulting changes."
-} | ConvertTo-Json
-Set-Content -Path (Join-Path $dest ".vendor-snapshot.json") -Value $snapshotInfo
+git -C $submodulePath fetch origin $Ref
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to fetch KPI-Hub ref '$Ref'."
+}
+git -C $submodulePath checkout --detach FETCH_HEAD
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to check out KPI-Hub ref '$Ref'."
+}
 
-Write-Host "KPI-hub snapshot updated to $commit ($subject)."
-Write-Host "Review with 'git diff tools/KPI-hub' and commit the update."
+$commit = git -C $submodulePath rev-parse --short HEAD
+$subject = git -C $submodulePath log -1 --format=%s
+Write-Host "KPI-Hub submodule checked out at $commit ($subject)."
+Write-Host "Review and commit the parent gitlink change with 'git diff --submodule=log -- tools/KPI-hub'."

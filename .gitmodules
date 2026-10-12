@@ -13,3 +13,7 @@
 [submodule "what-if"]
 	path = what-if
 	url = https://github.com/intel-sandbox/what-if.git
+[submodule "tools/KPI-hub"]
+	path = tools/KPI-hub
+	url = https://github.com/intel-sandbox/KPI-hub.git
+	branch = main
