@@ -9,10 +9,11 @@ Preset 5: SWE Agent agentic workflow (data/configs/vendors_default/agentic), NPU
 Preset 6: SWE Agent agentic workflow (data/configs/vendors_default/agentic), iGPU - Workflow KPI + HW KPI
 Preset 7: Data Agent agentic workflow (same config as 5, -q ext), NPU  - Workflow KPI + HW KPI
 Preset 8: Data Agent agentic workflow (same config as 6, -q ext), iGPU - Workflow KPI + HW KPI
+Preset 9: SWE Agent agentic workflow, iGPU execution using the NPU CHw model assets
 
 All presets run against the mlperf 2.0 install (see DEFAULT_MLPERF_DIR) and need network access
 on first run to fetch models/prompts (not cached locally) - see docs/run_benchmark_prompt.md,
-including the corporate proxy prerequisite (tools/set_proxy_env.ps1). Presets 5/6 additionally run
+including the corporate proxy prerequisite (tools/set_proxy_env.ps1). Agentic presets 5-9 run
 Python via the agentic 'execute' tool. Presets 7/8 reuse the SAME agentic config as 5/6 (it already
 bundles both the SWE Agent "base" and Data Agent "extended" scenario/asset entries) and select the
 Data Agent scenario via mlperf-windows.exe's `-q ext` flag.
@@ -57,6 +58,12 @@ PRESETS = {
         "config": str(REPO_ROOT / "data" / "configs" / "vendors_default" / "agentic" / "Llama3.1" / "Intel_NativeOpenVINO_GPU.json"),
         "download_behaviour": "normal",
         "default_extra_args": ["--python-path", "system", "-q", "ext"],
+    },
+    9: {
+        "name": "preset9_sweagent_gpu_chw",
+        "config": str(REPO_ROOT / "data" / "configs" / "vendors_default" / "agentic" / "Llama3.1" / "Intel_NativeOpenVINO_GPU_CHw.json"),
+        "download_behaviour": "normal",
+        "default_extra_args": ["--python-path", "system"],
     },
 }
 
