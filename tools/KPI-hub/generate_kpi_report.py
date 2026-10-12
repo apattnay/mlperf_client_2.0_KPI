@@ -171,7 +171,7 @@ def _parse_mlperf_category_stats(mlperf_stdout_text):
 def _compute_iteration_kpis(stages: dict):
     """Group stages into iterations (an iteration starts at a '<n>_warmup' stage) and compute
     the per-iteration decode / tool-call / gap KPIs used by the Agent KPIs, Tool-Call KPIs, and
-    Other KPIs report sections.
+    report sections.
 
     Returns a list of dicts, one per iteration:
       {index, stage_names, agent_stage_names, decode_ms_total, tool_s_total, tool_calls_detail,
@@ -248,6 +248,7 @@ def _build_orchestrator_html(orchestrator: dict, stages=None):
     metrics = orchestrator.get("metrics", {})
     gaps = orchestrator.get("gaps", [])
     gap_rows = ""
+    max_gap_s = max((float(gap.get("duration_s", 0.0)) for gap in gaps), default=1.0)
     for gap in gaps:
         activities = []
         for event in gap.get("sub_events", []):
@@ -259,15 +260,22 @@ def _build_orchestrator_html(orchestrator: dict, stages=None):
                 label = f"{label}: {details['reason']}"
             confidence = event.get("confidence", "inferred")
             activities.append(f"{html.escape(label)} ({event.get('duration_s', 0):.3f}s, {confidence})")
+        gap_s = float(gap.get("duration_s", 0.0))
+        gap_width = max(gap_s / max_gap_s * 100.0, 2.0) if gap_s else 0.0
+        gap_visual = (
+            f'<div class="gap-bar-track" title="{gap_s:.3f}s">'
+            f'<div class="gap-bar" style="width:{gap_width:.1f}%"></div></div>'
+        )
         gap_rows += (
             f"<tr><td>{html.escape(str(gap.get('from_stage', '-')))}</td>"
             f"<td>{html.escape(str(gap.get('to_stage', '-')))}</td>"
-            f"<td class=\"num\">{gap.get('duration_s', 0):.3f}</td>"
+            f"<td class=\"num\">{gap_s:.3f}</td>"
+            f"<td>{gap_visual}</td>"
             f"<td>{'; '.join(activities) or 'unclassified'}</td>"
             f"<td class=\"num\">{gap.get('unaccounted_s', 0):.3f}</td></tr>"
         )
     if not gap_rows:
-        gap_rows = '<tr><td colspan="5" class="no-data">No inter-stage gaps were recorded.</td></tr>'
+        gap_rows = '<tr><td colspan="6" class="no-data">No inter-stage gaps were recorded.</td></tr>'
     native_summary = orchestrator.get("native_event_summary", [])
     if not native_summary and stages:
         summary_by_name = {}
@@ -302,7 +310,7 @@ def _build_orchestrator_html(orchestrator: dict, stages=None):
     return f"""
 <div class="section">
     <h2>Orchestrator Activity</h2>
-    <p style="color:var(--text2);font-size:0.8rem;">Native executor events are parsed from the MLPerf executor log. Gap timing remains inferred where no measured event covers the interval.</p>
+    <p style="color:var(--text2);font-size:0.8rem;">Native executor events are parsed from the MLPerf executor log. Gap timing remains inferred where no measured event covers the interval. The bars below are scaled to the largest gap in this run.</p>
     <table>
         <tr><th>Metric</th><th style="text-align:right">Value</th></tr>
         <tr><td>Stages observed</td><td class="num">{metrics.get('stage_count', 0)}</td></tr>
@@ -319,7 +327,7 @@ def _build_orchestrator_html(orchestrator: dict, stages=None):
     </table>
     <h3 style="font-size:1rem; color:var(--text2); margin:16px 0 10px">Inter-Stage Gap Attribution</h3>
     <table>
-        <tr><th>After</th><th>Before</th><th style="text-align:right">Gap (s)</th><th>Observed activity</th><th style="text-align:right">Unaccounted (s)</th></tr>
+        <tr><th>After</th><th>Before</th><th style="text-align:right">Gap (s)</th><th>Relative gap</th><th>Observed activity</th><th style="text-align:right">Unaccounted (s)</th></tr>
         {gap_rows}
     </table>
 </div>"""
@@ -435,48 +443,6 @@ def _build_tool_call_kpis_html(iterations, category_stats):
             {iter_rows}
         </table>
         {expected_html}
-    </div>"""
-
-
-def _build_other_kpis_html(iterations):
-    """Iteration wall-clock duration and the idle gaps between consecutive operations."""
-    if not iterations or not any(it["agent_stage_names"] for it in iterations):
-        return ""
-    iter_rows = ""
-    gap_totals = []
-    for it in iterations:
-        if not it["agent_stage_names"]:
-            continue
-        gap_badges = "".join(
-            f'<span class="tool-badge" title="{html.escape(g["after"])} \u2192 {html.escape(g["before"])}">'
-            f'{html.escape(g["after"])}\u2192{html.escape(g["before"])}: {g["gap_s"]:.1f}s</span>'
-            for g in it["gaps"]
-        ) or "-"
-        gap_totals.append(it["gap_s_total"])
-        iter_rows += (f'<tr><td>Iteration {it["index"]}</td>'
-                      f'<td class="num">{it["duration_s"]:.1f}</td>'
-                      f'<td>{gap_badges}</td>'
-                      f'<td class="num">{it["gap_s_total"]:.1f}</td></tr>')
-    avg_gap_s = sum(gap_totals) / len(gap_totals) if gap_totals else 0.0
-    total_gap_s = sum(gap_totals)
-    iter_rows += (f'<tr style="font-weight:600;border-top:2px solid var(--border)">'
-                  f'<td>Average / iteration</td><td></td><td></td>'
-                  f'<td class="num">{avg_gap_s:.1f}</td></tr>')
-    iter_rows += (f'<tr style="font-weight:600"><td>Total (all iterations)</td><td></td><td></td>'
-                  f'<td class="num">{total_gap_s:.1f}</td></tr>')
-    return f"""
-    <div class="section">
-        <h2>Other KPIs</h2>
-        <p style="color:var(--text2);font-size:0.8rem;">Gaps are the idle wall-clock time between
-        the end of one LLM/tool operation and the start of the next (visible as empty space on the
-        Workflow Timeline); they are not captured by mlperf's own "Avg Expected Duration" or
-        "Avg Tools Duration" metrics and typically reflect harness overhead (prompt/context
-        loading, logging, iteration bookkeeping).</p>
-        <table>
-            <tr><th>Iteration</th><th style="text-align:right">Iteration Duration (s)</th>
-                <th>Gaps Between Operations</th><th style="text-align:right">Total Gap Duration (s)</th></tr>
-            {iter_rows}
-        </table>
     </div>"""
 
 
@@ -1356,6 +1322,9 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
     wf_end = wkpi.get("workflow_end_iso", "")
 
     has_timestamps = any(s.get("start_epoch") for s in stages.values())
+    capability = wkpi.get("capabilities", {}).get("orchestrator_lifecycle_events")
+    if capability is None:
+        capability = any(stage.get("orchestrator_events") for stage in stages.values())
 
     # ---- Build timeline data (only if we have timestamps) ----
     timeline_rows = []
@@ -1728,8 +1697,9 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
             else:
                 bar_class = f"gantt-bar{bg_class}"
                 bar_text = f'<span class="gantt-bar-text">{row["duration_s"]}s</span>'
+            native_row_class = " native-lifecycle-row" if row.get("row_type") == "native" else ""
             bars_html += f"""
-            <div class="gantt-row">
+            <div class="gantt-row{native_row_class}">
                 <div class="gantt-label">
                     <span class="gantt-dot" style="background:{row['color']}"></span>
                     {html.escape(row['name'])}{label_suffix}
@@ -1760,9 +1730,18 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
                 </div>
             </div>"""
 
+        lifecycle_control = (
+            '<label class="timeline-toggle"><input type="checkbox" checked '
+            'onchange="var showEvents = this.checked; document.querySelectorAll(\'.native-lifecycle-row\')'
+            '.forEach(function(row) { row.style.display = showEvents ? \'flex\' : \'none\'; });"> '
+            'Show orchestrator lifecycle events</label>'
+            if capability and native_event_rows else
+            '<label class="timeline-toggle timeline-toggle-disabled"><input type="checkbox" disabled>'
+            ' Show orchestrator lifecycle events unavailable (using pre-compiled mlperf binary)</label>'
+        )
         timeline_html = f"""
         <div class="section">
-            <h2>Workflow Timeline</h2>
+            <div class="section-heading"><h2>Workflow Timeline</h2>{lifecycle_control}</div>
             <div class="timeline-axis">
                 <span>{first_time}</span>
                 <span>← {wall_time:.0f}s total →</span>
@@ -1858,7 +1837,6 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
     startup_html = _build_startup_timing_html(exp_meta, rkpi)
     agent_decode_summary_html = _build_agent_decode_summary_html(iterations, category_stats)
     tool_call_kpis_html = _build_tool_call_kpis_html(iterations, category_stats)
-    other_kpis_html = _build_other_kpis_html(iterations)
     orchestrator_html = _build_orchestrator_html(wkpi.get("orchestrator", {}), stages)
 
     # ---- Assemble full HTML ----
@@ -1891,6 +1869,11 @@ h2 {{ font-size: 1.15rem; color: var(--accent); margin-bottom: 12px; border-bott
 .header .meta-value {{ font-size: 1.3rem; font-weight: 600; }}
 .header .meta-value.green {{ color: var(--green); }}
 .section {{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 20px; }}
+.section-heading {{ display: flex; align-items: center; justify-content: space-between; gap: 16px; }}
+.section-heading h2 {{ margin-bottom: 12px; }}
+.timeline-toggle {{ color: var(--text2); font-size: 0.78rem; white-space: nowrap; cursor: pointer; }}
+.timeline-toggle input {{ accent-color: var(--accent); vertical-align: middle; margin-right: 5px; }}
+.timeline-toggle-disabled {{ opacity: 0.75; cursor: default; }}
 table {{ width: 100%; border-collapse: collapse; font-size: 0.9rem; }}
 th {{ text-align: left; color: var(--text2); font-weight: 500; padding: 8px 10px; border-bottom: 2px solid var(--border); }}
 td {{ padding: 8px 10px; border-bottom: 1px solid var(--border); }}
@@ -1921,6 +1904,8 @@ code {{ background: rgba(110,118,129,0.2); padding: 2px 6px; border-radius: 4px;
 .native-event-bar {{ position: absolute; top: 3px; height: 10px; min-width: 3px; border-radius: 2px;
                      opacity: 0.9; cursor: help; }}
 .native-event-bar:hover {{ opacity: 1; box-shadow: 0 0 6px rgba(255,255,255,0.55); }}
+.gap-bar-track {{ background: rgba(48,54,61,0.7); border-radius: 3px; height: 8px; min-width: 90px; }}
+.gap-bar {{ background: var(--yellow); border-radius: 3px; height: 100%; min-width: 2px; }}
 .tool-badge {{ display: inline-block; font-size: 0.68rem; padding: 1px 6px; margin: 1px 2px; border-radius: 3px;
                background: rgba(88,166,255,0.15); color: #79b8ff; white-space: nowrap; }}
 .tool-badge-exec {{ background: rgba(63,185,80,0.18); color: #56d364; }}
@@ -1945,6 +1930,7 @@ code {{ background: rgba(110,118,129,0.2); padding: 2px 6px; border-radius: 4px;
 @media (max-width: 800px) {{
     .gantt-label {{ width: 120px; font-size: 0.72rem; }}
     .timeline-axis {{ margin-left: 120px; padding: 0 0; }}
+    .section-heading {{ align-items: flex-start; flex-direction: column; gap: 0; }}
     .header .meta {{ gap: 10px; }}
     .device-grid {{ flex-direction: column; }}
 }}
@@ -2026,8 +2012,6 @@ code {{ background: rgba(110,118,129,0.2); padding: 2px 6px; border-radius: 4px;
 </div>
 
 {tool_call_kpis_html}
-
-{other_kpis_html}
 
 {orchestrator_html}
 

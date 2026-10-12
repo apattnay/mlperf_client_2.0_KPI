@@ -668,6 +668,9 @@ def main():
     # 4. Build workflow_kpi.json + experiment.json from the executor log.
     stages = parse_executor_log(executor_log_path, start_offset) if executor_log_path.exists() else {}
     print(f"Parsed {len(stages)} inference stage(s) from {executor_log_path.name}")
+    orchestrator_event_count = sum(
+        len(stage.get("orchestrator_events", [])) for stage in stages.values()
+    )
 
     # Attach per-turn tool-call counts (agentic scenarios only) to non-warmup stages, in order.
     tool_calls_per_turn = extract_tool_calls(results_json_path, results_json_start_offset)
@@ -678,6 +681,10 @@ def main():
             stages[name]["tool_call_count"] = sum(tool_calls.values())
 
     workflow_kpi = build_workflow_kpi(args.name, stages, run_start_epoch, run_end_epoch, model_name, ep_name)
+    workflow_kpi["capabilities"] = {
+        "orchestrator_lifecycle_events": orchestrator_event_count > 0,
+        "orchestrator_lifecycle_event_count": orchestrator_event_count,
+    }
     workflow_kpi["processes"] = [
         {
             "name": "mlperf-windows.exe",
