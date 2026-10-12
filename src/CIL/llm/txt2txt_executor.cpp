@@ -33,6 +33,13 @@ using ResultIter = ResultSpan::iterator;
 
 using PromptWithTokensPair = std::pair<std::string, std::vector<uint32_t>>;
 
+void LogOrchestratorEvent(const log4cxx::LoggerPtr& logger,
+                          std::string_view name, std::string_view details) {
+  LOG4CXX_DEBUG(logger, "orchestrator_event: name=" << name << ", " << details);
+}
+
+using MillisecDuration = cil::infer::LLMInference::MillisecDuration;
+
 /**
  * @brief Represents a prompt and its tokens.
  * It doesn't own the containers for the prompt and the tokens.
@@ -359,6 +366,21 @@ void Txt2TxtExecutor::RunScenario(EP ep, const nlohmann::json& settings) {
   bool model_initialized = false;
   bool low_tokens_count = false;
 
+  auto deinit_model = [&](std::string_view reason, size_t group_idx) {
+    if (!model_initialized) return;
+
+    const auto activity_start = std::chrono::steady_clock::now();
+    inference->Deinit();
+    const auto activity_end = std::chrono::steady_clock::now();
+    LogOrchestratorEvent(
+        executor_logger_, "model_deinit",
+        "group=" + std::to_string(group_idx) + ", reason=" +
+            std::string{reason} + ", duration_ms=" +
+            std::to_string(std::chrono::duration_cast<MillisecDuration>(
+                               activity_end - activity_start)
+                               .count()));
+  };
+
   LOG4CXX_INFO(
       executor_logger_,
       "Running " << ep_name_ << " on " << inference->GetDeviceType() << " for "
@@ -664,11 +686,29 @@ void Txt2TxtExecutor::RunScenario(EP ep, const nlohmann::json& settings) {
       //    to make sure the context is cleared and reset before
       //    running the next agentic flow.
       if (!model_initialized) {
+        const auto activity_start = std::chrono::steady_clock::now();
         inference->Init(model_config);
+        const auto activity_end = std::chrono::steady_clock::now();
+        LogOrchestratorEvent(
+            executor_logger_, "model_init",
+            "group=" + std::to_string(group_idx) +
+                ", duration_ms=" +
+                std::to_string(std::chrono::duration_cast<MillisecDuration>(
+                                   activity_end - activity_start)
+                                   .count()));
         last_model_config = model_config;
       } else if (model_config != last_model_config || is_agentic_) {
-        inference->Deinit();
+        deinit_model("reinitialize", group_idx);
+        auto activity_start = std::chrono::steady_clock::now();
         inference->Init(model_config);
+        const auto activity_end = std::chrono::steady_clock::now();
+        LogOrchestratorEvent(
+            executor_logger_, "model_init",
+            "group=" + std::to_string(group_idx) +
+                ", duration_ms=" +
+                std::to_string(std::chrono::duration_cast<MillisecDuration>(
+                                   activity_end - activity_start)
+                                   .count()));
         last_model_config = model_config;
       }
 
@@ -709,6 +749,16 @@ void Txt2TxtExecutor::RunScenario(EP ep, const nlohmann::json& settings) {
       for (; task_iter < infer_tasks.size(); ++task_iter) try {
           auto& task = infer_tasks[task_iter];
 
+            LogOrchestratorEvent(
+              executor_logger_, "turn_start",
+              "group=" + std::to_string(group_idx) +
+                ", task=" + std::to_string(task_iter) +
+                ", warmup=" + (task.is_warmup ? "true" : "false") +
+                ", history_tokens=" +
+                std::to_string(task.history_prompt.tokens.size()) +
+                ", user_tokens=" +
+                std::to_string(task.user_prompt.tokens.size()));
+
           if (task.is_warmup && !is_agentic_) {
             LOG4CXX_DEBUG(executor_logger_,
                           "Prompt: " + std::string{task.user_prompt.prompt});
@@ -718,14 +768,34 @@ void Txt2TxtExecutor::RunScenario(EP ep, const nlohmann::json& settings) {
 
           if (status_ == Status::kCanceled) {
             LOG4CXX_DEBUG(executor_logger_, "Canceled");
-            inference->Deinit();
+            deinit_model("cancel", group_idx);
             return;
           }
 
-          inference->Prepare();
+            auto activity_start = std::chrono::steady_clock::now();
+            inference->Prepare();
+            auto activity_end = std::chrono::steady_clock::now();
+            LogOrchestratorEvent(
+              executor_logger_, "prepare",
+              "group=" + std::to_string(group_idx) +
+                ", task=" + std::to_string(task_iter) +
+                ", duration_ms=" +
+                std::to_string(std::chrono::duration_cast<MillisecDuration>(
+                         activity_end - activity_start)
+                         .count()));
           if (check_error()) break;
 
+            activity_start = std::chrono::steady_clock::now();
           std::this_thread::sleep_for(inference_delay_);
+            activity_end = std::chrono::steady_clock::now();
+            LogOrchestratorEvent(
+              executor_logger_, "inference_delay",
+              "group=" + std::to_string(group_idx) +
+                ", task=" + std::to_string(task_iter) +
+                ", duration_ms=" +
+                std::to_string(std::chrono::duration_cast<MillisecDuration>(
+                         activity_end - activity_start)
+                         .count()));
 
           // Run inference with appropriate tokens for agentic and legacy tasks
           task.result = [&]() {
@@ -784,12 +854,22 @@ void Txt2TxtExecutor::RunScenario(EP ep, const nlohmann::json& settings) {
           }
 
           bool infer_error = check_error();
+            activity_start = std::chrono::steady_clock::now();
           inference->Reset();
+            activity_end = std::chrono::steady_clock::now();
+            LogOrchestratorEvent(
+              executor_logger_, "reset",
+              "group=" + std::to_string(group_idx) +
+                ", task=" + std::to_string(task_iter) +
+                ", duration_ms=" +
+                std::to_string(std::chrono::duration_cast<MillisecDuration>(
+                         activity_end - activity_start)
+                         .count()));
           if (infer_error || check_error()) break;
 
           std::string decoded_output;
           if (!DetokenizeOrFail(task.result.tokens, decoded_output)) {
-            inference->Deinit();
+            deinit_model("decode_error", group_idx);
             return;
           }
 
@@ -808,6 +888,14 @@ void Txt2TxtExecutor::RunScenario(EP ep, const nlohmann::json& settings) {
                 is_agentic_ ? std::string{task.history_prompt.prompt}
                             : std::string{});
           }
+
+            LogOrchestratorEvent(
+              executor_logger_, "turn_end",
+              "group=" + std::to_string(group_idx) +
+                ", task=" + std::to_string(task_iter) +
+                ", output_tokens=" +
+                std::to_string(task.result.tokens.size()) +
+                ", success=true");
 
           ++current_session_index;
           progress_ = current_session_index * 100 / sessions_count;
@@ -874,7 +962,7 @@ void Txt2TxtExecutor::RunScenario(EP ep, const nlohmann::json& settings) {
               static_cast<int>(infer_tasks.size() - task_iter);
           progress_ = current_session_index * 100 / sessions_count;
           inference->ClearErrorMessage();
-          inference->Deinit();
+          deinit_model("skipped_prompt", group_idx);
           inference->Init(model_config);
           continue;
         } else {
@@ -883,7 +971,7 @@ void Txt2TxtExecutor::RunScenario(EP ep, const nlohmann::json& settings) {
             benchmark_result_.error_message =
                 "There is empty output in the result.";
           }
-          inference->Deinit();
+          deinit_model("error", group_idx);
           return;
         }
       }
@@ -945,7 +1033,7 @@ void Txt2TxtExecutor::RunScenario(EP ep, const nlohmann::json& settings) {
   }  // input path
 
   if (model_initialized) {
-    inference->Deinit();
+    deinit_model("run_complete", input_paths_.size());
   }
 
   if (status_ == Status::kRunning) {

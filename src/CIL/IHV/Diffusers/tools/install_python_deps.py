@@ -41,9 +41,9 @@ TORCHVISION_VERSION_SPEC = "torchvision>=0.27,<0.28"
 # nightly is usually ahead of the newest torch-tensorrt-rtx). Edit these to
 # pin versions; leaving torch unpinned lets the resolver align it.
 TORCH_NIGHTLY_INDEX = "https://download.pytorch.org/whl/nightly/cu130"
-TORCH_NIGHTLY_SPEC = "torch==2.14.0.dev20260623+cu130"
-TORCHVISION_NIGHTLY_SPEC = "torchvision==0.29.0.dev20260623+cu130"
-TORCH_TENSORRT_RTX_SPEC = "torch-tensorrt-rtx==2.14.0.dev20260623+cu130"
+TORCH_NIGHTLY_SPEC = "torch==2.15.0.dev20260928+cu130"
+TORCHVISION_NIGHTLY_SPEC = "torchvision==0.30.0.dev20260928+cu130"
+TORCH_TENSORRT_RTX_SPEC = "torch-tensorrt-rtx==2.15.0.dev20260928+cu130"
 TENSORRT_RTX_SPEC = "tensorrt-rtx"
 PYPI_INDEX = "https://pypi.org/simple"
 NVIDIA_INDEX = "https://pypi.nvidia.com"
