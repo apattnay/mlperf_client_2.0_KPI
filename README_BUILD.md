@@ -28,7 +28,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 ### 2. Build MLPerf from source
 
-This script checks for CMake and the Visual Studio 2022 C++ Build Tools. The optional switch installs
+This script checks for CMake, LLVM/`clang-tidy`, and the Visual Studio 2022 C++ Build Tools. The optional switch installs
 the missing prerequisites with `winget`. If App Installer/WinGet is unavailable, it tries Chocolatey
 and then the official Microsoft Visual Studio Build Tools bootstrapper. The full Visual Studio IDE
 is not required.
@@ -322,7 +322,8 @@ The application will be located in `Bin/Linux/Release/mlperf-linux`.
    **Note:**
    > Cross-compilation is supported, allowing you to build for ARM64 on an x64 machine and vice versa. Adjust the -A argument accordingly. If the -A argument is not provided, CMake will default to the architecture of the host machine.
 2. Run the application
-The application will be located in `Bin\Windows\Debug\mlperf-windows.exe`.
+The application will be located in `Bin\Windows\x64\Debug\mlperf-windows.exe` for an x64 build,
+or the corresponding `ARM64` directory when building with `-A ARM64`.
 
 #### Windows GUI Build
 1. Generate the build configuration with CMake

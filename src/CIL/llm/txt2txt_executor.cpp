@@ -366,6 +366,21 @@ void Txt2TxtExecutor::RunScenario(EP ep, const nlohmann::json& settings) {
   bool model_initialized = false;
   bool low_tokens_count = false;
 
+  auto deinit_model = [&](std::string_view reason, size_t group_idx) {
+    if (!model_initialized) return;
+
+    const auto activity_start = std::chrono::steady_clock::now();
+    inference->Deinit();
+    const auto activity_end = std::chrono::steady_clock::now();
+    LogOrchestratorEvent(
+        executor_logger_, "model_deinit",
+        "group=" + std::to_string(group_idx) + ", reason=" +
+            std::string{reason} + ", duration_ms=" +
+            std::to_string(std::chrono::duration_cast<MillisecDuration>(
+                               activity_end - activity_start)
+                               .count()));
+  };
+
   LOG4CXX_INFO(
       executor_logger_,
       "Running " << ep_name_ << " on " << inference->GetDeviceType() << " for "
@@ -683,19 +698,10 @@ void Txt2TxtExecutor::RunScenario(EP ep, const nlohmann::json& settings) {
                                    .count()));
         last_model_config = model_config;
       } else if (model_config != last_model_config || is_agentic_) {
+        deinit_model("reinitialize", group_idx);
         auto activity_start = std::chrono::steady_clock::now();
-        inference->Deinit();
-        auto activity_end = std::chrono::steady_clock::now();
-        LogOrchestratorEvent(
-            executor_logger_, "model_deinit",
-            "group=" + std::to_string(group_idx) +
-                ", duration_ms=" +
-                std::to_string(std::chrono::duration_cast<MillisecDuration>(
-                                   activity_end - activity_start)
-                                   .count()));
-        activity_start = std::chrono::steady_clock::now();
         inference->Init(model_config);
-        activity_end = std::chrono::steady_clock::now();
+        const auto activity_end = std::chrono::steady_clock::now();
         LogOrchestratorEvent(
             executor_logger_, "model_init",
             "group=" + std::to_string(group_idx) +
@@ -762,7 +768,7 @@ void Txt2TxtExecutor::RunScenario(EP ep, const nlohmann::json& settings) {
 
           if (status_ == Status::kCanceled) {
             LOG4CXX_DEBUG(executor_logger_, "Canceled");
-            inference->Deinit();
+            deinit_model("cancel", group_idx);
             return;
           }
 
@@ -863,7 +869,7 @@ void Txt2TxtExecutor::RunScenario(EP ep, const nlohmann::json& settings) {
 
           std::string decoded_output;
           if (!DetokenizeOrFail(task.result.tokens, decoded_output)) {
-            inference->Deinit();
+            deinit_model("decode_error", group_idx);
             return;
           }
 
@@ -956,7 +962,7 @@ void Txt2TxtExecutor::RunScenario(EP ep, const nlohmann::json& settings) {
               static_cast<int>(infer_tasks.size() - task_iter);
           progress_ = current_session_index * 100 / sessions_count;
           inference->ClearErrorMessage();
-          inference->Deinit();
+          deinit_model("skipped_prompt", group_idx);
           inference->Init(model_config);
           continue;
         } else {
@@ -965,7 +971,7 @@ void Txt2TxtExecutor::RunScenario(EP ep, const nlohmann::json& settings) {
             benchmark_result_.error_message =
                 "There is empty output in the result.";
           }
-          inference->Deinit();
+          deinit_model("error", group_idx);
           return;
         }
       }
@@ -1027,7 +1033,7 @@ void Txt2TxtExecutor::RunScenario(EP ep, const nlohmann::json& settings) {
   }  // input path
 
   if (model_initialized) {
-    inference->Deinit();
+    deinit_model("run_complete", input_paths_.size());
   }
 
   if (status_ == Status::kRunning) {

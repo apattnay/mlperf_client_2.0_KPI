@@ -57,7 +57,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$SourceDir = (Split-Path -Parent $PSScriptRoot),
+    [string]$SourceDir = "",
     [string]$BuildDir = "",
     [string]$InstallDir = "C:\Applications\mlperf_client\mlperf_v2p0_custom",
     [ValidateSet("Debug", "Release")]
@@ -72,6 +72,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+if (-not $SourceDir) {
+    $SourceDir = Split-Path -Parent $PSScriptRoot
+}
 
 function Invoke-Checked {
     param(
@@ -248,6 +252,7 @@ function Install-VsAtlComponent {
 }
 
 function Ensure-Prerequisites {
+    Refresh-ProcessPath
     $cmake = Get-Command cmake.exe -ErrorAction SilentlyContinue
     $clangTidy = Get-Command clang-tidy.exe -ErrorAction SilentlyContinue
     $vsPath = Get-VsCppBuildToolsPath
@@ -407,9 +412,11 @@ Invoke-Checked cmake.exe @(
     "--parallel"
 )
 
-$expectedBinDir = Join-Path $SourceDir ("Bin\Windows\{0}" -f $Configuration)
+$expectedBinDir = Join-Path $SourceDir ("Bin\Windows\{0}\{1}" -f $Architecture, $Configuration)
 $exeCandidates = @(
     (Join-Path $expectedBinDir "mlperf-windows.exe"),
+    (Join-Path $SourceDir ("Bin\Windows\{0}\mlperf-windows.exe" -f $Configuration)),
+    (Join-Path $BuildDir ("Bin\Windows\{0}\{1}\mlperf-windows.exe" -f $Architecture, $Configuration)),
     (Join-Path $BuildDir ("Bin\Windows\{0}\mlperf-windows.exe" -f $Configuration)),
     (Join-Path $BuildDir ("{0}\mlperf-windows.exe" -f $Configuration))
 )
