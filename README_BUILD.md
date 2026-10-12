@@ -22,7 +22,7 @@ create the Python environment used by the KPI scripts, and run preset 5.
 ### 1. Open PowerShell in the repository
 
 ```powershell
-Set-Location C:\Users\mdashiq\workspace\mlperf_client_2.0_KPI
+Set-Location C:\path\to\mlperf_client
 Set-ExecutionPolicy -Scope Process Bypass
 ```
 
