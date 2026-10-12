@@ -65,10 +65,14 @@ def load_hw_samples(path, start_epoch=None, end_epoch=None):
                     continue
                 total = row.get("dram_total_gbs", "")
                 if total in (None, ""):
+                    read = row.get("dram_read_gbs", "")
+                    write = row.get("dram_write_gbs", "")
+                    if read in (None, "") and write in (None, ""):
+                        continue
                     try:
-                        total = float(row.get("dram_read_gbs", 0) or 0) + float(row.get("dram_write_gbs", 0) or 0)
+                        total = float(read or 0) + float(write or 0)
                     except (TypeError, ValueError):
-                        total = 0
+                        continue
                 try:
                     total = float(total)
                 except (TypeError, ValueError):
@@ -1358,10 +1362,10 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
         # and can have a measurable duration, so include their full span in the axis.
         for stage_data in stages.values():
             for event in stage_data.get("orchestrator_events", []):
-                event_start = event.get("timestamp")
-                if event_start is None:
+                event_end = event.get("timestamp")
+                if event_end is None:
                     continue
-                event_end = event_start + max(event.get("duration_s", 0) or 0, 0)
+                event_start = event_end - max(event.get("duration_s", 0) or 0, 0)
                 t0_epoch = min(t0_epoch, event_start)
                 t_max = max(t_max, event_end)
 
@@ -1671,7 +1675,7 @@ def build_html(wkpi, rkpi, sys_state_text, kpi_dir_name, exp_meta=None, peak_rss
                 "tok_s": 0,
                 "hw": "",
                 "is_background": True,
-                "extra_tooltip": title,
+                "extra_tooltip": html.escape(title, quote=True),
                 "row_type": "native",
                 "stage": marker["stage"],
             })

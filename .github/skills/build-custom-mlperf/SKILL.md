@@ -2,7 +2,7 @@
 name: build-custom-mlperf
 description: "Build and stage the custom MLPerf Client binary from source. Use when a benchmark requests custom MLPerf and C:\\Applications\\mlperf_client\\mlperf_v2p0_custom\\mlperf-windows.exe is missing, or when the user asks to build the custom MLPerf binary."
 ---
-- Run this workflow from the MLPerf repository root: `C:\Users\mdashiq\workspace\mlperf_client_2.0_KPI`.
+- Run this workflow from the current MLPerf repository root; do not assume a fixed checkout path.
 - Use a subagent to execute and monitor the build so the calling benchmark workflow can remain focused. The subagent must use the repository's `tools/setup_mlperf_v2_from_source.ps1` script rather than reimplementing the build steps.
 - By default, run:
   `powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/setup_mlperf_v2_from_source.ps1`

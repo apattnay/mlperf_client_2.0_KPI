@@ -415,11 +415,6 @@ $exeCandidates = @(
 )
 $exePath = $exeCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
 if (-not $exePath) {
-    $exePath = Get-ChildItem -LiteralPath $SourceDir -Filter "mlperf-windows.exe" -File -Recurse -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -notmatch "\\(build-custom|\.git)\\" } |
-        Select-Object -ExpandProperty FullName -First 1
-}
-if (-not $exePath) {
     throw "Build completed but mlperf-windows.exe was not found. Inspect: $BuildDir"
 }
 $exePath = (Resolve-Path -LiteralPath $exePath).Path
@@ -434,7 +429,9 @@ if (-not $SkipData) {
     $sourceDataDir = Join-Path $SourceDir "data"
     if (Test-Path -LiteralPath $sourceDataDir -PathType Container) {
         Write-Host "Staging runtime data directory"
-        Copy-Item -LiteralPath $sourceDataDir -Destination (Join-Path $InstallDir "data") -Recurse -Force
+        $targetDataDir = Join-Path $InstallDir "data"
+        New-Item -ItemType Directory -Force -Path $targetDataDir | Out-Null
+        Get-ChildItem -LiteralPath $sourceDataDir -Force | Copy-Item -Destination $targetDataDir -Recurse -Force
     }
 }
 

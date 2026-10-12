@@ -237,7 +237,7 @@ def parse_executor_log(path: Path, start_offset: int) -> dict:
                     # turn_start/prepare and other new-turn events belong next.
                     if open_stage is not None and not open_stage.get("power_closed"):
                         target = open_stage
-                    elif open_stage is not None and event_name in {"reset", "turn_end", "model_deinit"}:
+                    elif open_stage is not None and event_name in {"reset", "turn_end", "model_deinit", "tool_start", "tool_end"}:
                         target = open_stage
                     else:
                         target = None
@@ -455,7 +455,10 @@ def build_orchestrator_trace(stages: dict, run_start: float, run_end: float) -> 
         sub_events = []
         measured_s = 0.0
         native_tool_s = 0.0
-        for event in from_data.get("orchestrator_events", []):
+        for event in (
+            from_data.get("orchestrator_events", [])
+            + to_data.get("orchestrator_events", [])
+        ):
             duration_s = max(float(event.get("duration_s", 0.0)), 0.0)
             event_end = float(event.get("timestamp", gap_start))
             event_start = event_end - duration_s
@@ -517,7 +520,7 @@ def build_orchestrator_trace(stages: dict, run_start: float, run_end: float) -> 
             "start_epoch": gap_start,
             "end_epoch": gap_end,
             "duration_s": round(gap_s, 3),
-            "classification": "measured" if sub_events and not remainder_s else "mixed" if sub_events else "unclassified",
+            "classification": "measured" if measured_s >= gap_s else "mixed" if measured_s > 0 else "unclassified",
             "source": "executor_log",
             "sub_events": sub_events,
             "unaccounted_s": round(remainder_s, 3),
