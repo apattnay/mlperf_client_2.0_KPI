@@ -32,7 +32,7 @@ $exePath = Join-Path $InstallDir "mlperf-windows.exe"
 if (Test-Path $exePath) {
     Write-Host "mlperf-windows.exe already present at $InstallDir - skipping download."
     & $exePath -v
-    exit 0
+    return
 }
 
 $releaseUrl = "https://github.com/mlcommons/mlperf_client/releases/download/v2.0/mlperf-client-2.0.0-c8d2dc0-windows-x64.zip"

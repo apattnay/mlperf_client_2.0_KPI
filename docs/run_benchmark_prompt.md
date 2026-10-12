@@ -58,12 +58,13 @@ on the machine (e.g. an OVMS install) has set a stray `PYTHONHOME` env var - cle
 | 6 | SWE Agent agentic workflow | iGPU | `data/configs/vendors_default/agentic/Llama3.1/Intel_NativeOpenVINO_GPU.json` |
 | 7 | Data Agent agentic workflow (same config as 5, run with `-q ext`) | NPU | `data/configs/vendors_default/agentic/Llama3.1/Intel_NativeOpenVINO_NPU.json` |
 | 8 | Data Agent agentic workflow (same config as 6, run with `-q ext`) | iGPU | `data/configs/vendors_default/agentic/Llama3.1/Intel_NativeOpenVINO_GPU.json` |
+| 9 | SWE Agent workflow using the NPU CHw model assets with iGPU execution | iGPU | `data/configs/vendors_default/agentic/Llama3.1/Intel_NativeOpenVINO_GPU_CHw.json` |
 
 All presets run against a single **mlperf 2.0** install (`C:\Applications\mlperf_client\mlperf_v2p0`,
 default for `--mlperf-dir`) - only v2.0 supports the `IsAgentic` scenario field the real SWE Agent
 scenario (presets 5/6) needs, so all presets standardize on it. Presets 1/2 use the config files
 bundled with the v2.0 install itself (`llm/Llama3.1/...`, resolved relative to `--mlperf-dir`);
-presets 3/4/5/6 use configs from this repo (`data/configs/...`, resolved as absolute paths).
+presets 3/4/5/6/7/8/9 use configs from this repo (`data/configs/...`, resolved as absolute paths).
 
 Presets 3/4 run only the two code-analysis prompts (warmup + 1 iteration each = 4 inference
 stages) as a quick, single-shot (non-agentic) stand-in. Presets 5/6 run the **actual** "SWE Agent"
@@ -82,13 +83,17 @@ config files used by presets 5/6 already bundle both scenarios (`InputFilePath.b
 select the Data Agent scenario by passing `-q ext` (`--prompts ext`, an `mlperf-windows.exe` flag)
 instead of running the default base/SWE Agent scenario.
 
+Preset 9 follows preset 6's SWE Agent workflow but uses the NPU CHw model URLs with
+`device_type: GPU`. It is intended to test this model-variant/device combination; compatibility
+and performance are not assumed.
+
 ### All presets: network + proxy prerequisites
 
 - **Network access** on every preset — none of the models/prompts are pre-cached in the v2.0
   install (it's a fresh download-on-demand layout, unlike the old v1.5 install). `run_kpi_preset.py`
   passes `-b normal` for all presets so missing files get downloaded and cached under the v2.0
-  install for subsequent runs (the Llama3.1 NPU/GPU model is shared across presets 1/3/5/7 and
-  2/4/6/8 respectively, so it's only downloaded once per device type).
+  install for subsequent runs (NPU model assets are shared across presets 1/3/5/7/9; GPU model
+  assets are shared across 2/4/6/8).
 - **Corporate proxy** — on an Intel corporate network, `client.mlcommons-storage.org` is only
   reachable through the proxy, not via a direct connection. `mlperf-windows.exe` needs both the
   `HTTP(S)_PROXY` env vars *and* the machine-wide WinHTTP proxy set (it doesn't reliably use just
@@ -102,10 +107,10 @@ instead of running the default base/SWE Agent scenario.
   Without this, downloads fail with `could not connect to the download server - check your
   internet connection` even though the host is actually reachable through the proxy.
 
-### Preset 5/6/7/8 additional prerequisites
+### Preset 5/6/7/8/9 additional prerequisites
 
 - **Python for the agentic `execute` tool** — this mlperf build has no bundled portable Python, so
-  `run_kpi_preset.py` bakes in `--python-path system` for presets 5/6/7/8 (uses the machine's
+  `run_kpi_preset.py` bakes in `--python-path system` for presets 5/6/7/8/9 (uses the machine's
   installed Python). Override by passing your own `--python-path <dir>` after `--preset 5`/`6`/`7`/`8`.
 - Expect a notably longer run time than presets 3/4 (3 iterations, multi-turn, tool-execution
   overhead).
@@ -121,6 +126,7 @@ instead of running the default base/SWE Agent scenario.
 .venv\Scripts\python.exe tools\run_kpi_preset.py --preset 6
 .venv\Scripts\python.exe tools\run_kpi_preset.py --preset 7
 .venv\Scripts\python.exe tools\run_kpi_preset.py --preset 8
+.venv\Scripts\python.exe tools\run_kpi_preset.py --preset 9
 ```
 
 Override the mlperf installation directory if it's not at the default path:
