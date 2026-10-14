@@ -18,6 +18,7 @@ Usage (from repo root, using the project .venv):
 """
 import argparse
 import json
+import os
 import re
 import signal
 import subprocess
@@ -25,6 +26,8 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+
+from etl_stage_capture import ETWStageCaptureController
 
 KPI_HUB_DIR = Path(__file__).resolve().parent / "KPI-hub"
 
@@ -356,6 +359,8 @@ def main():
     ap.add_argument("--hw-profile", default="lightweight", choices=["lightweight", "simulation", "memory_deep", "power_analysis", "unified"])
     ap.add_argument("--hw-interval-ms", type=int, default=1000)
     ap.add_argument("--sampler-warmup-s", type=float, default=3.0, help="Time to let the HW sampler discover hardware before starting the workload")
+    ap.add_argument("--etl-trace-plan", default=None,
+                    help="Optional stage-selective ETW trace plan generated from a prior workflow_kpi.json")
     ap.add_argument("--download-behaviour", default="skip_all", choices=["forced", "prompt", "skip_all", "deps_only", "normal"], help="Passed to mlperf-windows.exe -b flag (agentic scenarios need 'normal'/'forced' to fetch remote assets on first run)")
     # parse_known_args (not a REMAINDER positional) so passthrough flags like --python-path work regardless of position.
     args, extra_args = ap.parse_known_args()
@@ -386,6 +391,9 @@ def main():
         "--profile", args.hw_profile, "--interval", str(args.hw_interval_ms), "--output", str(hw_csv),
         "--power",
     ]
+    if args.etl_trace_plan:
+        # Keep the normal PDH path, but enable EMON energy events for the final power fallback.
+        sampler_cmd += ["--source", "power=both"]
     sampler_proc = subprocess.Popen(
         sampler_cmd, stdout=sampler_log, stderr=subprocess.STDOUT,
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
@@ -398,8 +406,25 @@ def main():
     exe_cmd = [str(mlperf_exe), "-c", str(config_path), "-p", "false", "-n", "false", "-b", args.download_behaviour] + args.extra_args
     print(f"Running: {' '.join(exe_cmd)} (cwd={mlperf_dir})")
     run_start_epoch = time.time()
-    proc = subprocess.run(exe_cmd, cwd=str(mlperf_dir), capture_output=True, text=True)
-    run_end_epoch = time.time()
+    trace_controller = None
+    trace_manifest = None
+    if args.etl_trace_plan:
+        trace_plan_path = Path(args.etl_trace_plan).resolve()
+        if not trace_plan_path.exists():
+            raise FileNotFoundError(f"ETL trace plan not found: {trace_plan_path}")
+        (out_dir / "etl_trace_plan.json").write_text(trace_plan_path.read_text(encoding="utf-8"), encoding="utf-8")
+        trace_controller = ETWStageCaptureController(
+            trace_plan_path, executor_log_path, start_offset, out_dir,
+        )
+        trace_controller.start()
+
+    try:
+        proc = subprocess.run(exe_cmd, cwd=str(mlperf_dir), capture_output=True, text=True)
+    finally:
+        run_end_epoch = time.time()
+        if trace_controller:
+            trace_manifest = trace_controller.stop()
+
     (out_dir / "mlperf_stdout.log").write_text(proc.stdout + "\n" + proc.stderr, encoding="utf-8")
     print(f"mlperf-windows.exe exit code: {proc.returncode}")
 
@@ -424,17 +449,32 @@ def main():
             stages[name]["tool_call_count"] = sum(tool_calls.values())
 
     workflow_kpi = build_workflow_kpi(args.name, stages, run_start_epoch, run_end_epoch, model_name, ep_name)
+    if trace_manifest is not None:
+        workflow_kpi["etl_trace_manifest"] = "etl_trace_manifest.json"
     (out_dir / "workflow_kpi.json").write_text(json.dumps(workflow_kpi, indent=2), encoding="utf-8")
 
     experiment = build_experiment_meta(model_name, ep_name, device_type, model_dir, proc.returncode, run_end_epoch - run_start_epoch, model_source)
     (out_dir / "experiment.json").write_text(json.dumps(experiment, indent=2), encoding="utf-8")
 
     # 5. Generate the post-run HTML reports.
-    subprocess.run([
-        python_exe, str(KPI_HUB_DIR / "plot_utilization_interactive.py"),
+    plotter = Path(os.environ.get("KPI_HUB_PLOTTER", str(KPI_HUB_DIR / "plot_utilization_interactive.py")))
+    dashboard_cmd = [
+        python_exe, str(plotter),
         "--input", str(hw_csv), "--output", str(out_dir / "dashboard.html"),
         "--phases", str(out_dir / "workflow_kpi.json"),
-    ], check=False)
+    ]
+    if trace_manifest:
+        ptat_capture = trace_manifest.get("ptat_monitor", {})
+        ptat_csv = ptat_capture.get("copied_csv")
+        if ptat_csv and Path(ptat_csv).exists():
+            plotter_help = subprocess.run(
+                [python_exe, str(plotter), "--help"], capture_output=True, text=True,
+            )
+            if plotter_help.returncode == 0 and "--ptat-csv" in plotter_help.stdout:
+                dashboard_cmd += ["--ptat-csv", ptat_csv]
+            else:
+                print(f"[PTAT] plotter {plotter} lacks --ptat-csv; generating dashboard without PTAT")
+    dashboard_result = subprocess.run(dashboard_cmd, check=False)
 
     subprocess.run([
         python_exe, str(KPI_HUB_DIR / "generate_kpi_report.py"),
@@ -442,7 +482,10 @@ def main():
     ], check=False)
 
     print(f"kpi_report.html : {out_dir / 'kpi_report.html'}")
-    print(f"dashboard.html  : {out_dir / 'dashboard.html'}")
+    if dashboard_result.returncode == 0 and (out_dir / "dashboard.html").exists():
+        print(f"dashboard.html  : {out_dir / 'dashboard.html'}")
+    else:
+        print(f"dashboard generation failed (exit code {dashboard_result.returncode})")
     sys.exit(proc.returncode)
 
 

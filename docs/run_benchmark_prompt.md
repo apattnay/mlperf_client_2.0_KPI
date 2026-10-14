@@ -138,8 +138,91 @@ Override the mlperf installation directory if it's not at the default path:
 .venv\Scripts\python.exe tools\run_kpi_preset.py --preset 4 --mlperf-dir "C:\path\to\mlperf_v2p0"
 ```
 
+## Optional ETW/GPUView stage capture
+
+Use this only after a KPI-hub run identifies a suspicious stage. The baseline
+`workflow_kpi.json` is an output and must not be edited into a replay config; generate a separate
+`etl_trace_plan.json`, select stage names from its `stages` object, then replay the same preset.
+During replay, `run_kpi_workflow.py` watches live executor-log `power_begin`/`power_end` events,
+starts WPR only for selected stages, writes `KPIHUB_ETW_BEGIN/END` WPR markers, and stops at the
+stage end or the configured cap. PTAT's default monitor is started once at workflow launch and
+stopped at workflow end, so its 1-second CSV covers the selected ETL windows and benefits from
+initialization warmup. If a PTAT process is already running, the runner leaves it untouched. The
+PTAT CSV is saved beside `hw_samples.csv` and passed into KPI-hub for timestamp alignment; the
+shared dashboard shows PTAT as the primary power source, with PDH RAPL then EMON estimates as
+fallbacks when the plotter supports `--ptat-csv`. If the bundled `tools/KPI-hub` plotter is older,
+set `KPI_HUB_PLOTTER` to a PTAT-capable `plot_utilization_interactive.py` before replay (on this
+SUT: `$env:KPI_HUB_PLOTTER = 'C:\KPI-hub-imc-tooltip\plot_utilization_interactive.py'`). Otherwise
+the runner warns and creates a dashboard without PTAT while preserving `ptat_power.csv`.
+EMON continues to collect DRAM bandwidth/page-hit/latency independently. Baseline offsets are
+reference metadata only, not replay timers.
+
+Example for one 20-second capture of the sixth SWE Agent inference stage:
+
+```powershell
+python tools\create_etl_trace_plan.py `
+  --workflow-kpi kpi_runs\preset9_sweagent_gpu_chw_<baseline>\workflow_kpi.json `
+  --output kpi_runs\preset9_sweagent_gpu_chw_<baseline>\etl_trace_plan.json `
+  --capture-stage 06_swe_agent_0 `
+  --max-capture-seconds 20
+
+python tools\run_kpi_preset.py --preset 9 `
+  --etl-trace-plan kpi_runs\preset9_sweagent_gpu_chw_<baseline>\etl_trace_plan.json
+```
+
+The replay writes selected `.etl` files under the new run's `etw/` directory, plus
+`etl_trace_manifest.json` and a copy of the plan. The active default profile is the installed
+GPUView WPR profile. ETL capture requires WPR and the Windows Performance Toolkit; it can
+fail cleanly if WPR is already in use. Keep captures short: the prior broad GPUView trace was
+393 MB for about 21 seconds. Use the same config, prompt selection, and iteration count as the
+baseline so stage ordinals remain comparable. This replays the workflow; it does not add a trace
+to the old run. When PTAT data is present, each saved ETL also has a matching `.ptat.csv` in
+`etw/`. Its rows fall strictly within the active WPR start/stop-request window (not ETL flush
+time); `etl_trace_manifest.json` records `ptat_csv_path` and `ptat_sample_count` for each capture.
+Keep the large raw `.etl` files local; commit only the compact plan, manifest, and telemetry
+evidence needed to describe a run.
+
 ## Notes
 
+**Verified on 2026-10-13 (JF04WVAW0862-TA, preset 9):** a baseline 12-stage KPI file selected
+only `06_swe_agent_0`; the replay parsed all 12 stages, saved one GPUView ETL, and exited with
+workflow code 0. Evidence is under
+`results/evidence/JF04WVAW0862-TA/etl_trace_replay_20261013/preset9_sweagent_gpu_chw_20261013_235856/`:
+`etl_trace_manifest.json`, `workflow_kpi.json`, and `etw/stage_06_06_swe_agent_0.etl`.
+The manifest's initial `captured_seconds` includes WPR stop/finalization latency; the controller
+now records capture-active time separately from ETL flush time for subsequent runs.
+
+**Additional multi-stage validation (2026-10-14, same SUT/preset):** the edited plan selected
+`09_warmup` and `10_swe_agent_0` through `12_swe_agent_2`. All four captures were saved; workflow
+exit code was 0 and WPR was no longer recording afterward.
+
+| Stage | Capture-active seconds | ETL size | Stop reason |
+|---|---:|---:|---|
+| `09_warmup` | 2.36 | 96 MiB | stage end |
+| `10_swe_agent_0` | 20.13 | 282 MiB | 20-second cap |
+| `11_swe_agent_1` | 20.09 | 286 MiB | 20-second cap |
+| `12_swe_agent_2` | 4.30 | 113 MiB | stage end |
+
+WPR finalization took an additional ~2.1–6.9 seconds after capture stop was requested; this is
+reported separately from the active capture duration. This confirms that even stage-scoped
+GPUView traces are sizable, so select only diagnostic stages and keep the duration cap conservative.
+Evidence: `results/evidence/JF04WVAW0862-TA/etl_trace_replay_20261014/preset9_sweagent_gpu_chw_20261014_001308/`.
+
+**Combined PTAT + ETW validation (2026-10-14, same SUT/preset):** the edited plan captured stages
+09-12 with workflow exit code 0. All four ETLs were saved (104, 326, 336, and 79 MiB); capture
+durations were 2.375, 20.14, 20.14, and 3.922 seconds respectively. PTAT recorded 484 samples,
+including 3, 20, 20, and 4 samples within those ETL windows. The PTAT-capable plotter aligned
+482/499 KPI samples and generated `dashboard.html`. PTAT stopped and WPR returned to idle.
+The individual PTAT CSVs were backfilled from the full-run log using those same capture windows.
+Evidence: `results/evidence/JF04WVAW0862-TA/ptat_etl_replay_final_20261014/preset9_sweagent_gpu_chw_20261014_010923/`.
+
+**Preset-6 E2E verification (2026-10-14, same SUT):** a plan generated from preset 6's completed
+12-stage baseline selected stages 09-12. Workflow exit code was 0, and all four ETLs were saved
+with no WPR marker warnings. Active capture times were 3.328, 20.141, 20.14, and 6.812 seconds;
+their paired PTAT slices have 4, 20, 20, and 7 samples. The dashboard aligned PTAT to 498/516
+KPI samples. WPR was idle and PTAT had stopped afterward. The plan, manifest, and sample CSVs
+are under `results/evidence/JF04WVAW0862-TA/ptat_etl_e2e_preset6_20261014/`; the raw ETLs
+and generated dashboard remain local and are not included in the repository.
 - The iGPU (GPU) presets have previously hit an OpenVINO driver bug
   (`CL_OUT_OF_RESOURCES`, see `Logs/error.log` in the mlperf install dir) on this machine. If a
   GPU preset fails or hangs, a reboot may be needed to reset the GPU driver state before retrying.
